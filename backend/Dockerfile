@@ -8,9 +8,14 @@ WORKDIR /app
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
-    && useradd --create-home --uid 10001 appuser
+    && useradd --create-home --uid 10001 appuser \
+    && mkdir -p /data/documents \
+    && chown appuser:appuser /data/documents
 
 COPY app ./app
+COPY alembic.ini ./
+COPY migrations ./migrations
+COPY scripts ./scripts
 
 FROM base AS test
 COPY requirements-dev.txt pytest.ini ./
