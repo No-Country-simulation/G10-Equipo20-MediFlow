@@ -57,3 +57,6 @@ Desktop.ini
 *.swp
 *.swo
 *.md
+
+
+/backend/scripts/*
