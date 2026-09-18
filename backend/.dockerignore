@@ -1,0 +1,16 @@
+# Solo estos archivos forman parte del contexto de construccion.
+**
+!Dockerfile
+!requirements.txt
+!requirements-dev.txt
+!pytest.ini
+!app/
+!app/**
+!tests/
+!tests/**
+**/__pycache__/
+**/*.py[cod]
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
