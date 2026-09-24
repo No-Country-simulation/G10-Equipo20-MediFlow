@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.lifecycle import DocumentStatus
 
 
 class DocumentMetadata(BaseModel):
@@ -10,10 +11,12 @@ class DocumentMetadata(BaseModel):
 
     document_id: UUID
     original_filename: str
-    format: Literal["pdf", "jpeg", "png"]
-    size_bytes: int = Field(gt=0)
+    format: Literal["pdf", "jpeg", "png"] | None
+    size_bytes: int | None = Field(ge=0)
     received_at: datetime
 
 
 class DocumentResponse(DocumentMetadata):
-    status: Literal["UPLOADED"]
+    status: DocumentStatus
+    processing_attempts: int = 0
+    rejection_reason: str | None = None

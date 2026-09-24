@@ -7,6 +7,7 @@ from app.services.errors import DocumentError
 class DocumentStorage(Protocol):
     def save(self, key: str, source: BinaryIO, max_bytes: int) -> tuple[Path, int]: ...
     def delete(self, key: str) -> None: ...
+    def local_path(self, key: str) -> Path: ...
 
 
 class LocalDocumentStorage:
@@ -39,3 +40,6 @@ class LocalDocumentStorage:
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
+
+    def local_path(self, key: str) -> Path:
+        return self._path(key)

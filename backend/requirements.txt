@@ -8,3 +8,5 @@ alembic==1.20.0
 python-multipart==0.0.32
 pypdf==6.19.0
 pillow==12.3.0
+google-genai==2.24.0
+pymupdf==1.28.2
