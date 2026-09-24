@@ -14,6 +14,13 @@ class Settings(BaseModel):
     postgres_password: SecretStr
     documents_dir: Path = Path("/data/documents")
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_timeout_seconds: int = Field(default=90, ge=1, le=180)
+    processing_max_pages: int = Field(default=20, ge=1, le=100)
+    processing_max_characters: int = Field(default=50000, ge=100, le=200000)
+    pdf_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    max_processing_attempts: int = Field(default=3, ge=1, le=10)
 
     @property
     def database_url(self) -> URL:
