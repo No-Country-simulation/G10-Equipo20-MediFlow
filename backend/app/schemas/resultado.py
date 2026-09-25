@@ -213,6 +213,7 @@ class Procedimiento(BaseModel):
 class Medicamento(BaseModel):
     dci: str
     dosis: str | None = None
+    dosis_valor: str | None = None  # cantidad leída con los separadores del pack (RN-CO10)
     concentracion: str | None = None
     forma_farmaceutica: str | None = None
     via: str | None = None

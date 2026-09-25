@@ -166,6 +166,7 @@ urgencias:                                # RN-CO13
   autorizacion_previa: false
   canales_sin_autorizacion: [Guardia_Emergencias, Hospitalizado]
   motivo_aviso_auditoria: informe_atencion_inicial_urgencias
+  triage_eleva_prioridad: false           # RN-CO16: propuesta por validar con un líder clínico
 
 vocabulario:                              # RN-C6, sección 4.4
   Receta Médica: [fórmula médica, formula medica, orden de medicamentos, receta]

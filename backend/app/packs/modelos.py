@@ -94,6 +94,7 @@ class Urgencias(BaseModel):
     autorizacion_previa: bool
     canales_sin_autorizacion: list[str]
     motivo_aviso_auditoria: str
+    triage_eleva_prioridad: bool = False  # RN-CO16
 
 
 class Retencion(BaseModel):
