@@ -10,3 +10,4 @@ pypdf==6.19.0
 pillow==12.3.0
 google-genai==2.24.0
 pymupdf==1.28.2
+boto3==1.43.101

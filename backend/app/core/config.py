@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import URL
@@ -13,6 +14,14 @@ class Settings(BaseModel):
     postgres_user: str = "mediflow"
     postgres_password: SecretStr
     documents_dir: Path = Path("/data/documents")
+    storage_backend: Literal["local", "r2"] = "local"
+    r2_endpoint_url: str = ""
+    r2_access_key_id: SecretStr = SecretStr("")
+    r2_secret_access_key: SecretStr = SecretStr("")
+    r2_bucket_name: str = "mediflow-g10"
+    r2_region: str = "auto"
+    default_country: Literal["EC"] = "EC"
+    app_timezone: Literal["America/Guayaquil"] = "America/Guayaquil"
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.1-flash-lite"

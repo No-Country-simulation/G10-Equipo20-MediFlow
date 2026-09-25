@@ -1,0 +1,120 @@
+<section class="panel review-panel">
+  <div class="panel-heading">
+    <div>
+      <span class="section-number">INTERVENCIÓN HUMANA</span>
+      <h2>Revisar y resolver</h2>
+    </div>
+  </div>
+  <p class="muted">
+    Contrasta los datos con el original. Al resolver se comprobarán las evidencias y se registrará
+    el destino.
+  </p>
+  <form (ngSubmit)="submit()">
+    <fieldset [disabled]="busy()">
+      <label
+        >Acción<select name="action" [(ngModel)]="action">
+          <option value="APPROVE">Aprobar la lectura y los datos actuales</option>
+          <option value="CORRECT">Corregir contenido o campos</option>
+        </select></label
+      >
+      @if (action === "CORRECT") {
+        <div class="correction">
+          <h3>Clasificación</h3>
+          <label
+            >Tipo<select name="type" [(ngModel)]="classification.document_type">
+              @for (type of types; track type) {
+                <option [value]="type">{{ label(type) }}</option>
+              }
+            </select></label
+          ><label
+            >Especialidad<select name="specialty" [(ngModel)]="classification.specialty">
+              @for (s of specialties; track s) {
+                <option [value]="s">{{ label(s) }}</option>
+              }
+            </select></label
+          ><label>Motivo<input name="reason" [(ngModel)]="classification.reason" required /></label>
+          @if (classification.evidence; as evidence) {
+            <label
+              >Página de la evidencia<input
+                type="number"
+                min="1"
+                name="classPage"
+                [(ngModel)]="evidence.page"
+                required /></label
+            ><label
+              >Cita que respalda el tipo<textarea
+                name="classQuote"
+                [(ngModel)]="evidence.quote"
+                required
+              ></textarea>
+            </label>
+          }
+          <h3>Transcripción</h3>
+          @for (page of pages; track $index) {
+            <label
+              >Texto de la página {{ page.page
+              }}<textarea
+                class="page-text"
+                [name]="'page' + $index"
+                [(ngModel)]="page.text"
+                required
+              ></textarea>
+            </label>
+          }
+          <h3>Campos y evidencias</h3>
+          @for (field of fields; track $index; let i = $index) {
+            <div class="field-editor">
+              <div class="field-row">
+                <label>Nombre<input [name]="'name' + i" [(ngModel)]="field.name" required /></label
+                ><label
+                  >Valor<input [name]="'value' + i" [(ngModel)]="field.value" required
+                /></label>
+              </div>
+              <div class="field-row">
+                <label>Unidad<input [name]="'unit' + i" [(ngModel)]="field.unit" /></label
+                ><label
+                  >Página<input
+                    type="number"
+                    min="1"
+                    [name]="'fieldPage' + i"
+                    [(ngModel)]="field.evidence.page"
+                    required
+                /></label>
+              </div>
+              <label
+                >Cita literal<textarea
+                  [name]="'quote' + i"
+                  [(ngModel)]="field.evidence.quote"
+                  required
+                ></textarea></label
+              ><button class="text-button" type="button" (click)="fields.splice(i, 1)">
+                Quitar campo
+              </button>
+            </div>
+          }
+          <button type="button" class="secondary" (click)="addField()">+ Añadir campo</button>
+        </div>
+      }
+      <label
+        >Notas de revisión<textarea
+          name="notes"
+          [(ngModel)]="notes"
+          required
+          maxlength="2000"
+          placeholder="Describe lo que verificaste o corregiste"
+        ></textarea></label
+      ><label class="checkbox"
+        ><input type="checkbox" name="confirmed" [(ngModel)]="confirmed" required /><span
+          >Confirmo que revisé el documento original.</span
+        ></label
+      >
+      <p class="muted">Se registrará como superadmin-local, sin identidad autenticada.</p>
+      @if (error()) {
+        <p class="error" role="alert">{{ error() }}</p>
+      }
+      <button class="primary" type="submit" [disabled]="!confirmed || !notes.trim() || busy()">
+        {{ busy() ? "Guardando revisión…" : "Resolver y registrar destino" }}
+      </button>
+    </fieldset>
+  </form>
+</section>

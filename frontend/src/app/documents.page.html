@@ -1,0 +1,144 @@
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">CENTRO DE DOCUMENTOS</p>
+    <h1>Un lugar para cada documento.</h1>
+    <p class="subtitle">Carga, consulta y revisa tus informes cardiopulmonares.</p>
+  </div>
+  <span class="environment"><span class="pulse"></span> Espacio local</span>
+</div>
+<section class="upload-card" aria-labelledby="upload-title">
+  <div class="upload-copy">
+    <span class="section-number">01 / INGESTA</span>
+    <h2 id="upload-title">Comienza con un documento</h2>
+    <p>
+      Conservamos el original y validamos su formato.<br />Después podrás iniciar el procesamiento.
+    </p>
+    <span class="formats"
+      >PDF <i>·</i> JPG <i>·</i> PNG <i>·</i> Hasta
+      {{ api.config().max_upload_bytes / 1048576 }} MiB</span
+    >
+  </div>
+  <div class="upload-actions">
+    <label class="dropzone" (dragover)="$event.preventDefault()" (drop)="drop($event)"
+      ><span class="upload-symbol">↑</span
+      ><strong>{{ file()?.name || "Arrastra tu archivo aquí" }}</strong
+      ><span>{{ file() ? size(file()!.size) : "o haz clic para seleccionarlo" }}</span
+      ><input
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png"
+        (change)="choose($event)"
+        [disabled]="uploading()"
+        aria-label="Seleccionar documento" /></label
+    ><button class="primary" [disabled]="!file() || uploading()" (click)="upload()">
+      {{ uploading() ? "Guardando documento…" : "Cargar documento" }}
+      <span>↗</span>
+    </button>
+    @if (uploadError()) {
+      <p class="error" role="alert">{{ uploadError() }}</p>
+    }
+  </div>
+</section>
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>
+        Documentos <span class="count">{{ total() }}</span>
+      </h2>
+      <p class="muted">Historial de cargas y estado del procesamiento</p>
+    </div>
+    <button class="secondary" (click)="load()" [disabled]="loading()">↻ Actualizar</button>
+  </div>
+  <form class="filters" (ngSubmit)="load(true)">
+    <label class="search"
+      ><span>⌕</span
+      ><input
+        name="search"
+        [(ngModel)]="search"
+        placeholder="Buscar por nombre de archivo"
+        aria-label="Buscar por nombre" /></label
+    ><select
+      name="status"
+      [(ngModel)]="status"
+      (ngModelChange)="load(true)"
+      aria-label="Filtrar por estado"
+    >
+      <option value="">Todos los estados</option>
+      @for (state of statuses; track state) {
+        <option [value]="state">{{ label(state) }}</option>
+      }</select
+    ><button class="secondary" type="submit">Buscar</button>
+  </form>
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  } @else if (loading()) {
+    <div class="empty" role="status">Cargando documentos…</div>
+  } @else if (!items().length) {
+    <div class="empty">
+      <span class="empty-icon">▤</span>
+      <h3>
+        {{ search || status ? "No hay coincidencias" : "Tu bandeja está lista" }}
+      </h3>
+      <p>
+        {{
+          search || status
+            ? "Prueba otro nombre o estado."
+            : "Carga tu primer
+      documento para comenzar."
+        }}
+      </p>
+    </div>
+  } @else {
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Documento</th>
+            <th>Recibido · Ecuador</th>
+            <th>Estado</th>
+            <th>Tamaño</th>
+            <th><span class="sr-only">Acción</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (doc of items(); track doc.document_id) {
+            <tr>
+              <td>
+                <a class="file-name" [routerLink]="['/documents', doc.document_id]"
+                  ><span class="file-icon">{{ doc.format?.toUpperCase() || "—" }}</span
+                  ><span
+                    >{{ doc.original_filename
+                    }}<small>{{ doc.document_id.slice(0, 8) }} · {{ doc.country }}</small></span
+                  ></a
+                >
+              </td>
+              <td>
+                {{ doc.received_at | date: "dd MMM yyyy, HH:mm" : "-0500" : "es-EC" }}
+              </td>
+              <td>
+                <span class="badge" [attr.data-state]="doc.status">{{ label(doc.status) }}</span>
+              </td>
+              <td>{{ size(doc.size_bytes) }}</td>
+              <td>
+                <a class="text-link" [routerLink]="['/documents', doc.document_id]">Abrir ↗</a>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+  <div class="pagination">
+    <span>{{ total() ? offset() + 1 : 0 }}–{{ offset() + items().length }} de {{ total() }}</span>
+    <div>
+      <button class="secondary" [disabled]="offset() === 0 || loading()" (click)="page(-1)">
+        ← Anterior</button
+      ><button
+        class="secondary"
+        [disabled]="offset() + 20 >= total() || loading()"
+        (click)="page(1)"
+      >
+        Siguiente →
+      </button>
+    </div>
+  </div>
+</section>

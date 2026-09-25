@@ -12,7 +12,8 @@ from app.schemas.processing import ProcessingResult
 from app.services.errors import DocumentError
 from app.services.lifecycle import transition
 from app.services.routing import route_classification
-from app.services.storage import LocalDocumentStorage
+from app.services.storage import get_storage
+from contextlib import ExitStack
 
 
 def locked_document(document_id: UUID, session: Session) -> Document:
@@ -54,8 +55,9 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
         transition(document, resume, 'RETRY_REQUESTED')
     document.processing_attempts += 1
     failure = None
+    resources = ExitStack()
     try:
-        state['path'] = LocalDocumentStorage(settings.documents_dir).local_path(document.storage_key)
+        state['path'] = resources.enter_context(get_storage(settings, document.storage_backend, document.storage_bucket).materialize(document.storage_key, settings.max_upload_bytes))
         for update in build_processing_graph(provider, settings).stream(state, stream_mode='updates'):
             for values in update.values():
                 if not values:
@@ -67,11 +69,15 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
                         transition(document, status, f'{key.upper()}_COMPLETED')
         if state['validation'].requires_human_review:
             transition(document, S.EN_REVISION_HUMANA, 'DOCUMENTARY_VALIDATION_ISSUES')
-    except (ProviderError, DocumentError) as exc:
+    except (ProviderError, DocumentError, OSError) as exc:
+        if isinstance(exc, OSError):
+            exc = DocumentError(503, "DOCUMENT_STORAGE_UNAVAILABLE")
         failure = exc
         transition(document, S.FALLO_TECNICO, exc.code if isinstance(exc, ProviderError) else exc.detail)
         if document.processing_attempts >= settings.max_processing_attempts:
             transition(document, S.EN_REVISION_HUMANA, 'RETRIES_EXHAUSTED')
+    finally:
+        resources.close()
     result = ProcessingResult(
         document_id=document_id, status=document.status, processed_at=datetime.now(UTC), model=settings.gemini_model,
         **{key: state.get(key) for key in ('content', 'classification', 'extraction', 'validation', 'routing')},
