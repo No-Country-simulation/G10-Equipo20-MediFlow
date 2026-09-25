@@ -1,4 +1,6 @@
 import logging
+import re
+import unicodedata
 from datetime import UTC, datetime
 from typing import BinaryIO
 from pathlib import Path
@@ -44,7 +46,9 @@ class DocumentService:
                 document.size_bytes = size
                 detected = validate_content(path, expected_format, size)
                 if self.storage.backend == "r2":
-                    key = f"{self.country}/originals/{key}"
+                    stem = unicodedata.normalize("NFKD", Path(name).stem).encode("ascii", "ignore").decode()
+                    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", stem).strip("-_")[:100] or "documento"
+                    key = f"{self.country}/originals/{document_id}_{slug}.{extension}"
                 self.storage.put_file(key, path, self.max_bytes)
                 saved = True
             document.original_filename = name

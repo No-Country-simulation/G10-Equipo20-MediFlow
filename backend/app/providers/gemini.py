@@ -86,7 +86,8 @@ class GeminiProvider:
     def classify(self, content: ContentResult) -> ClassificationResult:
         return self._generate(
             "Clasifica este informe escrito. Categorias admitidas: informe de ecocardiograma, "
-            "espirometria, imagen de torax o informe escrito de ECG. OTHER para documentos "
+            "espirometria, imagen de torax, informe escrito de ECG o epicrisis/resumen de egreso/alta "
+            "(DISCHARGE_SUMMARY). Una epicrisis sigue siendo epicrisis aunque cite ECG u otros estudios. OTHER para documentos "
             "fuera de esas categorias; UNKNOWN si no se puede determinar. Evidencia: cita "
             "literal y numero de pagina que justifican el tipo, o null si no existe. "
             "La marca de documento sintetico no cambia su tipo. Datos del documento:\n"
@@ -101,6 +102,12 @@ class GeminiProvider:
             "etiqueta descriptiva; value y unit deben ser fragmentos literales de la cita "
             "evidence.quote de la pagina evidence.page. No normalices numeros ni inventes "
             "valores, unidades, CIE-10, prioridades o diagnosticos. Omite datos ausentes. "
+            "Para DISCHARGE_SUMMARY usa exactamente estos nombres para los datos presentes: "
+            "patient_name (nombre), patient_age (edad), professional_name (medico firmante), "
+            "document_date (fecha de emision), discharge_diagnosis (diagnostico de egreso), "
+            "discharge_treatment (tratamiento al alta), follow_up (control programado). "
+            "Puedes repetir un nombre si hay varios tratamientos o diagnosticos; cada entrada "
+            "debe tener su cita literal. Omite lo ausente, nunca escribas desconocido como valor. "
             "Devuelve fields vacio si no hay informacion extraible. Clasificacion:\n"
             + classification.model_dump_json() + "\nDocumento:\n" + content.model_dump_json(),
             ExtractionResult,

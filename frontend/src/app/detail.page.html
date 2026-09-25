@@ -41,7 +41,14 @@
     </p>
   }
   @if (d.rejection_reason) {
-    <p class="error">{{ d.rejection_reason }}. El archivo rechazado no se conserva.</p>
+    <p class="error">
+      {{ d.rejection_reason }}.
+      {{
+        result()
+          ? "El original y el historial se conservan."
+          : "El archivo inválido no se conserva."
+      }}
+    </p>
   }
   <div class="detail-grid">
     <section class="panel original-panel">
@@ -214,7 +221,15 @@
                 }}
               </summary>
               <p>{{ review.notes }}</p>
-              <p>{{ review.action === "APPROVE" ? "Aprobación" : "Corrección" }}</p>
+              <p>
+                {{
+                  review.action === "APPROVE"
+                    ? "Aprobación"
+                    : review.action === "REJECT"
+                      ? "Rechazo"
+                      : "Corrección"
+                }}
+              </p>
               <pre>{{ review.previous_result | json }}</pre>
             </details>
           }

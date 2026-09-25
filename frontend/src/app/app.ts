@@ -11,10 +11,6 @@ import { RouterLink, RouterOutlet } from "@angular/router";
       >
       <div class="workspace-label">ESPACIO DE TRABAJO</div>
       <a routerLink="/" class="nav-item">▤ <span>Documentos</span></a>
-      <div class="sidebar-note">
-        <span class="pulse"></span> Centro cardiopulmonar
-        <p>Triaje documental</p>
-      </div>
       <div class="account">
         <span class="avatar">SA</span>
         <div>Superadministrador<small>Acceso local · sin sesión</small></div>

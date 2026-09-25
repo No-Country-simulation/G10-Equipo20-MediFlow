@@ -31,7 +31,8 @@ export class DetailPage implements OnInit, OnDestroy {
   private destroyed = false;
   async ngOnInit() {
     await this.load();
-    if (this.doc() && this.doc()!.status !== "RECHAZADO") await this.loadOriginal();
+    if (this.doc() && (this.doc()!.status !== "RECHAZADO" || !!this.result()))
+      await this.loadOriginal();
   }
   async load() {
     this.loading.set(true);

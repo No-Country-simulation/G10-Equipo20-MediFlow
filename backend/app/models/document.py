@@ -24,7 +24,7 @@ class Document(Base):
     size_bytes: Mapped[int | None]
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20))
-    storage_key: Mapped[str | None] = mapped_column(String(80), unique=True)
+    storage_key: Mapped[str | None] = mapped_column(String(255), unique=True)
     processing_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     processing_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     rejection_reason: Mapped[str | None] = mapped_column(String(255))
