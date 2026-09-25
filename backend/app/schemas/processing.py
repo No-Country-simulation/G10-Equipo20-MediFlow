@@ -40,7 +40,7 @@ class Evidence(StructuredModel):
 class ClassificationResult(StructuredModel):
     document_type: Literal[
         "ECHOCARDIOGRAM_REPORT", "SPIROMETRY_REPORT", "CHEST_IMAGING_REPORT",
-        "ECG_REPORT", "OTHER", "UNKNOWN",
+        "ECG_REPORT", "DISCHARGE_SUMMARY", "OTHER", "UNKNOWN",
     ]
     specialty: Literal["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "OTHER", "UNKNOWN"]
     evidence: Evidence | None
@@ -62,10 +62,11 @@ class ValidationResult(StructuredModel):
     valid: bool
     requires_human_review: bool
     issues: list[str]
+    rule_version: str = "documentary-v1"
 
 
 class RoutingResult(StructuredModel):
-    destination: Literal["CARDIOLOGIA", "NEUMOLOGIA", "CARDIOPULMONAR"]
+    destination: Literal["CARDIOLOGIA", "NEUMOLOGIA", "CARDIOPULMONAR", "HISTORIA_CLINICA"]
     routed_at: datetime
     rule_version: str = "cardiopulmonary-v1"
     delivery_status: Literal["PENDING_INTEGRATION"] = "PENDING_INTEGRATION"
@@ -75,7 +76,7 @@ class ProcessingResult(StructuredModel):
     document_id: UUID
     status: DocumentStatus
     processed_at: datetime
-    pipeline_version: str = "cardiopulmonary-v2"
+    pipeline_version: str = "cardiopulmonary-v3"
     provider: str = "gemini"
     model: str
     content: ContentResult | None = None
@@ -87,7 +88,7 @@ class ProcessingResult(StructuredModel):
 
 
 class ReviewRequest(StructuredModel):
-    action: Literal["APPROVE", "CORRECT"]
+    action: Literal["APPROVE", "CORRECT", "REJECT"]
     reviewer: str = Field(min_length=1, max_length=100)
     notes: str = Field(min_length=1, max_length=2000)
     confirmed_source_review: Literal[True]
@@ -97,7 +98,7 @@ class ReviewRequest(StructuredModel):
 
 
 class ReviewAudit(StructuredModel):
-    action: Literal["APPROVE", "CORRECT"]
+    action: Literal["APPROVE", "CORRECT", "REJECT"]
     reviewer: str
     notes: str
     reviewed_at: datetime

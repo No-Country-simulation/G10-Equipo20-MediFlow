@@ -5,6 +5,8 @@ from app.services.errors import DocumentError
 
 
 def route_classification(classification: ClassificationResult) -> RoutingResult:
+    if classification.document_type == "DISCHARGE_SUMMARY" and classification.specialty not in ("OTHER", "UNKNOWN"):
+        return RoutingResult(destination="HISTORIA_CLINICA", routed_at=datetime.now(UTC), rule_version="discharge-v1")
     destinations = {
         "ECHOCARDIOGRAM_REPORT": "CARDIOLOGIA", "ECG_REPORT": "CARDIOLOGIA",
         "SPIROMETRY_REPORT": "NEUMOLOGIA", "CHEST_IMAGING_REPORT": "NEUMOLOGIA",

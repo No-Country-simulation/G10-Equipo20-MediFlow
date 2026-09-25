@@ -15,8 +15,15 @@
         >Acción<select name="action" [(ngModel)]="action">
           <option value="APPROVE">Aprobar la lectura y los datos actuales</option>
           <option value="CORRECT">Corregir contenido o campos</option>
+          <option value="REJECT">Rechazar con motivo</option>
         </select></label
       >
+      @if (action === "REJECT") {
+        <p role="note">
+          El rechazo es definitivo. Escribe el motivo en las notas. El original y el historial se
+          conservan.
+        </p>
+      }
       @if (action === "CORRECT") {
         <div class="correction">
           <h3>Clasificación</h3>
@@ -62,6 +69,13 @@
             </label>
           }
           <h3>Campos y evidencias</h3>
+          @if (classification.document_type === "DISCHARGE_SUMMARY") {
+            <p class="muted">
+              Campos obligatorios de la epicrisis: patient_name, patient_age, professional_name,
+              document_date, discharge_diagnosis, discharge_treatment y follow_up. Conserva estos
+              nombres al corregir. El valor y la cita deben aparecer en el original.
+            </p>
+          }
           @for (field of fields; track $index; let i = $index) {
             <div class="field-editor">
               <div class="field-row">
@@ -113,7 +127,13 @@
         <p class="error" role="alert">{{ error() }}</p>
       }
       <button class="primary" type="submit" [disabled]="!confirmed || !notes.trim() || busy()">
-        {{ busy() ? "Guardando revisión…" : "Resolver y registrar destino" }}
+        {{
+          busy()
+            ? "Guardando revisión…"
+            : action === "REJECT"
+              ? "Rechazar documento"
+              : "Resolver y registrar destino"
+        }}
       </button>
     </fieldset>
   </form>

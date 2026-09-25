@@ -3,6 +3,12 @@ import re
 from app.schemas.processing import ClassificationResult, ContentResult, ExtractionResult, ValidationResult
 
 
+DISCHARGE_REQUIRED_FIELDS = (
+    "patient_name", "patient_age", "professional_name", "document_date",
+    "discharge_diagnosis", "discharge_treatment", "follow_up",
+)
+
+
 def normalized(text: str) -> str:
     return " ".join(text.casefold().split())
 
@@ -50,4 +56,9 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
                 issues.append(f"FIELD_{index}_VALUE_NOT_SUPPORTED")
             if field.unit and not literal_present(field.unit, field.evidence.quote):
                 issues.append(f"FIELD_{index}_UNIT_NOT_SUPPORTED")
-    return ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues)
+    if classification and classification.document_type == "DISCHARGE_SUMMARY":
+        present = {field.name for field in extraction.fields} if extraction else set()
+        for name in DISCHARGE_REQUIRED_FIELDS:
+            if name not in present:
+                issues.append("MISSING_REQUIRED_FIELD:" + name)
+    return ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues, rule_version="documentary-v2")

@@ -17,6 +17,20 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     corrections = {key: getattr(request, key) for key in ('content', 'classification', 'extraction') if getattr(request, key) is not None}
     if (request.action == 'APPROVE' and corrections) or (request.action == 'CORRECT' and not corrections):
         raise DocumentError(422, 'INVALID_REVIEW_ACTION')
+    if not request.notes.strip() or not request.reviewer.strip():
+        raise DocumentError(422, 'REVIEW_REASON_REQUIRED')
+    if request.action == 'REJECT':
+        if corrections:
+            raise DocumentError(422, 'INVALID_REVIEW_ACTION')
+        transition(document, S.RECHAZADO, 'HUMAN_REVIEW_REJECT')
+        result.status, result.routing, result.processed_at = S.RECHAZADO, None, datetime.now(UTC)
+        document.rejection_reason = request.notes.strip()[:255]
+        document.processing_result = result.model_dump(mode='json')
+        audit = ReviewAudit(action=request.action, reviewer=request.reviewer, notes=request.notes,
+                            reviewed_at=result.processed_at, previous_result=previous)
+        document.review_history = [*(document.review_history or []), audit.model_dump(mode='json')]
+        session.commit()
+        return result
     for key, value in corrections.items():
         setattr(result, key, value.model_copy(deep=True))
     if result.content is None or result.classification is None or result.extraction is None:

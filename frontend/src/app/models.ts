@@ -79,14 +79,27 @@ export const TYPES = [
   "SPIROMETRY_REPORT",
   "CHEST_IMAGING_REPORT",
   "ECG_REPORT",
+  "DISCHARGE_SUMMARY",
   "OTHER",
   "UNKNOWN",
 ];
 export const SPECIALTIES = ["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "OTHER", "UNKNOWN"];
 export function label(value: string): string {
+  if (value.startsWith("MISSING_REQUIRED_FIELD:"))
+    return "Falta campo obligatorio: " + label(value.split(":")[1]);
   return (
     (
       {
+        DISCHARGE_SUMMARY: "Epicrisis / informe de alta",
+        HISTORIA_CLINICA: "Historia clínica (destino registrado)",
+        HUMAN_REVIEW_REJECT: "Rechazado por revisión humana",
+        patient_name: "Nombre del paciente",
+        patient_age: "Edad del paciente",
+        professional_name: "Profesional firmante",
+        document_date: "Fecha del documento",
+        discharge_diagnosis: "Diagnóstico de egreso",
+        discharge_treatment: "Tratamiento al alta",
+        follow_up: "Control programado",
         OCR_UNCERTAIN: "Lectura incierta: contrasta el texto con el original",
         EMPTY_OR_UNREADABLE_PAGE: "Página vacía o ilegible",
         CLASSIFICATION_UNCERTAIN: "No se pudo determinar el tipo",
