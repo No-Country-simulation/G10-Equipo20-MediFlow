@@ -1,0 +1,193 @@
+# Pack Colombia (CO). Sección 4 del documento de reglas de negocio, versión 8.
+# Este archivo parametriza el núcleo: no agrega lógica, llena los valores que el
+# núcleo pide al pack. Cada dato lleva su estado: verificado, verificado_en_parte
+# o por_confirmar. Solo lo verificado activa decisiones automáticas (RN-E11).
+
+pais: CO
+nombre: Colombia
+version_pack: "8"
+
+formato:                                  # RN-CO10, RN-CO11
+  separador_decimal: ","
+  separador_miles: "."
+  formato_fecha: dd/mm/aaaa
+
+identidad_paciente:                       # RN-CO1, RN-CO2, RN-CO3
+  digito_verificador_personas: false      # el estado máximo es valido_formato
+  tolerancia_edad_anios: 1
+  tipos:
+    CC: {nombre: Cédula de ciudadanía, patron: "^\\d{6,10}$", estado: verificado_en_parte, nacional: true}
+    TI: {nombre: Tarjeta de identidad, patron: "^\\d{10,11}$", estado: verificado_en_parte, nacional: true}
+    RC: {nombre: Registro civil de nacimiento, patron: "^(\\d{10}|[A-Za-z0-9]{6,15})$", estado: verificado_en_parte, nacional: true}
+    CE: {nombre: Cédula de extranjería, patron: "^\\d{3,12}$", estado: por_confirmar}
+    PA: {nombre: Pasaporte, patron: "^[A-Za-z0-9]{1,16}$", estado: verificado_en_parte}
+    PT: {nombre: Permiso por protección temporal, patron: "^\\d{3,15}$", estado: por_confirmar}
+    CN: {nombre: Certificado de nacido vivo, patron: "^[A-Za-z0-9-]{1,20}$", estado: por_confirmar}
+    CD: {nombre: Carné diplomático, patron: null, estado: por_confirmar}
+    SC: {nombre: Salvoconducto, patron: null, estado: por_confirmar}
+    DE: {nombre: Documento extranjero, patron: null, estado: por_confirmar}
+    MS: {nombre: Menor sin identificación, patron: null, estado: verificado, no_identificado: true}
+    AS: {nombre: Adulto sin identificación, patron: null, estado: verificado, no_identificado: true}
+  rangos_edad:                            # solo para nacionales
+    RC: {edad_min: 0, edad_max: 6}
+    TI: {edad_min: 7, edad_max: 17}
+    CC: {edad_min: 18, edad_max: null}
+
+identidad_profesional:                    # RN-CO5
+  registro: ReTHUS
+  ambito: nacional
+  exige_jurisdiccion: false
+  verificacion_en_linea:
+    disponible: true
+    automatica: false                     # queda para después del hackathon (RN-A7)
+    url: https://web.sispro.gov.co/THS/Cliente/ConsultasPublicas/ConsultaPublicaDeTHxIdentificacion.aspx
+
+terminologia:                             # RN-CO6, RN-CO7
+  diagnosticos: dual                      # CIE-10 y CIE-11 durante la transición
+  fecha_cierre_transicion: null           # por_confirmar
+  procedimientos: CUPS
+  procedimientos_estado: verificado_en_parte
+  medicamentos: DCI
+  codigo_medicamento: CUM
+
+# RN-D1: hallazgos críticos por concepto, mapeados a las dos terminologías.
+# Los códigos CIE-11 vienen de un índice público de CIE-11 MMS; falta confirmarlos en icd.who.int/ct.
+hallazgos_criticos:
+  - concepto: TEP_AGUDO
+    cie10: [I26.0, I26.9]
+    cie11: [BB00.0]
+    sinonimos: [tromboembolismo pulmonar, tromboembolia pulmonar, embolia pulmonar, tep masivo, tep agudo, trombo en arteria pulmonar]
+    estado: verificado_en_parte
+  - concepto: IAM_STEMI
+    cie10: [I21.0, I21.1, I21.2, I21.3]
+    cie11: [BA41.0, BA41.Z]
+    sinonimos: [infarto agudo de miocardio con elevación del st, iamcest, stemi, infarto con supradesnivel del st, infarto con elevación del segmento st]
+    estado: verificado_en_parte
+  - concepto: DISECCION_AORTICA
+    cie10: [I71.0]
+    cie11: [BD50.0, BD50.1, BD50.2]
+    sinonimos: [disección aórtica, disección de aorta, aneurisma disecante de aorta]
+    estado: verificado_en_parte
+  - concepto: NEUMOTORAX_TENSION
+    cie10: [J93.0, J93.1, J93.8, J93.9]
+    cie11: [CB21]
+    sinonimos: [neumotórax a tensión, neumotórax hipertensivo]
+    requiere_signos_tension: true
+    estado: verificado_en_parte
+  - concepto: TAPONAMIENTO_CARDIACO
+    cie10: [I31.4, I31.9]
+    cie11: [BB23]
+    sinonimos: [taponamiento cardíaco, taponamiento cardiaco, taponamiento pericárdico]
+    estado: verificado_en_parte
+  - concepto: INSUF_RESPIRATORIA_AGUDA
+    cie10: [J96.0]
+    cie11: [CB41.0]
+    sinonimos: [insuficiencia respiratoria aguda, falla respiratoria aguda, fallo respiratorio agudo]
+    estado: verificado_en_parte
+  - concepto: ARRITMIA_MALIGNA
+    cie10: [I47.2, I49.0, I44.2]
+    cie11: [BC71.0, BC71.1, BC63.2]
+    sinonimos: [taquicardia ventricular, fibrilación ventricular, bloqueo av completo, bloqueo auriculoventricular completo, bloqueo auriculoventricular de tercer grado]
+    estado: verificado_en_parte
+  - concepto: EDEMA_AGUDO_PULMON
+    cie10: [I50.1, J81]
+    cie11: [CB01]
+    sinonimos: [edema agudo de pulmón, edema agudo de pulmon, edema pulmonar agudo]
+    estado: verificado_en_parte
+
+# RN-E6 (lista ISMP, por DCI) y RN-CO9 (control especial, Resolución 1478 de 2006).
+# Ambas listas son solo ampliables (RN-L3): se puede agregar, nunca quitar los de base.
+medicamentos:
+  alto_riesgo:
+    # anticoagulantes
+    - warfarina
+    - heparina
+    - enoxaparina
+    - dalteparina
+    - fondaparinux
+    - apixaban
+    - rivaroxaban
+    - dabigatran
+    - edoxaban
+    # antiarrítmicos IV
+    - amiodarona
+    - lidocaina
+    - procainamida
+    # inotrópicos y vasopresores
+    - dopamina
+    - dobutamina
+    - noradrenalina
+    - norepinefrina
+    - adrenalina
+    - epinefrina
+    - vasopresina
+    - milrinona
+    - levosimendan
+    - digoxina
+    # trombolíticos
+    - alteplasa
+    - tenecteplasa
+    - estreptoquinasa
+    # opioides IV
+    - morfina
+    - fentanilo
+    - hidromorfona
+    - remifentanilo
+    # otros ISMP de uso cardiorrespiratorio
+    - insulina
+    - cloruro de potasio
+  control_especial:
+    - morfina
+    - hidromorfona
+    - fentanilo
+    - metadona
+    - oxicodona
+    - meperidina
+    - midazolam
+    - fenobarbital
+    - ketamina
+    - metilfenidato
+  control_especial_estado: verificado_en_parte
+
+coberturas:                               # RN-CO12
+  contributivo:       {modelo: asegurador, entidad: EPS, estado: verificado}
+  subsidiado:         {modelo: asegurador, entidad: EPS, estado: verificado}
+  plan_voluntario:    {modelo: asegurador, entidad: plan voluntario, estado: verificado_en_parte}
+  especial_excepcion: {modelo: regimen_propio, entidad: régimen especial, estado: por_confirmar}
+  soat:               {modelo: aseguradora_soat, entidad: aseguradora SOAT, estado: por_confirmar}
+  arl:                {modelo: arl, entidad: ARL, estado: por_confirmar}
+  no_afiliado:        {modelo: entidad_territorial, entidad: entidad territorial, estado: por_confirmar}
+
+programas_cobertura:                      # RN-CO14, RN-CO15, RN-E7
+  mipres:     {motivo: requiere_mipres, estado: por_confirmar, lista: []}
+  alto_costo: {motivo: alto_costo, estado: por_confirmar, lista: []}
+
+urgencias:                                # RN-CO13
+  autorizacion_previa: false
+  canales_sin_autorizacion: [Guardia_Emergencias, Hospitalizado]
+  motivo_aviso_auditoria: informe_atencion_inicial_urgencias
+
+vocabulario:                              # RN-C6, sección 4.4
+  Receta Médica: [fórmula médica, formula medica, orden de medicamentos, receta]
+  Epicrisis o Alta: [epicrisis, resumen de egreso, nota de egreso]
+  Orden de Procedimiento: [orden de servicios, solicitud de autorización, orden médica]
+  Certificado Médico: [certificado médico, certificado de incapacidad, constancia de atención]
+  Historia clínica: [historia clínica, hc]
+  Registro del profesional: [registro médico, tarjeta profesional, rm, tp]
+  Guardia_Emergencias: [urgencias, servicio de urgencias]
+  Derivación: [remisión, referencia, contrarreferencia]
+  Asegurador: [eps]
+  Prestador: [ips]
+
+retencion:                                # RN-CO18
+  anios: 15
+  archivo_gestion_anios: 5
+  archivo_central_anios: 10
+  norma: Resolución 839 de 2017
+  purga_automatica: false
+
+datos_personales:                         # RN-CO19
+  norma: Ley 1581 de 2012
+  datos_salud_sensibles: true
+  llm_es_transmision_internacional: true
+  solo_documentos_sinteticos_en_mvp: true
