@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     oci_namespace: str = ""
     oci_bucket: str = ""
     oci_region: str = ""
+    # LLM externo (RN-M10). La clave nunca se versiona.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+    openai_timeout_s: float = 60.0
+    llm_max_intentos: int = 3  # RN-P2
+    prompt_version: str = "triaje_v1"  # RN-R5
 
 
 @lru_cache
