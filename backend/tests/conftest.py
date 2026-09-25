@@ -8,9 +8,10 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app.api.deps import get_session, get_storage
+from app.api.deps import get_llm, get_session, get_storage
 from app.core.database import Base, crear_engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.llm import ClienteFalso  # noqa: E402
 from app.services.storage import StorageLocal  # noqa: E402
 
 
@@ -34,9 +35,16 @@ def storage(tmp_path):
 
 
 @pytest.fixture
-def client(session, storage):
+def llm_falso():
+    """RN-U4: la API se prueba sin OpenAI. Cada test agrega las respuestas que espera."""
+    return ClienteFalso(respuestas=[], tokens=(100, 50), modelo="falso")
+
+
+@pytest.fixture
+def client(session, storage, llm_falso):
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_llm] = lambda: llm_falso
     with TestClient(app) as cliente:
         yield cliente
     app.dependency_overrides.clear()

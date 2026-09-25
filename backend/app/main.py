@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import documentos, healthcheck
+from app.api import alertas, documentos, healthcheck, revision
 from app.core.config import get_settings
 from app.core.database import crear_tablas
 
@@ -18,6 +18,8 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version=settings.version_reglas, lifespan=ciclo_de_vida)
     app.include_router(healthcheck.router)
     app.include_router(documentos.router)
+    app.include_router(revision.router)
+    app.include_router(alertas.router)
     return app
 
 
