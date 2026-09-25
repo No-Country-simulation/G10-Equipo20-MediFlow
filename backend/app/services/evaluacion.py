@@ -89,6 +89,8 @@ class ContextoEvaluacion:
     pais: str
     cobertura_request: str | None
     texto: str  # texto seudonimizado del documento; vacío en la ruta de imagen
+    prioridad_humana: N | None = None  # RN-J5: nivel fijado por una persona en revisión
+    usuario_humano: str | None = None
 
 
 @dataclass
@@ -344,6 +346,10 @@ class _Evaluador:
                 self._registrar("RN-CO16", f"triage {triage}", N.URGENTE.value, propuesta.value)
             else:
                 self._registrar("RN-CO16", f"triage {triage} declarado; regla por confirmar", "sin cambio")
+        if self.ctx.prioridad_humana is not None and self.ctx.prioridad_humana is not final:
+            # RN-J5: una persona puede subir libremente; bajar un Crítico ya exigió rol clínico y justificación.
+            self._registrar("RN-J5", f"prioridad fijada por {self.ctx.usuario_humano}", self.ctx.prioridad_humana.value, final.value)
+            final = self.ctx.prioridad_humana
         return final
 
     # --- orquestación ---------------------------------------------------------------

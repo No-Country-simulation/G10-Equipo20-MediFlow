@@ -118,6 +118,20 @@ def reidentificar(texto: str, mapa: dict[str, str]) -> str:
     return texto
 
 
+_TOKEN = re.compile(r"^\[[A-Z]+_\d+\]$")
+
+
+def limpiar_tokens_no_resueltos(valor: Any) -> Any:
+    """Un token que no existe en el mapa es un dato inventado por el LLM: se descarta (RN-P3)."""
+    if isinstance(valor, str):
+        return None if _TOKEN.match(valor.strip()) else valor
+    if isinstance(valor, dict):
+        return {clave: limpiar_tokens_no_resueltos(v) for clave, v in valor.items()}
+    if isinstance(valor, list):
+        return [limpiar_tokens_no_resueltos(v) for v in valor]
+    return valor
+
+
 def reidentificar_estructura(valor: Any, mapa: dict[str, str]) -> Any:
     """Aplica `reidentificar` a toda cadena dentro de un dict o lista (la salida del LLM). No muta la entrada."""
     if isinstance(valor, str):

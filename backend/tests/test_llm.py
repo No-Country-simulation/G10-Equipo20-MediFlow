@@ -46,7 +46,7 @@ def propuesta_caso_1() -> dict:
                 "sexo": None,
                 "documento": {"tipo": "CC", "valor": "[ID_1]"},
             },
-            "profesional": {"nombre": None, "registro_profesional": None, "tipo_documento": None, "numero_documento": None},
+            "profesional": {"nombre": "[PROFESIONAL_1]", "registro_profesional": "RM 45678", "tipo_documento": None, "numero_documento": None},
             "fecha_documento": "[FECHA_1]",
             "signos_vitales": {"FR": 28, "SpO2": 88, "FC": 118, "PAS": 92, "Temp": None, "nivel_conciencia": "alerta"},
             "diagnosticos": [{"texto": "Tromboembolismo pulmonar agudo", "cie10_sugerido": "I26.9", "cie11_sugerido": "BB00.0"}],
@@ -68,9 +68,9 @@ def propuesta_caso_1() -> dict:
             "identidad_paciente": 0.96,
             "medicamento_dosis": None,
             "diagnostico_codigo": 0.95,
-            "profesional": 0.4,
+            "profesional": 0.9,
         },
-        "campos_dudosos": ["profesional"],
+        "campos_dudosos": [],
     }
 
 

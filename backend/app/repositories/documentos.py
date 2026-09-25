@@ -1,7 +1,10 @@
 """Capa de persistencia de documentos. No contiene reglas clínicas."""
-from sqlalchemy import func, select
+from datetime import datetime, timezone
+
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.models.alerta import Alerta, Correccion
 from app.models.documento import Documento, TransicionEstado
 from app.schemas.resultado import EstadoDocumento
 from app.services.ciclo_vida import validar_transicion
@@ -51,6 +54,64 @@ class RepositorioDocumentos:
         documento.estado = nuevo_estado
         self.session.flush()
         return transicion
+
+    def version_previa(self, documento: Documento) -> Documento | None:
+        """RN-O2: la versión anterior del mismo documento_id."""
+        consulta = (
+            select(Documento)
+            .where(Documento.documento_id == documento.documento_id, Documento.version < documento.version)
+            .order_by(Documento.version.desc())
+            .limit(1)
+        )
+        return self.session.scalars(consulta).first()
+
+    # --- alertas (RN-F1, RN-Q1, RN-Q5) -----------------------------------------------
+
+    def alerta_activa(self, documento: Documento) -> Alerta | None:
+        return next((a for a in documento.alertas if a.nivel == "Crítico"), None)
+
+    def contar_alertas(self, documento_id: str) -> int:
+        consulta = select(func.count()).select_from(Alerta).where(Alerta.documento_id == documento_id)
+        return self.session.scalar(consulta) or 0
+
+    def alerta_por_documento_id(self, documento_id: str) -> Alerta | None:
+        consulta = select(Alerta).where(Alerta.documento_id == documento_id).order_by(Alerta.id.desc()).limit(1)
+        return self.session.scalars(consulta).first()
+
+    def crear_alerta(self, documento: Documento, *, nivel: str, canal: str, destinatario: str, mensaje: str, enlace: str | None) -> Alerta:
+        alerta = Alerta(documento_id=documento.documento_id, nivel=nivel, canal=canal, destinatario=destinatario, mensaje=mensaje, enlace=enlace)
+        documento.alertas.append(alerta)
+        self.session.flush()
+        return alerta
+
+    def acusar_alerta(self, alerta: Alerta, usuario: str) -> Alerta:
+        alerta.estado_acuse = "acusado"
+        alerta.acusado_por = usuario
+        alerta.acusado_en = datetime.now(timezone.utc)
+        self.session.flush()
+        return alerta
+
+    # --- revisión humana (RN-J1, RN-J8) -----------------------------------------------
+
+    def en_revision(self) -> list[Documento]:
+        """RN-J1: por prioridad clínica y luego por antigüedad, nunca por orden de llegada puro."""
+        orden_prioridad = case(
+            (Documento.nivel_prioridad == "Crítico", 0),
+            (Documento.nivel_prioridad == "Urgente", 1),
+            else_=2,
+        )
+        consulta = (
+            select(Documento)
+            .where(Documento.estado == EstadoDocumento.EN_REVISION_HUMANA)
+            .order_by(orden_prioridad, Documento.creado_en, Documento.id)
+        )
+        return list(self.session.scalars(consulta))
+
+    def registrar_correccion(self, documento: Documento, *, campo: str, extraido, corregido, usuario: str) -> Correccion:
+        correccion = Correccion(campo=campo, extraido=extraido, corregido=corregido, usuario=usuario)
+        documento.correcciones.append(correccion)
+        self.session.flush()
+        return correccion
 
     def guardar(self) -> None:
         self.session.commit()

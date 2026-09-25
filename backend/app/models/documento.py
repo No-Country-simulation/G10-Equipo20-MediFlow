@@ -34,11 +34,22 @@ class Documento(Base):
     # RN-M1: lo único que viaja a OpenAI es texto_seudonimizado. El mapa nunca sale de la instalación.
     texto_seudonimizado: Mapped[str | None] = mapped_column(Text, nullable=True)
     mapa_reidentificacion: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Propuesta del LLM ya re-identificada: base para re-ejecutar reglas tras una corrección (RN-J4).
+    propuesta_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    nivel_prioridad: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    entregas_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # destino -> confirmado
+    # RN-R5, RN-T3: modelo, versión del prompt y costo en tokens por documento.
+    modelo_llm: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version_prompt: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tokens_entrada: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_salida: Mapped[int] = mapped_column(Integer, default=0)
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
 
     transiciones: Mapped[list["TransicionEstado"]] = relationship(
         back_populates="documento", cascade="all, delete-orphan", order_by="TransicionEstado.id"
     )
+    alertas = relationship("Alerta", back_populates="documento", cascade="all, delete-orphan", order_by="Alerta.id")
+    correcciones = relationship("Correccion", back_populates="documento", cascade="all, delete-orphan", order_by="Correccion.id")
 
 
 class TransicionEstado(Base):
