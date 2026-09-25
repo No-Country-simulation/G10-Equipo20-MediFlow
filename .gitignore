@@ -40,3 +40,4 @@ backend/storage/
 
 # Frontend
 frontend/dist/
+backend/mediflow.db
