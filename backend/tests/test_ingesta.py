@@ -167,3 +167,28 @@ def test_storage_local_escribe_bajo_su_directorio(tmp_path):
     assert st.leer("co/recibidos/x.txt") == b"hola"
     with pytest.raises(ValueError):
         st.guardar("../fuera.txt", b"no")
+
+
+# --- Seudonimización en la ruta de texto (RN-M1) ------------------------------
+
+
+def test_texto_validado_queda_seudonimizado_con_mapa_local_RN_M1(servicio):
+    texto = "Paciente: Carlos Eduardo Mendes, 52 años. CC 1.020.304.050. TC: TEP agudo."
+    r = servicio.recibir(request_texto(texto=texto))
+    doc = r.documento
+    assert "Mendes" not in doc.texto_seudonimizado
+    assert "1.020.304.050" not in doc.texto_seudonimizado
+    assert "52 años" in doc.texto_seudonimizado
+    assert doc.mapa_reidentificacion["[PACIENTE_1]"] == "Carlos Eduardo Mendes"
+
+
+def test_nombres_en_metadatos_del_request_se_tokenizan(servicio):
+    texto = "Ingresa Carlos Eduardo Mendes por disnea súbita."
+    r = servicio.recibir(request_texto(texto=texto, metadatos={"paciente_nombre": "Carlos Eduardo Mendes"}))
+    assert "Mendes" not in r.documento.texto_seudonimizado
+
+
+def test_documento_rechazado_no_se_seudonimiza(servicio):
+    r = servicio.recibir(request_texto(texto="x" * 1_001))
+    assert r.documento.texto_seudonimizado is None
+    assert r.documento.mapa_reidentificacion is None

@@ -1,7 +1,7 @@
 """Persistencia del documento y de su historial de estados (RN-I3, RN-G2, RN-O2)."""
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -31,6 +31,9 @@ class Documento(Base):
     posible_duplicado_de: Mapped[str | None] = mapped_column(String(128), nullable=True)  # RN-O3
     codigo_error: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resultado_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # RN-G2
+    # RN-M1: lo único que viaja a OpenAI es texto_seudonimizado. El mapa nunca sale de la instalación.
+    texto_seudonimizado: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mapa_reidentificacion: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
 
     transiciones: Mapped[list["TransicionEstado"]] = relationship(

@@ -16,6 +16,7 @@ from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import DocumentoRequest, TipoContenido
 from app.schemas.resultado import EstadoDocumento as E
 from app.services.ciclo_vida import prefijo_storage
+from app.services.seudonimizacion import Seudonimizador
 from app.services.storage import CONTENT_TYPES, Storage
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class ServicioIngesta:
         self.repositorio = repositorio
         self.storage = storage
         self.tamano_maximo_bytes = tamano_maximo_bytes
+        self.seudonimizador = Seudonimizador()
 
     def recibir(self, request: DocumentoRequest) -> ResultadoIngesta:
         contenido = _decodificar(request)
@@ -97,6 +99,8 @@ class ServicioIngesta:
             self.repositorio.transicionar(
                 documento, E.VALIDADO, actor=ACTOR_SISTEMA, motivo="formato, tamaño, id y duplicados verificados"
             )
+            if request.tipo_contenido is TipoContenido.TEXTO:
+                self._seudonimizar(documento, request)
         else:
             documento.codigo_error = codigo_error
             self.repositorio.transicionar(documento, E.RECHAZADO, actor=ACTOR_SISTEMA, motivo=codigo_error)
@@ -104,6 +108,13 @@ class ServicioIngesta:
 
         self.repositorio.guardar()
         return ResultadoIngesta(documento, codigo_error=codigo_error)
+
+    def _seudonimizar(self, documento: Documento, request: DocumentoRequest) -> None:
+        """RN-M1: la ruta de texto se tokeniza aquí; el mapa queda en la base local."""
+        nombres = [v for k, v in request.metadatos.items() if "nombre" in k.lower() and isinstance(v, str)]
+        resultado = self.seudonimizador.seudonimizar(request.contenido_texto or "", nombres_conocidos=nombres)
+        documento.texto_seudonimizado = resultado.texto
+        documento.mapa_reidentificacion = resultado.mapa
 
     def _validar(self, contenido: ContenidoRecibido) -> str | None:
         if contenido.codigo_error:

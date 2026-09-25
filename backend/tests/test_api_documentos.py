@@ -58,3 +58,12 @@ def test_get_documento_muestra_estado_y_transiciones_RN_I3(client):
 
 def test_get_documento_inexistente_es_404(client):
     assert client.get("/documentos/NO-EXISTE").status_code == 404
+
+
+def test_el_mapa_de_reidentificacion_nunca_sale_por_la_api_RN_M1(client):
+    cuerpo = {**CUERPO, "contenido_texto": "Paciente: Carlos Eduardo Mendes, 52 años. CC 1.020.304.050."}
+    client.post("/documentos", json=cuerpo)
+    r = client.get("/documentos/DOC-CLIN-2026-8942")
+    assert "mapa_reidentificacion" not in r.json()
+    assert "Mendes" not in r.text
+    assert "1.020.304.050" not in r.text
