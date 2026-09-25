@@ -37,3 +37,6 @@ venv/
 
 # Respaldo local de documentos (MVP sin OCI)
 backend/storage/
+
+# Frontend
+frontend/dist/
