@@ -21,6 +21,9 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql+psycopg://mediflow:mediflow@db:5432/mediflow
+      STORAGE_LOCAL_DIR: /srv/storage
+    volumes:
+      - documentos:/srv/storage          # respaldo local de originales y JSON cuando OCI no está configurado
     ports:
       - "8000:8000"
     depends_on:
@@ -36,3 +39,4 @@ services:
 
 volumes:
   pgdata:
+  documentos:
