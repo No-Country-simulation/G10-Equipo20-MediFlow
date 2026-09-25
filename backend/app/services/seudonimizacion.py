@@ -21,13 +21,16 @@ _CUE_PACIENTE = (
     r"(?:nombre(?:\s+y\s+apellidos?|\s+del\s+paciente|\s+completo)?|paciente|sr\.?|sra\.?|se[ñn]or|se[ñn]ora|don|do[ñn]a)"
 )
 _CUE_PROFESIONAL = (
-    r"(?:dr\.?|dra\.?|doctora?|m[eé]dico(?:\s+tratante)?|profesional|prescriptor|firma|atendido\s+por|especialista)"
+    r"(?:dr\.?|dra\.?|doctora?|m[eé]dic[oa](?:\s+tratante)?|profesional|prescriptor|firma|atendido\s+por|especialista"
+    r"|bacteri[oó]log[oa]|enfermer[oa]|odont[oó]log[oa]|fisioterapeuta|qu[ií]mic[oa]\s+farmac[eé]utic[oa])"
 )
 _CUE_ID = (
     r"(?:C\.?C\.?|T\.?I\.?|R\.?C\.?|C\.?E\.?|P\.?A\.?|P\.?T\.?|NUIP|c[eé]dula(?:\s+de\s+(?:ciudadan[ií]a|extranjer[ií]a))?"
     r"|tarjeta\s+de\s+identidad|registro\s+civil|documento(?:\s+de\s+identidad)?|identificaci[oó]n|identificado\s+con)"
 )
 _NUM_ID = r"\d[\d.]{4,13}\d"
+# Valor de documento con etiqueta: dígitos con puntos, o alfanumérico con al menos un dígito (12AB45, AB123456).
+_VALOR_ID = r"(?=[A-Za-z0-9.]*\d)[A-Za-z0-9][A-Za-z0-9.]{3,15}[A-Za-z0-9]"
 _SEP_NO = r"(?:\s*(?:n[°º.]?|no\.?|nro\.?|#)\s*)?[:\-]?\s*"
 
 _MESES = "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre"
@@ -45,7 +48,7 @@ _PATRONES: list[tuple[str, re.Pattern[str], int]] = [
         0,
     ),
     ("NIT", re.compile(r"\bNIT\.?" + _SEP_NO + r"(" + _NUM_ID + r"\s*-\s*\d)", re.IGNORECASE), 1),
-    ("ID", re.compile(r"\b" + _CUE_ID + _SEP_NO + r"(" + _NUM_ID + r")(?!\d)", re.IGNORECASE), 1),
+    ("ID", re.compile(r"\b" + _CUE_ID + _SEP_NO + r"(" + _VALOR_ID + r")(?![A-Za-z0-9])", re.IGNORECASE), 1),
     (
         "TEL",
         re.compile(r"(?:\+57\s?)?(?:\(?60\d\)?[\s-]?\d{3}[\s-]?\d{4}|3\d{2}[\s-]?\d{3}[\s-]?\d{4})(?!\d)"),

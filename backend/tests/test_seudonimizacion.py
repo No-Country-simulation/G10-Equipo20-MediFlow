@@ -91,6 +91,9 @@ def test_valores_distintos_reciben_tokens_distintos(seudo):
         ("Documento 1020304050", "[ID_1]"),
         ("Nombre del paciente: MARÍA JOSÉ LÓPEZ", "[PACIENTE_1]"),
         ("Dra. Carolina Duque", "[PROFESIONAL_1]"),
+        ("Bacterióloga: Sandra Molina. TP 4471.", "[PROFESIONAL_1]"),
+        ("CC 12AB45", "[ID_1]"),
+        ("Pasaporte PA AB123456", "[ID_1]"),
         ("Médico tratante: Juan Pablo Ríos", "[PROFESIONAL_1]"),
     ],
 )
@@ -113,6 +116,7 @@ def test_numero_largo_sin_etiqueta_tambien_se_tokeniza(seudo):
         "Troponina 0,45 ng/mL; BNP 1.250 pg/mL",
         "Paciente de 52 años con disnea",
         "NEWS2 total 10. Dosis 2.500 UI.",
+        "Documento clínico de seguimiento. Identificación del riesgo cardiovascular alto.",
     ],
 )
 def test_no_toca_valores_clinicos(seudo, texto):

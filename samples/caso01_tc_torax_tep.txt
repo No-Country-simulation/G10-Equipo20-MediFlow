@@ -1,0 +1,14 @@
+INFORME DE TOMOGRAFÍA COMPUTARIZADA DE TÓRAX CON CONTRASTE
+IPS Cardiovida - Servicio de Urgencias
+Fecha: 03/04/2026
+
+Paciente: Carlos Eduardo Mendes, 52 años, masculino.
+Motivo: disnea súbita y dolor torácico pleurítico de 6 horas de evolución.
+Signos vitales al ingreso: FR 28, SpO2 88 %, FC 118, PAS 92, Temp 37,1 °C. Alerta.
+
+HALLAZGOS: defectos de llenado en ambas arterias pulmonares principales con extensión lobar.
+Dilatación del ventrículo derecho (relación VD/VI 1,4). Sin derrame pleural significativo.
+
+CONCLUSIÓN: tromboembolismo pulmonar agudo bilateral con signos de sobrecarga de VD. CIE-10 I26.9.
+
+Dr. Andrés Felipe Rojas, radiólogo. RM 45678.

@@ -1,0 +1,6 @@
+INFORME DE LABORATORIO
+Laboratorio Clínico Cardiovida. Fecha: 03/04/2026
+Paciente: Pedro Gómez, 45 años. CC 12AB45
+Estudio: perfil lipídico. Colesterol total 245 mg/dL, LDL 160 mg/dL, HDL 38 mg/dL, triglicéridos 210 mg/dL.
+Conclusión: dislipidemia mixta (E78.2).
+Bacterióloga: Sandra Molina. TP 4471.
