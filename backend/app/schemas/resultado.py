@@ -260,6 +260,11 @@ class Enrutamiento(BaseModel):
     destino_principal: Destino
     destinos_secundarios: list[Destino] = Field(default_factory=list)
     justificacion_enrutamiento: str
+    # Campos agregados (RN-G7 permite agregar)
+    destinos_tras_revision: list[Destino] = Field(default_factory=list)  # RN-E8: plan al salir de la cola
+    motivos_destino: dict[str, str] = Field(default_factory=dict)  # RN-CO13, RN-E5, RN-E9: motivo por destino
+    entregas_retenidas: dict[str, str] = Field(default_factory=dict)  # RN-A4, RN-N3: destinos retenidos y por qué
+    documentacion_incompleta: bool = False  # RN-E5
 
     @model_validator(mode="after")
     def principal_no_repetido(self) -> "Enrutamiento":

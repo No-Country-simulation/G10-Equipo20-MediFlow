@@ -207,10 +207,10 @@ class _Evaluador:
             if not any(d.cie10_sugerido or d.cie11_sugerido for d in e.diagnosticos):
                 faltantes.append("diagnosticos.codigo")
         elif self.tipo is T.ORDEN_PROCEDIMIENTO:
+            # RN-C1: procedimiento e indicación (diagnóstico con código). La justificación
+            # ampliada de RN-E5 la evalúa el enrutamiento como documentacion_incompleta.
             if not e.procedimientos:
                 faltantes.append("procedimientos")
-            if not e.justificacion_clinica:
-                faltantes.append("justificacion_clinica")
             if not any(d.cie10_sugerido or d.cie11_sugerido for d in e.diagnosticos):
                 faltantes.append("diagnosticos.codigo")
         elif self.tipo is T.EPICRISIS:

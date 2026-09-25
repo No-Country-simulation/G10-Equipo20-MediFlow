@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     version_reglas: str = "8"  # RN-G6: versión del documento de reglas de negocio
     database_url: str = "postgresql+psycopg://mediflow:mediflow@localhost:5432/mediflow"
     tamano_maximo_bytes: int = 10_000_000  # RN-O5
+    url_base_documentos: str = "http://localhost:8000/documentos"  # enlace de las alertas (RN-Q4)
     storage_local_dir: str = "./storage"  # respaldo local cuando OCI no está configurado
     oci_namespace: str = ""
     oci_bucket: str = ""
