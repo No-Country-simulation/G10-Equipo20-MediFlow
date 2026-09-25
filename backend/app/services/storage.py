@@ -1,16 +1,23 @@
 from pathlib import Path
+from contextlib import AbstractContextManager, contextmanager
+from collections.abc import Iterator
 from typing import BinaryIO, Protocol
 
 from app.services.errors import DocumentError
 
 
 class DocumentStorage(Protocol):
-    def save(self, key: str, source: BinaryIO, max_bytes: int) -> tuple[Path, int]: ...
+    backend: str
+    bucket: str | None
     def delete(self, key: str) -> None: ...
-    def local_path(self, key: str) -> Path: ...
+    def put_file(self, key: str, path: Path, max_bytes: int) -> None: ...
+    def materialize(self, key: str, max_bytes: int) -> AbstractContextManager[Path]: ...
 
 
 class LocalDocumentStorage:
+    backend = "local"
+    bucket = None
+
     def __init__(self, directory: Path):
         self.directory = directory
 
@@ -43,3 +50,23 @@ class LocalDocumentStorage:
 
     def local_path(self, key: str) -> Path:
         return self._path(key)
+
+    def put_file(self, key: str, path: Path, max_bytes: int) -> None:
+        with path.open("rb") as source:
+            self.save(key, source, max_bytes)
+
+    @contextmanager
+    def materialize(self, key: str, max_bytes: int) -> Iterator[Path]:
+        path = self.local_path(key)
+        if not path.is_file():
+            raise DocumentError(422, "DOCUMENT_FILE_MISSING")
+        if path.stat().st_size > max_bytes:
+            raise DocumentError(413, "PROCESSING_FILE_TOO_LARGE")
+        yield path
+
+
+def get_storage(settings, backend=None, bucket=None):
+    if (backend or settings.storage_backend) == "local":
+        return LocalDocumentStorage(settings.documents_dir)
+    from app.services.r2_storage import R2DocumentStorage
+    return R2DocumentStorage(settings, bucket)

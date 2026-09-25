@@ -14,9 +14,17 @@ class DocumentMetadata(BaseModel):
     format: Literal["pdf", "jpeg", "png"] | None
     size_bytes: int | None = Field(ge=0)
     received_at: datetime
+    country: str = "EC"
 
 
 class DocumentResponse(DocumentMetadata):
     status: DocumentStatus
     processing_attempts: int = 0
     rejection_reason: str | None = None
+
+
+class DocumentList(BaseModel):
+    items: list[DocumentResponse]
+    total: int
+    limit: int
+    offset: int

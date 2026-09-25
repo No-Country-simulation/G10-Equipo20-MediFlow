@@ -30,3 +30,6 @@ class Document(Base):
     rejection_reason: Mapped[str | None] = mapped_column(String(255))
     state_history: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
     review_history: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    storage_backend: Mapped[str] = mapped_column(String(10), default="local", server_default="local")
+    storage_bucket: Mapped[str | None] = mapped_column(String(63))
+    country: Mapped[str] = mapped_column(String(2), default="EC", server_default="EC")
