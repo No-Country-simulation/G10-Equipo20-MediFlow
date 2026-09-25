@@ -16,7 +16,11 @@ services:
 
   api:
     build: ./backend
-    env_file: ./backend/.env
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://mediflow:mediflow@db:5432/mediflow
     ports:
       - "8000:8000"
     depends_on:

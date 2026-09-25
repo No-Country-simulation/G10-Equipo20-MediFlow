@@ -1,8 +1,11 @@
 """Fixtures compartidas. RN-U4: las reglas determinísticas se prueban sin OpenAI ni OCI."""
 import os
 
-# La app de tests nunca toca PostgreSQL ni OCI (RN-U4). Debe fijarse antes de importar la app.
-os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+# La suite unitaria corre sobre SQLite en memoria por velocidad (RN-U4). La base del
+# producto es PostgreSQL: con MEDIFLOW_TEST_DATABASE_URL la misma suite corre contra
+# un PostgreSQL real (por ejemplo, el servicio db de docker compose).
+URL_BD_TESTS = os.environ.get("MEDIFLOW_TEST_DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("DATABASE_URL", URL_BD_TESTS)
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -17,9 +20,11 @@ from app.services.storage import StorageLocal  # noqa: E402
 
 @pytest.fixture
 def engine():
-    motor = crear_engine("sqlite+pysqlite:///:memory:")
+    motor = crear_engine(URL_BD_TESTS)
+    Base.metadata.drop_all(motor)
     Base.metadata.create_all(motor)
     yield motor
+    Base.metadata.drop_all(motor)
     motor.dispose()
 
 
