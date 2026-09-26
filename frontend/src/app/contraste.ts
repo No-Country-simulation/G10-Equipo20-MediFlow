@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
-const CLAVE = "mediflow.contraste";
+const PREFIJO = "mediflow.contraste";
 
-function leerPreferencia(): "alto" | "normal" | null {
+function leerPreferencia(clave: string): "alto" | "normal" | null {
   try {
-    const v = localStorage.getItem(CLAVE);
+    const v = localStorage.getItem(clave);
     return v === "alto" || v === "normal" ? v : null;
   } catch {
     return null;
@@ -23,8 +23,11 @@ function sistemaPideContraste(): boolean {
  * Alto contraste para pantallas compartidas de urgencias. Orden de decisión: la elección manual
  * guardada en este navegador; si no hay, lo que pide el sistema operativo o el valor por defecto del rol.
  */
-export function useAltoContraste(porDefectoDelRol: boolean): [boolean, () => void] {
-  const [preferencia, setPreferencia] = useState(leerPreferencia);
+export function useAltoContraste(porDefectoDelRol: boolean, rolId = "general"): [boolean, () => void] {
+  // Por rol: si alguien lo apaga en un rol, no queda apagado para la pantalla de urgencias.
+  const clave = `${PREFIJO}.${rolId}`;
+  const [preferencia, setPreferencia] = useState(() => leerPreferencia(clave));
+  useEffect(() => { setPreferencia(leerPreferencia(clave)); }, [clave]);
   const activo = preferencia ? preferencia === "alto" : porDefectoDelRol || sistemaPideContraste();
 
   useEffect(() => {
@@ -37,7 +40,7 @@ export function useAltoContraste(porDefectoDelRol: boolean): [boolean, () => voi
     const nueva = activo ? "normal" : "alto";
     setPreferencia(nueva);
     try {
-      localStorage.setItem(CLAVE, nueva);
+      localStorage.setItem(clave, nueva);
     } catch {
       /* sin almacenamiento: vale para esta sesión */
     }

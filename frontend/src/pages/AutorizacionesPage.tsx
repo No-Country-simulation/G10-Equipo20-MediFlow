@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { bandejaAutorizaciones, ErrorApi, resolverAutorizacion } from "../api";
+import { bandejaAutorizaciones, resolverAutorizacion } from "../api";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
+import { alTeclearPestanas } from "../app/pestanas";
 import { useUsuario } from "../app/usuario";
 import { TagPrioridad } from "../components/Tags";
 import type { BandejaAutorizaciones, OrdenPorAutorizar } from "../types";
@@ -19,7 +21,7 @@ export function AutorizacionesPage() {
   const [pestana, setPestana] = useState<"por_autorizar" | "avisos">("por_autorizar");
   const [usuario] = useUsuario();
   const [motivos, setMotivos] = useState<Record<string, string>>({});
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const cargar = () => bandejaAutorizaciones().then(setBandeja).catch(() => setError("No hay conexión con la API."));
@@ -29,10 +31,10 @@ export function AutorizacionesPage() {
     setMensaje(null);
     try {
       const r = await resolverAutorizacion(orden.documento_id, { accion, usuario: usuario.trim(), motivo: (motivos[orden.documento_id] ?? "").trim() });
-      setMensaje(`${orden.documento_id}: ${r.autorizacion.estado} por ${r.autorizacion.usuario} · estado ${r.estado}`);
+      setMensaje({ texto: `${orden.documento_id}: ${r.autorizacion.estado} por ${r.autorizacion.usuario} · estado ${r.estado}` });
       cargar();
     } catch (e) {
-      setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+      setMensaje({ texto: textoDeError(e), error: true });
     }
   }
 
@@ -48,13 +50,14 @@ export function AutorizacionesPage() {
           <p className="sub">Órdenes ambulatorias con su documentación mínima: justificación, diagnóstico codificado, CUPS y cobertura. Las de urgencias y hospitalización no esperan aquí: llegan como aviso.</p>
         </div>
       </header>
-      <div className="pestanas" role="tablist">
-        <button type="button" role="tab" aria-selected={pestana === "por_autorizar"} className={pestana === "por_autorizar" ? "" : "secundario"} onClick={() => setPestana("por_autorizar")}>Por autorizar ({porAutorizar.length})</button>
-        <button type="button" role="tab" aria-selected={pestana === "avisos"} className={pestana === "avisos" ? "" : "secundario"} onClick={() => setPestana("avisos")}>Avisos de urgencias ({avisos.length})</button>
+      <div className="pestanas" role="tablist" aria-label="Bandejas de autorización" onKeyDown={alTeclearPestanas}>
+        <button type="button" role="tab" id="tab-por_autorizar" aria-controls="panel-autorizaciones" tabIndex={pestana === "por_autorizar" ? 0 : -1} aria-selected={pestana === "por_autorizar"} className={pestana === "por_autorizar" ? "" : "secundario"} onClick={() => setPestana("por_autorizar")}>Por autorizar ({porAutorizar.length})</button>
+        <button type="button" role="tab" id="tab-avisos" aria-controls="panel-autorizaciones" tabIndex={pestana === "avisos" ? 0 : -1} aria-selected={pestana === "avisos"} className={pestana === "avisos" ? "" : "secundario"} onClick={() => setPestana("avisos")}>Avisos de urgencias ({avisos.length})</button>
       </div>
-      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
+      <EstadoMensaje mensaje={mensaje} />
       {error && <p className="error">{error}</p>}
 
+      <div role="tabpanel" id="panel-autorizaciones" aria-labelledby={`tab-${pestana}`}>
       {pestana === "por_autorizar" && (
         <section className="tarjeta" style={{ padding: 0 }}>
           <div className="scroll">
@@ -112,6 +115,7 @@ export function AutorizacionesPage() {
           </div>
         </section>
       )}
+      </div>
     </>
   );
 }

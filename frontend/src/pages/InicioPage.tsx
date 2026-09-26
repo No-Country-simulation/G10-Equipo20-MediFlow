@@ -60,8 +60,18 @@ export function InicioPage() {
                      vencido: p.vencido, apremia: p.apremia, plazo: p.texto, restante: p.minutosRestantes, ruta: `/documentos/${encodeURIComponent(c.documento_id)}?cola=1` };
           }),
         ];
-        lista.sort((a, b) => a.restante - b.restante);
-        setPendientes(lista.slice(0, 6));
+        // Un documento con alerta y en revisión es un solo pendiente: se fusiona, con el plazo más cercano.
+        const porDocumento = new Map<string, Pendiente>();
+        for (const p of lista) {
+          const previo = porDocumento.get(p.documento_id);
+          if (!previo) { porDocumento.set(p.documento_id, p); continue; }
+          const alerta = previo.tipo === "alerta" ? previo : p;
+          const revision = previo.tipo === "alerta" ? p : previo;
+          const primero = previo.restante <= p.restante ? previo : p;
+          porDocumento.set(p.documento_id, { ...primero, tipo: "alerta", nivel: "Crítico", texto: `${alerta.texto} · y en revisión`, ruta: revision.ruta });
+        }
+        const unicos = [...porDocumento.values()].sort((a, b) => a.restante - b.restante);
+        setPendientes(unicos.slice(0, 6));
       });
     }
     if (veConfiguracion) {

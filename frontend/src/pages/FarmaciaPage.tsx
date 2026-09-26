@@ -2,7 +2,8 @@ import { Pill } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { colaFarmacia, ErrorApi, verificarReceta } from "../api";
+import { colaFarmacia, verificarReceta } from "../api";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { useUsuario } from "../app/usuario";
 import { TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
@@ -12,7 +13,7 @@ import type { RecetaPorVerificar } from "../types";
 export function FarmaciaPage() {
   const [recetas, setRecetas] = useState<RecetaPorVerificar[] | null>(null);
   const [usuario] = useUsuario();
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const cargar = () => colaFarmacia().then(setRecetas).catch(() => setError("No hay conexión con la API."));
@@ -22,10 +23,10 @@ export function FarmaciaPage() {
     setMensaje(null);
     try {
       const r = await verificarReceta(documentoId, usuario.trim());
-      setMensaje(r.completa ? `${documentoId} verificada (${r.verificaciones.length} de ${r.requeridas}) · estado ${r.estado}` : `${documentoId}: primera verificación registrada; falta la segunda por otra persona`);
+      setMensaje({ texto: r.completa ? `${documentoId} verificada (${r.verificaciones.length} de ${r.requeridas}) · estado ${r.estado}` : `${documentoId}: primera verificación registrada; falta la segunda por otra persona` });
       cargar();
     } catch (e) {
-      setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+      setMensaje({ texto: textoDeError(e), error: true });
     }
   }
 
@@ -39,7 +40,7 @@ export function FarmaciaPage() {
           <p className="sub">Recetas enrutadas a Farmacia. Las de alto riesgo y control especial necesitan dos verificaciones de personas distintas.</p>
         </div>
       </header>
-      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
+      <EstadoMensaje mensaje={mensaje} />
       {error && <p className="error">{error}</p>}
       <section className="tarjeta" style={{ padding: 0 }}>
         <div className="scroll">

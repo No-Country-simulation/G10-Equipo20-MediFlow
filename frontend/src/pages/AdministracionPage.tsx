@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { cambiarEstadoUsuario, crearUsuario, ErrorApi, listarAccesos, listarUsuarios, obtenerPack, puestaEnMarcha } from "../api";
+import { cambiarEstadoUsuario, crearUsuario, listarAccesos, listarUsuarios, obtenerPack, puestaEnMarcha } from "../api";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { ROLES } from "../app/roles";
 import { useUsuario } from "../app/usuario";
 import type { Acceso, FichaPack, PuestaEnMarcha, UsuarioAdmin } from "../types";
@@ -20,7 +21,7 @@ export function AdministracionPage() {
   const [accesos, setAccesos] = useState<Acceso[]>([]);
   const [filtroDoc, setFiltroDoc] = useState("");
   const [form, setForm] = useState(FORMULARIO_VACIO);
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
   const cargar = () => {
     listarUsuarios().then(setUsuarios).catch(() => setUsuarios([]));
@@ -35,14 +36,14 @@ export function AdministracionPage() {
   }, [filtroDoc]);
 
   function informar(e: unknown) {
-    setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+    setMensaje({ texto: textoDeError(e), error: true });
   }
 
   async function crear() {
     setMensaje(null);
     try {
       const u = await crearUsuario({ ...form, usuario: form.usuario.trim(), nombre: form.nombre.trim(), actor: actor.trim() });
-      setMensaje(`Usuario ${u.usuario} creado como ${nombreRol(u.rol)}.`);
+      setMensaje({ texto: `Usuario ${u.usuario} creado como ${nombreRol(u.rol)}.` });
       setForm(FORMULARIO_VACIO);
       cargar();
     } catch (e) {
@@ -54,7 +55,7 @@ export function AdministracionPage() {
     setMensaje(null);
     try {
       const r = await cambiarEstadoUsuario(u.usuario, !u.activo, actor.trim());
-      setMensaje(r.activo ? `${r.usuario} reactivado.` : `${r.usuario} desactivado: pierde acceso de inmediato; su historial permanece.`);
+      setMensaje({ texto: r.activo ? `${r.usuario} reactivado.` : `${r.usuario} desactivado: pierde acceso de inmediato; su historial permanece.` });
       cargar();
     } catch (e) {
       informar(e);
@@ -72,7 +73,7 @@ export function AdministracionPage() {
           <p className="sub">Usuarios, accesos y pack de país. Quien administra no ve datos clínicos; aquí solo hay identificadores de documento.</p>
         </div>
       </header>
-      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
+      <EstadoMensaje mensaje={mensaje} />
 
       <div className="dos-columnas">
         <section className="tarjeta" data-testid="puesta-en-marcha">

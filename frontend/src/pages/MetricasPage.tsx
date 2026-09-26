@@ -44,9 +44,9 @@ export function MetricasPage() {
           <h1>Métricas</h1>
           <p className="sub">Indicadores calculados del historial. Cada documento registra modelo, prompt, reglas y pack, y su costo en tokens.</p>
         </div>
-        <div className="pestanas" role="tablist" aria-label="Periodo">
+        <div className="pestanas" role="group" aria-label="Periodo">
           {PERIODOS.map((p) => (
-            <button key={p} type="button" role="tab" aria-selected={dias === p} className={dias === p ? "" : "secundario"} onClick={() => setDias(p)}>{p} días</button>
+            <button key={p} type="button" aria-pressed={dias === p} className={dias === p ? "" : "secundario"} onClick={() => setDias(p)}>{p} días</button>
           ))}
         </div>
       </header>
@@ -83,7 +83,7 @@ export function MetricasPage() {
         <section className="tarjeta" data-testid="por-motivo">
           <h2>Porcentaje a revisión por motivo</h2>
           <table className="umbrales">
-            <thead><tr><th>Motivo</th><th>Documentos</th><th>% de procesados</th></tr></thead>
+            <thead><tr><th>Motivo</th><th>Documentos</th><th>% del total</th></tr></thead>
             <tbody>
               {Object.entries(m?.revision_por_motivo ?? {}).map(([motivo, v]) => (
                 <tr key={motivo}><td>{etiquetaMotivo(motivo) || legible(motivo)}<span className="barra"><i style={{ width: `${Math.round(v.porcentaje * 100)}%` }} /></span></td><td className="num">{v.n}</td><td className="num">{pct(v.porcentaje)}</td></tr>

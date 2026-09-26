@@ -110,7 +110,7 @@ describe("página Documentos", () => {
     const enviar = vi.spyOn(api, "enviarArchivo").mockResolvedValue(detalleCaso1());
     render(<AppRouter rutaInicial="/documentos" />);
     await screen.findAllByTestId("fila-documento");
-    await userEvent.type(screen.getByLabelText(/documento_id/i), "DOC-NUEVO");
+    await userEvent.type(screen.getByLabelText(/^id del documento/i), "DOC-NUEVO");
     const archivo = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "informe.pdf", { type: "application/pdf" });
     await userEvent.upload(screen.getByLabelText(/elegir archivo/i), archivo);
     await userEvent.click(screen.getByRole("button", { name: /cargar documento/i }));
@@ -124,7 +124,7 @@ describe("página Documentos", () => {
     render(<AppRouter rutaInicial="/documentos" />);
     await screen.findAllByTestId("fila-documento");
     await userEvent.click(screen.getByRole("button", { name: /pegar texto/i }));
-    await userEvent.type(screen.getByLabelText(/documento_id/i), "DOC-TXT");
+    await userEvent.type(screen.getByLabelText(/^id del documento/i), "DOC-TXT");
     await userEvent.type(screen.getByLabelText(/texto clínico/i), "TC de tórax: TEP agudo.");
     await userEvent.click(screen.getByRole("button", { name: /cargar documento/i }));
     await waitFor(() => expect(enviarTexto).toHaveBeenCalledWith(expect.objectContaining({ documento_id: "DOC-TXT", tipo_contenido: "texto" })));
@@ -134,7 +134,7 @@ describe("página Documentos", () => {
     vi.spyOn(api, "enviarArchivo").mockResolvedValue({ ...detalleCaso1(), estado: "RECHAZADO", codigo_error: "extension_no_coincide", resultado: null });
     render(<AppRouter rutaInicial="/documentos" />);
     await screen.findAllByTestId("fila-documento");
-    await userEvent.type(screen.getByLabelText(/documento_id/i), "DOC-X");
+    await userEvent.type(screen.getByLabelText(/^id del documento/i), "DOC-X");
     await userEvent.upload(screen.getByLabelText(/elegir archivo/i), new File([new Uint8Array([1])], "x.png", { type: "image/png" }));
     await userEvent.click(screen.getByRole("button", { name: /cargar documento/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/la extensión no coincide con el contenido/i);

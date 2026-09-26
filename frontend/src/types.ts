@@ -209,7 +209,7 @@ export interface DatosArchivo {
   pais_origen?: string;
 }
 
-export type AccionRevision = "aprobar" | "corregir" | "rechazar";
+export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir";
 
 export interface ResolucionRequest {
   accion: AccionRevision;
@@ -217,6 +217,8 @@ export interface ResolucionRequest {
   rol: string;
   motivo: string;
   correcciones?: Record<string, unknown> | null;
+  /** Fallo técnico: la persona transcribe con la misma forma que la propuesta del LLM. */
+  transcripcion?: Record<string, unknown> | null;
 }
 
 export interface RespuestaEntrega {

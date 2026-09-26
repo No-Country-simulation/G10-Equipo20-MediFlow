@@ -3,13 +3,17 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { Link } from "react-router-dom";
 
 import { enviarArchivo, enviarDocumento, ErrorApi, listarDocumentos } from "../api";
-import { etiquetaMotivo, mensajeDeRechazo } from "../app/mensajes";
+import { ETIQUETA_ESTADO, etiquetaMotivo, mensajeDeRechazo } from "../app/mensajes";
 import { plazoDeRevision } from "../app/plazos";
 import { CASOS } from "../data/casos";
 import { ChipPlazo, TagEstado, TagPrioridad } from "../components/Tags";
 import type { CanalOrigen, Cobertura, DocumentoDetalle, EstadoDocumento, Listado, NivelPrioridad } from "../types";
 
 const CANALES: CanalOrigen[] = ["Guardia_Emergencias", "Consulta_Ambulatoria", "Hospitalizado", "Externo"];
+const ETIQUETA_COBERTURA: Record<string, string> = {
+  contributivo: "Contributivo", subsidiado: "Subsidiado", especial_excepcion: "Especial o de excepción", soat: "SOAT (accidente de tránsito)",
+  arl: "ARL (riesgo laboral)", plan_voluntario: "Plan voluntario", no_afiliado: "No afiliado",
+};
 const COBERTURAS: Cobertura[] = ["contributivo", "subsidiado", "especial_excepcion", "soat", "arl", "plan_voluntario", "no_afiliado"];
 const ESTADOS: EstadoDocumento[] = ["RECIBIDO", "VALIDADO", "EN_REVISION_HUMANA", "ENRUTADO", "ENTREGADO", "RECHAZADO", "FALLO_TECNICO"];
 const NIVELES: NivelPrioridad[] = ["Crítico", "Urgente", "Rutina"];
@@ -41,6 +45,11 @@ export function DocumentosPage() {
 
   // --- tabla -------------------------------------------------------------
   const [busqueda, setBusqueda] = useState("");
+  // Busca sola 350 ms después de la última tecla; Enter sigue buscando al instante.
+  useEffect(() => {
+    const t = setTimeout(() => { setOffset(0); setQ(busqueda.trim()); }, 350);
+    return () => clearTimeout(t);
+  }, [busqueda]);
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<EstadoDocumento | "">("");
   const [nivel, setNivel] = useState<NivelPrioridad | "">("");
@@ -172,25 +181,26 @@ export function DocumentosPage() {
           <h2>Datos del envío</h2>
           <div className="campos" style={{ marginTop: 8 }}>
             <label className="ancho">
-              documento_id
+              ID del documento
               <input value={documentoId} onChange={(e) => setDocumentoId(e.target.value)} placeholder="DOC-CLIN-2026-8942" />
             </label>
             <label>
               Canal de origen
               <select value={canal} onChange={(e) => setCanal(e.target.value as CanalOrigen)}>
-                {CANALES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
+                {CANALES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
               </select>
             </label>
             <label>
               Cobertura
               <select value={cobertura} onChange={(e) => setCobertura(e.target.value as Cobertura | "")}>
                 <option value="">no informada</option>
-                {COBERTURAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {COBERTURAS.map((c) => <option key={c} value={c}>{ETIQUETA_COBERTURA[c] ?? c}</option>)}
               </select>
             </label>
           </div>
           <div className="acciones" style={{ marginTop: 12 }}>
-            <button type="button" disabled={!listo} onClick={cargar}><Upload size={16} aria-hidden="true" />{enviando ? "Procesando…" : "Cargar documento"}</button>
+            <button type="button" disabled={!listo} onClick={cargar} aria-describedby="falta-carga"><Upload size={16} aria-hidden="true" />{enviando ? "Procesando…" : "Cargar documento"}</button>
+            {!listo && !enviando && <span id="falta-carga" className="muted pista">Falta: {[!documentoId.trim() && "ID del documento", !(modoTexto ? texto.trim() : archivo) && (modoTexto ? "el texto" : "el archivo")].filter(Boolean).join(" y ")}.</span>}
           </div>
           {errorCarga && <div className="estado-carga error" role="alert">{errorCarga}</div>}
           {ultimo && (
@@ -213,13 +223,13 @@ export function DocumentosPage() {
               Buscar
               <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { setOffset(0); setQ(busqueda.trim()); } }}
-                placeholder="documento_id o nombre de archivo · Enter para buscar" />
+                placeholder="ID del documento o nombre de archivo" type="search" />
             </label>
             <label>
               Estado
               <select value={estado} onChange={(e) => { setOffset(0); setEstado(e.target.value as EstadoDocumento | ""); }}>
                 <option value="">Todos los estados</option>
-                {ESTADOS.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+                {ESTADOS.map((s) => <option key={s} value={s}>{ETIQUETA_ESTADO[s]}</option>)}
               </select>
             </label>
             <label>

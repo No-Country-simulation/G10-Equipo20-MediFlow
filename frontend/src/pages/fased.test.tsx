@@ -103,7 +103,12 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     const news2 = screen.getByTestId("no-configurable");
     expect(news2).toHaveTextContent(/no configurable/i);
     expect(within(news2).queryByRole("spinbutton")).toBeNull();
-    await userEvent.click(screen.getByRole("tab", { name: /listas ampliables/i }));
+    // las pestañas se recorren con las flechas, como pide el patrón de pestañas de ARIA
+    screen.getByRole("tab", { name: /umbrales/i }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: /listas ampliables/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /listas ampliables/i })).toHaveFocus();
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName(/listas ampliables/i);
     expect(screen.getByTestId("lista-alto_riesgo")).toHaveTextContent("apixaban");
   });
 

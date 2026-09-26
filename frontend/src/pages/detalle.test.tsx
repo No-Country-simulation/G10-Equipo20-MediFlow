@@ -88,6 +88,7 @@ describe("banco de trabajo: tres paneles", () => {
     expect(aprobar).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/firmo como/i), "ana.auditora");
     await userEvent.click(aprobar);
+    await userEvent.click(screen.getByRole("button", { name: /confirmar aprobación/i }));
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar", usuario: "ana.auditora", rol: "auditor_clinico" })));
     await waitFor(() => expect(api.consultarDocumento).toHaveBeenCalledTimes(2));
   });
@@ -119,15 +120,18 @@ describe("banco de trabajo: tres paneles", () => {
     expect(resolver).not.toHaveBeenCalled();
     await userEvent.type(screen.getByLabelText(/^motivo/i), "documento de otra institución");
     fireEvent.keyDown(document.body, { key: "r" });
+    expect(resolver).not.toHaveBeenCalled();  // R abre la confirmación; no rechaza de una tecla
+    await userEvent.click(screen.getByRole("button", { name: /confirmar rechazo/i }));
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "rechazar", motivo: "documento de otra institución" })));
   });
 
-  it("el atajo A aprueba cuando hay usuario", async () => {
+  it("el atajo A abre la confirmación de aprobar cuando hay usuario", async () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
     await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     fireEvent.keyDown(document.body, { key: "a" });
+    await userEvent.click(screen.getByRole("button", { name: /confirmar aprobación/i }));
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar" })));
   });
 

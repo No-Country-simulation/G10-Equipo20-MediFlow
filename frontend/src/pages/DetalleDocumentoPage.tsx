@@ -1,29 +1,51 @@
-import { Check, Pencil, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowRight, Check, CircleCheckBig, Keyboard, Maximize2, Minimize2, Pencil, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { colaRevision, confirmarEntrega, consultarDocumento, ErrorApi, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
-import { etiquetaConcepto, etiquetaEstado, etiquetaMotivo, motivoLegible } from "../app/mensajes";
+import { colaRevision, confirmarEntrega, consultarDocumento, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
+import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, motivoLegible } from "../app/mensajes";
+import { usePared } from "../app/pared";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
 import { useRol } from "../app/RolContext";
 import { enmascarar, useUsuario } from "../app/usuario";
-import { HistorialDecisiones } from "../components/HistorialDecisiones";
 import { AccionAcuse } from "../components/AccionAcuse";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
+import { HistorialDecisiones } from "../components/HistorialDecisiones";
 import { TagEstado, TagPrioridad } from "../components/Tags";
+import { Transcripcion } from "../components/Transcripcion";
 import type { AccionRevision, DocumentoDetalle, ItemCola } from "../types";
 
 type ClaveConfianza = "identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional";
+type Decision = "aprobar" | "rechazar";
 
 interface Correccion {
   campo: string;
   valor: string;
 }
 
+const CLAVE_ATAJOS = "mediflow.atajos";
+
+function leerAtajos(): boolean {
+  try {
+    return localStorage.getItem(CLAVE_ATAJOS) !== "no";
+  } catch {
+    return true;
+  }
+}
+
+/** Un atajo de una tecla solo actúa si el foco no está en algo que ya usa esa tecla (WCAG 2.1.4). */
+function esInteractivo(objetivo: EventTarget | null): boolean {
+  if (!(objetivo instanceof HTMLElement)) return false;
+  return objetivo.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(objetivo.tagName);
+}
+
 function PildoraConfianza({ valor, umbral }: { valor: number | null | undefined; umbral: number | undefined }) {
   if (valor === null || valor === undefined) return <span className="tag neutro">sin dato</span>;
   const bajo = umbral !== undefined && valor < umbral;
-  return <span className={`tag ${bajo ? "urgente" : "exito"}`} title="Confianza del LLM (RN-C3)">{valor.toFixed(2)}</span>;
+  return <span className={`tag ${bajo ? "urgente" : "exito"}`} title="Confianza de la lectura automática frente al umbral del campo">{valor.toFixed(2)}</span>;
 }
+
+const PASADO: Record<AccionRevision, string> = { aprobar: "Aprobado", corregir: "Corregido y reevaluado", rechazar: "Rechazado", transcribir: "Transcrito y evaluado" };
 
 export function DetalleDocumentoPage() {
   const { id = "" } = useParams();
@@ -32,27 +54,38 @@ export function DetalleDocumentoPage() {
   const navigate = useNavigate();
   const { rol, modoDiscreto, alternarModoDiscreto } = useRol();
   const [usuario] = useUsuario();
+  const { activo: pared } = usePared();
 
   const [detalle, setDetalle] = useState<DocumentoDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pagina, setPagina] = useState(1);
+  const [ampliada, setAmpliada] = useState(false);
   const [textoOriginal, setTextoOriginal] = useState<string | null>(null);
   const [cola, setCola] = useState<ItemCola[]>([]);
   const [motivo, setMotivo] = useState("");
   const [correccion, setCorreccion] = useState<Correccion | null>(null);
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [confirmacion, setConfirmacion] = useState<Decision | null>(null);
+  const [cierre, setCierre] = useState<{ accion: AccionRevision; estado: string } | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [atajos, setAtajos] = useState(leerAtajos);
   const [entregas, setEntregas] = useState<Record<string, boolean>>({});
   const [pendientes, setPendientes] = useState<string[] | null>(null);
   const [ahora, setAhora] = useState(() => new Date());
+  const botonConfirmar = useRef<HTMLButtonElement>(null);
+  const botonSiguiente = useRef<HTMLButtonElement>(null);
+  const tituloCierre = useRef<HTMLParagraphElement>(null);
 
   const cargar = useCallback(() => {
     consultarDocumento(id)
       .then((d) => { setDetalle(d); setEntregas(d.entregas ?? {}); setError(null); })
-      .catch((e) => setError(e instanceof ErrorApi ? e.detalle : "No hay conexión con la API."));
+      .catch((e) => setError(textoDeError(e)));
   }, [id]);
 
-  useEffect(() => { setPagina(1); setCorreccion(null); setMensaje(null); setPendientes(null); cargar(); }, [cargar]);
+  useEffect(() => {
+    setPagina(1); setCorreccion(null); setMensaje(null); setPendientes(null); setConfirmacion(null); setCierre(null); setMotivo("");
+    cargar();
+  }, [cargar]);
   useEffect(() => {
     if (desdeCola) colaRevision().then(setCola).catch(() => setCola([]));
   }, [desdeCola]);
@@ -66,10 +99,16 @@ export function DetalleDocumentoPage() {
     fetch(urlOriginal(detalle.documento_id)).then((r) => (r.ok ? r.text() : Promise.reject(new Error("sin original")))).then((t) => activo && setTextoOriginal(t)).catch(() => activo && setTextoOriginal(null));
     return () => { activo = false; };
   }, [detalle]);
+  // El foco va a donde está la siguiente acción: confirmar, o seguir con el próximo caso.
+  useEffect(() => { if (confirmacion) botonConfirmar.current?.focus(); }, [confirmacion]);
+  useEffect(() => { if (cierre) (botonSiguiente.current ?? tituloCierre.current)?.focus(); }, [cierre]);
 
   const r = detalle?.resultado ?? null;
   const enRevision = detalle?.estado === "EN_REVISION_HUMANA";
+  const transcribiendo = enRevision && r?.evaluacion.motivo_auditoria === "fallo_tecnico";
   const posicionCola = useMemo(() => cola.findIndex((c) => c.documento_id === id), [cola, id]);
+  const siguiente = posicionCola >= 0 ? cola[posicionCola + 1] : undefined;
+  const firma = usuario.trim();
 
   const irA = useCallback((desplazamiento: number) => {
     if (posicionCola < 0) return;
@@ -77,40 +116,55 @@ export function DetalleDocumentoPage() {
     if (destino) navigate(`/documentos/${encodeURIComponent(destino.documento_id)}?cola=1`);
   }, [cola, posicionCola, navigate]);
 
-  const resolver = useCallback(async (accion: AccionRevision, correcciones?: Record<string, unknown>) => {
-    if (!detalle || !usuario.trim() || enviando) return;
+  const resolver = useCallback(async (accion: AccionRevision, extra: { correcciones?: Record<string, unknown>; transcripcion?: Record<string, unknown> } = {}) => {
+    if (!detalle || !firma || enviando) return;
     if (accion === "rechazar" && !motivo.trim()) return;
-    if (accion === "corregir" && !correcciones) return;
     setEnviando(true);
     setMensaje(null);
+    setConfirmacion(null);
     try {
-      const resp = await resolverRevision(detalle.documento_id, { accion, usuario: usuario.trim(), rol: rol.id, motivo, correcciones: correcciones ?? null });
-      setMensaje(`${accion === "aprobar" ? "Aprobado" : accion === "corregir" ? "Corregido y re-evaluado" : "Rechazado"}. Queda en ${etiquetaEstado(resp.estado)}.`);
+      const resp = await resolverRevision(detalle.documento_id, {
+        accion, usuario: firma, rol: rol.id, motivo: motivo || (accion === "transcribir" ? "transcrito desde el original" : ""),
+        correcciones: extra.correcciones ?? null, transcripcion: extra.transcripcion ?? null,
+      });
       setCorreccion(null);
       setMotivo("");
+      if (accion === "corregir") setMensaje({ texto: `${PASADO[accion]}. Queda en ${etiquetaEstado(resp.estado)}.` });
+      else setCierre({ accion, estado: resp.estado });
       cargar();
     } catch (e) {
-      setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+      setMensaje({ texto: textoDeError(e), error: true });
     } finally {
       setEnviando(false);
     }
-  }, [detalle, usuario, enviando, motivo, rol.id, cargar]);
+  }, [detalle, firma, enviando, motivo, rol.id, cargar]);
 
-  // Atajos del banco de trabajo: A aprobar, C corregir, R rechazar, J/K moverse en la cola.
+  const pedir = useCallback((decision: Decision) => {
+    if (!enRevision || transcribiendo || !firma || enviando) return;
+    if (decision === "rechazar" && !motivo.trim()) return;
+    setConfirmacion(decision);
+  }, [enRevision, transcribiendo, firma, enviando, motivo]);
+
+  // Atajos del banco de trabajo: A y R abren la confirmación, C abre la corrección, J y K recorren la cola.
   useEffect(() => {
     function alTeclear(e: KeyboardEvent) {
-      const objetivo = e.target as HTMLElement | null;
-      if (objetivo && ["INPUT", "TEXTAREA", "SELECT"].includes(objetivo.tagName)) return;
+      if (e.key === "Escape") { setConfirmacion(null); return; }
+      if (!atajos || e.altKey || e.ctrlKey || e.metaKey || esInteractivo(e.target)) return;
       const tecla = e.key.toLowerCase();
       if (tecla === "j") irA(1);
       else if (tecla === "k") irA(-1);
-      else if (enRevision && tecla === "a") void resolver("aprobar");
-      else if (enRevision && tecla === "r") void resolver("rechazar");
-      else if (enRevision && tecla === "c") setCorreccion((c) => c ?? { campo: "", valor: "" });
+      else if (tecla === "a") pedir("aprobar");
+      else if (tecla === "r") pedir("rechazar");
+      else if (tecla === "c" && enRevision && !transcribiendo) setCorreccion((c) => c ?? { campo: "", valor: "" });
     }
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
-  }, [irA, resolver, enRevision]);
+  }, [irA, pedir, enRevision, transcribiendo, atajos]);
+
+  function cambiarAtajos(activos: boolean) {
+    setAtajos(activos);
+    try { localStorage.setItem(CLAVE_ATAJOS, activos ? "si" : "no"); } catch { /* preferencia de esta sesión */ }
+  }
 
   async function entregar(destino: string) {
     if (!detalle) return;
@@ -120,11 +174,11 @@ export function DetalleDocumentoPage() {
       setPendientes(resp.pendientes);
       if (resp.estado !== detalle.estado) cargar();
     } catch (e) {
-      setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+      setMensaje({ texto: textoDeError(e), error: true });
     }
   }
 
-  if (error) return <p className="error" style={{ marginTop: 16 }}>{error}</p>;
+  if (error) return <p className="estado-carga error" role="alert" style={{ marginTop: 16 }}>{error}</p>;
   if (!detalle) return <p className="muted" style={{ marginTop: 16 }}>Cargando…</p>;
 
   const ver = (valor: string | null | undefined) => (modoDiscreto ? enmascarar(valor) : valor ?? "—");
@@ -135,6 +189,7 @@ export function DetalleDocumentoPage() {
   const plazoAlerta = alerta ? calcularPlazo(alerta.emitida_en, PLAZO_ACUSE_MIN, ahora) : null;
   const plan = r ? (enRevision ? r.enrutamiento.destinos_tras_revision : [r.enrutamiento.destino_principal, ...r.enrutamiento.destinos_secundarios]) : [];
   const retenidas = r?.enrutamiento.entregas_retenidas ?? {};
+  const docPaciente = r?.extraccion.paciente.documento;
   const eventos = [
     ...(detalle.transiciones ?? []).map((t) => ({ fecha: t.fecha_hora, texto: `${etiquetaEstado(t.a_estado)} · ${t.actor}`, detalle: t.motivo, tipo: "estado" as const })),
     ...(alerta ? [{ fecha: alerta.emitida_en, texto: "Alerta crítica emitida", detalle: `${alerta.canal} → ${alerta.destinatario}`, tipo: "alerta" as const }] : []),
@@ -147,7 +202,7 @@ export function DetalleDocumentoPage() {
         <div>
           <p className="muted" style={{ margin: 0 }}>
             <Link to={desdeCola ? "/revision" : "/documentos"}>{desdeCola ? "Cola de revisión" : "Documentos"}</Link> / <code>{detalle.documento_id}</code>
-            {desdeCola && posicionCola >= 0 && <> · {posicionCola + 1} de {cola.length} en la cola · <kbd>J</kbd> siguiente <kbd>K</kbd> anterior</>}
+            {desdeCola && posicionCola >= 0 && <> · {posicionCola + 1} de {cola.length} en la cola</>}
           </p>
           <div className="titulo-doc">
             <h1>{detalle.documento_id}</h1>
@@ -155,8 +210,8 @@ export function DetalleDocumentoPage() {
             <TagEstado estado={detalle.estado} />
           </div>
           <p className="sub">
-            {r?.clasificacion.tipo ?? "Sin clasificar"} · {detalle.canal_origen?.replace("_", " ")} · versión {detalle.version}
-            {detalle.nombre_archivo && <> · {detalle.nombre_archivo}</>}
+            {r?.clasificacion.tipo ?? "Sin clasificar"} · {detalle.canal_origen?.replace(/_/g, " ")} · versión {detalle.version}
+            {detalle.nombre_archivo && <> · {modoDiscreto ? <span className="muted">nombre de archivo oculto</span> : <span className="archivo">{detalle.nombre_archivo}</span>}</>}
             {r && r.extraccion.hallazgos_criticos_detectados.length > 0 && (
               <> · <span className="chips" style={{ display: "inline-flex" }}>{r.extraccion.hallazgos_criticos_detectados.map((h) => <span key={h} className="chip critico" title={h}>{etiquetaConcepto(h)}</span>)}</span></>
             )}
@@ -166,14 +221,14 @@ export function DetalleDocumentoPage() {
           <div className={`alerta-doc ${alerta.estado_acuse === "acusado" ? "acusada" : plazoAlerta.vencido ? "escalada" : ""}`} data-testid="alerta-documento">
             <strong>{alerta.estado_acuse === "acusado" ? `Alerta acusada por ${alerta.acusado_por}` : plazoAlerta.vencido ? "Alerta crítica escalada" : "Alerta crítica sin acuse"}</strong>
             <span className="muted">{alerta.canal} → {alerta.destinatario}{alerta.estado_acuse !== "acusado" && <> · <span className={`plazo ${plazoAlerta.vencido ? "vencido" : plazoAlerta.apremia ? "apremia" : ""}`}>{plazoAlerta.texto}</span></>}</span>
-            {alerta.estado_acuse !== "acusado" && <AccionAcuse documentoId={detalle.documento_id} onAcusado={(resp) => { setMensaje(`Acuse registrado por ${resp.acusado_por}. Circuito cerrado.`); cargar(); }} />}
+            {alerta.estado_acuse !== "acusado" && <AccionAcuse documentoId={detalle.documento_id} onAcusado={(resp) => { setMensaje({ texto: `Acuse registrado por ${resp.acusado_por}. Circuito cerrado.` }); cargar(); }} />}
           </div>
         )}
       </header>
 
-      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
+      <EstadoMensaje mensaje={mensaje} />
 
-      <div className="banco">
+      <div className={`banco ${transcribiendo ? "transcripcion-activa" : ""}`}>
         {/* ------------------------------------------------ Original */}
         <section className="panel" aria-labelledby="p-original">
           <div className="panel-cabecera">
@@ -186,43 +241,51 @@ export function DetalleDocumentoPage() {
           {detalle.formato === "pdf" && (
             <>
               <div className="paginador">
-                <button type="button" className="secundario" disabled={pagina <= 1} onClick={() => setPagina(pagina - 1)}>‹</button>
+                <button type="button" className="secundario" aria-label="Página anterior" disabled={pagina <= 1} onClick={() => setPagina(pagina - 1)}>‹</button>
                 <span>pág {pagina} / {detalle.num_paginas ?? 1}</span>
-                <button type="button" className="secundario" disabled={pagina >= (detalle.num_paginas ?? 1)} onClick={() => setPagina(pagina + 1)}>›</button>
+                <button type="button" className="secundario" aria-label="Página siguiente" disabled={pagina >= (detalle.num_paginas ?? 1)} onClick={() => setPagina(pagina + 1)}>›</button>
+                <button type="button" className="secundario" onClick={() => setAmpliada((v) => !v)} aria-pressed={ampliada}>
+                  {ampliada ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}{ampliada ? "Reducir" : "Ampliar"}
+                </button>
               </div>
-              <img className={`vista-previa ${modoDiscreto ? "discreto" : ""}`} src={urlVistaPrevia(detalle.documento_id, pagina)} alt={`Página ${pagina} del original`} />
+              <img className={`vista-previa ${modoDiscreto ? "discreto" : ""} ${ampliada ? "ampliada" : ""}`} src={urlVistaPrevia(detalle.documento_id, pagina)} alt={`Página ${pagina} del original`} />
             </>
           )}
           {(detalle.formato === "png" || detalle.formato === "jpeg") && (
-            <img className={`vista-previa ${modoDiscreto ? "discreto" : ""}`} src={urlOriginal(detalle.documento_id)} alt="Imagen original" />
+            <img className={`vista-previa ${modoDiscreto ? "discreto" : ""} ${ampliada ? "ampliada" : ""}`} src={urlOriginal(detalle.documento_id)} alt="Imagen original" />
           )}
           {detalle.formato === "txt" && (
             <pre className="texto-original">{textoOriginal === null ? "Original no disponible." : modoDiscreto ? (detalle.texto_enviado_llm ?? "") : textoOriginal}</pre>
           )}
           {modoDiscreto && detalle.formato !== "txt" && <p className="muted">Vista previa difuminada: datos del paciente ocultos en esta pantalla.</p>}
-          <p><a href={urlOriginal(detalle.documento_id)} target="_blank" rel="noreferrer">Ver original</a></p>
+          <p><a href={urlOriginal(detalle.documento_id)} target="_blank" rel="noreferrer">Abrir el original en otra pestaña</a></p>
           <details>
             <summary>Qué salió al LLM (texto seudonimizado)</summary>
             <pre className="texto-original">{detalle.texto_enviado_llm || "Sin texto: el documento se leyó como imagen."}</pre>
           </details>
         </section>
 
-        {/* ------------------------------------------------ Extracción */}
+        {/* ------------------------------------------------ Extracción o transcripción */}
         <section className="panel" aria-labelledby="p-extraccion">
-          <div className="panel-cabecera"><h2 id="p-extraccion">Extracción</h2><span className="muted">confianza por campo</span></div>
-          {!r ? <p className="muted">Sin resultado.</p> : (
+          <div className="panel-cabecera">
+            <h2 id="p-extraccion">{transcribiendo ? "Transcripción" : "Extracción"}</h2>
+            <span className="muted">{transcribiendo ? "desde el original" : "confianza por campo"}</span>
+          </div>
+          {transcribiendo ? (
+            <Transcripcion habilitado={!!firma} enviando={enviando} onEnviar={(t) => void resolver("transcribir", { transcripcion: t })} />
+          ) : !r ? <p className="muted">Sin resultado.</p> : (
             <>
               <dl className="campos-extraccion">
                 <div data-testid="campo-identidad_paciente" className={bajo("identidad_paciente") ? "dudoso" : ""}>
                   <dt>Paciente</dt>
-                  <dd><span>{ver(r.extraccion.paciente.nombre)}</span><span>· {r.extraccion.paciente.edad ?? "—"} años</span> <PildoraConfianza valor={conf.identidad_paciente} umbral={umb.identidad_paciente} /></dd>
-                  <dd className="muted">Documento: {r.extraccion.paciente.documento.tipo} {r.extraccion.paciente.documento.valor ? ver(r.extraccion.paciente.documento.valor) : ""} ({r.extraccion.paciente.documento.estado})</dd>
+                  <dd><span>{ver(r.extraccion.paciente.nombre)}</span><span>· {r.extraccion.paciente.edad != null ? `${r.extraccion.paciente.edad} años` : "edad sin dato"}</span> <PildoraConfianza valor={conf.identidad_paciente} umbral={umb.identidad_paciente} /></dd>
+                  <dd className="muted">Documento: {docPaciente?.tipo || docPaciente?.valor ? <>{docPaciente.tipo} {docPaciente.valor ? ver(docPaciente.valor) : ""}{docPaciente.estado && docPaciente.estado !== "verificado" && <> · {docPaciente.estado.replace(/_/g, " ")}</>}</> : "sin dato"}</dd>
                   {bajo("identidad_paciente") && <dd className="aviso">Bajo el umbral {umb.identidad_paciente?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.paciente.documento.valor", valor: r.extraccion.paciente.documento.valor ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div data-testid="campo-diagnostico_codigo" className={bajo("diagnostico_codigo") ? "dudoso" : ""}>
                   <dt>Diagnósticos</dt>
                   {r.extraccion.diagnosticos.map((d, i) => (
-                    <dd key={i}>{d.texto} <code>{d.cie10_sugerido ?? "—"}</code> {d.cie11_sugerido && <code>{d.cie11_sugerido}</code>} {i === 0 && <PildoraConfianza valor={conf.diagnostico_codigo} umbral={umb.diagnostico_codigo} />}</dd>
+                    <dd key={i}>{d.texto} <code>{d.cie10_sugerido ?? "sin código"}</code> {d.cie11_sugerido && <code>{d.cie11_sugerido}</code>} {i === 0 && <PildoraConfianza valor={conf.diagnostico_codigo} umbral={umb.diagnostico_codigo} />}</dd>
                   ))}
                   {r.extraccion.diagnosticos.length === 0 && <dd className="muted">ninguno</dd>}
                   {bajo("diagnostico_codigo") && <dd className="aviso">Bajo el umbral {umb.diagnostico_codigo?.toFixed(2)}{r.clasificacion.nivel_prioridad === "Crítico" && ": crítico con baja confianza, la alerta ya salió"} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.diagnosticos[0].cie10_sugerido", valor: r.extraccion.diagnosticos[0]?.cie10_sugerido ?? "" })}>Corregir</button></dd>}
@@ -234,12 +297,12 @@ export function DetalleDocumentoPage() {
                 </div>
                 <div>
                   <dt>Fecha del documento</dt>
-                  <dd>{r.extraccion.fecha_documento ?? "—"}</dd>
+                  <dd>{r.extraccion.fecha_documento ?? <span className="muted">sin dato</span>}</dd>
                 </div>
                 <div>
                   <dt>Signos vitales</dt>
-                  <dd>FR {r.extraccion.signos_vitales.FR ?? "—"} · SpO2 {r.extraccion.signos_vitales.SpO2 ?? "—"} · FC {r.extraccion.signos_vitales.FC ?? "—"} · PAS {r.extraccion.signos_vitales.PAS ?? "—"} · T {r.extraccion.signos_vitales.Temp ?? "—"}</dd>
-                  <dd><strong>NEWS2 total: {r.extraccion.signos_vitales.NEWS2_total ?? "no aplica"}</strong> <span className="muted">calculado por el sistema</span></dd>
+                  <dd>FR {r.extraccion.signos_vitales.FR ?? "sd"} · SpO2 {r.extraccion.signos_vitales.SpO2 ?? "sd"} · FC {r.extraccion.signos_vitales.FC ?? "sd"} · PAS {r.extraccion.signos_vitales.PAS ?? "sd"} · T {r.extraccion.signos_vitales.Temp ?? "sd"}</dd>
+                  <dd><strong>NEWS2 total: {r.extraccion.signos_vitales.NEWS2_total ?? "no aplica"}</strong> <span className="muted">calculado por el sistema · sd = sin dato</span></dd>
                 </div>
                 <div data-testid="campo-medicamento_dosis" className={bajo("medicamento_dosis") ? "dudoso" : ""}>
                   <dt>Medicamentos</dt>
@@ -268,18 +331,30 @@ export function DetalleDocumentoPage() {
         {/* ------------------------------------------------ Decisión */}
         <section className="panel" aria-labelledby="p-decision">
           <div className="panel-cabecera"><h2 id="p-decision">Decisión</h2></div>
-          <p className="muted firma" id="firma-decision">{usuario.trim() ? <>Firmas como <strong>{usuario.trim()}</strong> · {rol.nombre}</> : <>Para aprobar, corregir o rechazar, escribe tu usuario en <strong>Firmo como</strong>, en la barra lateral.</>}</p>
+
+          {cierre && (
+            <div className="cierre-caso" data-testid="cierre-caso">
+              <p ref={tituloCierre} tabIndex={-1}><CircleCheckBig size={18} aria-hidden="true" /><strong>Caso cerrado: {PASADO[cierre.accion].toLowerCase()}.</strong> Queda en {etiquetaEstado(cierre.estado)}.</p>
+              <div className="acciones">
+                {desdeCola && siguiente && <button type="button" ref={botonSiguiente} onClick={() => irA(1)}>Siguiente caso <ArrowRight size={16} aria-hidden="true" /><kbd>J</kbd></button>}
+                <Link to={desdeCola ? "/revision" : "/documentos"}>{desdeCola ? "Volver a la cola" : "Volver a Documentos"}</Link>
+              </div>
+            </div>
+          )}
+
+          <p className="muted firma" id="firma-decision">{firma ? <>Firmas como <strong>{firma}</strong> · {rol.nombre}</> : (pared ? <>Para decidir, sal de la vista de pared y escribe tu usuario en <strong>Firmo como</strong>.</> : <>Para decidir, escribe tu usuario en <strong>Firmo como</strong>, en la barra lateral.</>)}</p>
 
           {enRevision && r && (
             <>
               <p className="aviso">Requiere revisión: <strong>{etiquetaMotivo(r.evaluacion.motivo_auditoria)}</strong>{r.evaluacion.campos_dudosos.length > 0 && <> · dudosos: {r.evaluacion.campos_dudosos.join(", ")}</>}</p>
-              {r.evaluacion.motivo_auditoria === "fallo_tecnico" && <p className="muted">El motor de extracción no leyó este documento. Revísalo contra el original y corrige los campos que falten.</p>}
-              <p><span className="muted">Plan tras revisión:</span> {plan.join(" + ") || "—"}</p>
+              {transcribiendo
+                ? <p className="muted">La acción principal es completar la transcripción en el panel central. Si el documento no corresponde, recházalo con su motivo.</p>
+                : <p><span className="muted">Plan tras revisión:</span> {plan.map(etiquetaDestino).join(" + ") || "sin plan"}</p>}
               <label>
-                Motivo (obligatorio para rechazar o bajar la prioridad)
-                <input value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+                <span id="etiqueta-motivo">Motivo (obligatorio para rechazar o bajar la prioridad)</span>
+                <input value={motivo} onChange={(e) => setMotivo(e.target.value)} aria-labelledby="etiqueta-motivo" />
               </label>
-              {correccion && (
+              {correccion && !transcribiendo && (
                 <div className="tarjeta correccion">
                   <SelectorCampo correccion={correccion} onChange={setCorreccion} />
                   <label>
@@ -296,17 +371,47 @@ export function DetalleDocumentoPage() {
                     )}
                   </label>
                   <div className="acciones">
-                    <button type="button" disabled={!usuario.trim() || !correccion.campo.trim()} onClick={() => resolver("corregir", { [correccion.campo.trim()]: correccion.valor })}>Aplicar corrección</button>
+                    <button type="button" disabled={!firma || !correccion.campo.trim()} onClick={() => resolver("corregir", { correcciones: { [correccion.campo.trim()]: correccion.valor } })}>Aplicar corrección</button>
                     <button type="button" className="secundario" onClick={() => setCorreccion(null)}>Cancelar</button>
                   </div>
                   <p className="muted">Las reglas se vuelven a aplicar sin llamar otra vez al LLM, y queda registrado el valor leído y el corregido.</p>
                 </div>
               )}
-              <div className="acciones" style={{ marginTop: 8 }}>
-                <button type="button" aria-describedby="firma-decision" disabled={!usuario.trim() || enviando} onClick={() => resolver("aprobar")}><Check size={16} aria-hidden="true" />Aprobar <kbd>A</kbd></button>
-                <button type="button" className="secundario" disabled={!usuario.trim() || enviando} onClick={() => setCorreccion((c) => c ?? { campo: "", valor: "" })}><Pencil size={16} aria-hidden="true" />Corregir <kbd>C</kbd></button>
-                <button type="button" className="peligro" disabled={!usuario.trim() || !motivo.trim() || enviando} onClick={() => resolver("rechazar")}><X size={16} aria-hidden="true" />Rechazar <kbd>R</kbd></button>
-              </div>
+
+              {confirmacion && (
+                <div className={`confirmacion ${confirmacion}`} data-testid="confirmacion" role="group" aria-labelledby="confirmacion-titulo">
+                  <p id="confirmacion-titulo">
+                    {confirmacion === "aprobar"
+                      ? <>¿Aprobar <strong>{detalle.documento_id}</strong>? Se enruta a <strong>{plan.map(etiquetaDestino).join(" + ") || "sin destino"}</strong>{plan.length > 0 && <span className="oculto-visual"> ({plan.join(", ")})</span>}.</>
+                      : <>¿Rechazar <strong>{detalle.documento_id}</strong>? No se enruta a ningún destino. Motivo: «{motivo.trim()}».</>}
+                  </p>
+                  <div className="acciones">
+                    <button type="button" ref={botonConfirmar} className={confirmacion === "rechazar" ? "peligro" : ""} disabled={enviando} onClick={() => resolver(confirmacion)}>
+                      {confirmacion === "aprobar" ? <><Check size={16} aria-hidden="true" />Confirmar aprobación</> : <><X size={16} aria-hidden="true" />Confirmar rechazo</>}
+                    </button>
+                    <button type="button" className="secundario" onClick={() => setConfirmacion(null)}>Cancelar <kbd>Esc</kbd></button>
+                  </div>
+                </div>
+              )}
+
+              {!confirmacion && (
+                <div className="acciones" style={{ marginTop: 8 }}>
+                  {!transcribiendo && <button type="button" aria-describedby="firma-decision" disabled={!firma || enviando} onClick={() => pedir("aprobar")}><Check size={16} aria-hidden="true" />Aprobar <kbd>A</kbd></button>}
+                  {!transcribiendo && <button type="button" className="secundario" disabled={!firma || enviando} onClick={() => setCorreccion((c) => c ?? { campo: "", valor: "" })}><Pencil size={16} aria-hidden="true" />Corregir <kbd>C</kbd></button>}
+                  <button type="button" className="peligro" aria-describedby="firma-decision ayuda-rechazar" disabled={!firma || !motivo.trim() || enviando} onClick={() => pedir("rechazar")}><X size={16} aria-hidden="true" />Rechazar <kbd>R</kbd></button>
+                  <span id="ayuda-rechazar" className={motivo.trim() ? "oculto-visual" : "muted pista"}>Rechazar exige escribir el motivo.</span>
+                </div>
+              )}
+
+              <details className="ayuda-atajos">
+                <summary><Keyboard size={16} aria-hidden="true" />Atajos de teclado</summary>
+                <ul>
+                  <li><kbd>A</kbd> aprobar y <kbd>R</kbd> rechazar: abren la confirmación; <kbd>Enter</kbd> confirma y <kbd>Esc</kbd> cancela.</li>
+                  <li><kbd>C</kbd> abre la corrección. <kbd>J</kbd> y <kbd>K</kbd> pasan al caso siguiente y al anterior de la cola.</li>
+                  <li>No actúan mientras escribes ni con el foco en un botón o un enlace.</li>
+                </ul>
+                <label className="interruptor"><input type="checkbox" checked={atajos} onChange={(e) => cambiarAtajos(e.target.checked)} />Usar atajos de una tecla</label>
+              </details>
             </>
           )}
 
@@ -332,18 +437,21 @@ export function DetalleDocumentoPage() {
 
           <h3 style={{ marginTop: 16 }}>Línea de tiempo</h3>
           <ol className="timeline">
-            {eventos.map((e, i) => (
-              <li key={i} data-testid="evento" className={e.tipo}>
-                <span className="estado">{e.texto}</span>
-                <span className="muted"> · {new Date(e.fecha).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
-                <Motivo texto={e.detalle} />
-              </li>
-            ))}
+            {eventos.map((e, i) => {
+              const repetido = i > 0 && motivoLegible(eventos[i - 1].detalle).resumen === motivoLegible(e.detalle).resumen && !motivoLegible(e.detalle).tecnico;
+              return (
+                <li key={i} data-testid="evento" className={e.tipo}>
+                  <span className="estado">{e.texto}</span>
+                  <span className="muted"> · {new Date(e.fecha).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
+                  {!repetido && <Motivo texto={e.detalle} />}
+                </li>
+              );
+            })}
           </ol>
           {(detalle.correcciones?.length ?? 0) > 0 && (
             <>
               <h3>Correcciones registradas</h3>
-              <ul>{detalle.correcciones!.map((c, i) => <li key={i}>{etiquetaCampo(c.campo)}: {String(c.extraido ?? "—")} → {String(c.corregido)} <span className="muted">· {c.usuario}</span></li>)}</ul>
+              <ul>{detalle.correcciones!.map((c, i) => <li key={i}>{etiquetaCampo(c.campo)}: {typeof c.extraido === "object" && c.extraido !== null ? "…" : String(c.extraido ?? "sin dato")} → {typeof c.corregido === "object" && c.corregido !== null ? "…" : String(c.corregido)} <span className="muted">· {c.usuario}</span></li>)}</ul>
             </>
           )}
         </section>

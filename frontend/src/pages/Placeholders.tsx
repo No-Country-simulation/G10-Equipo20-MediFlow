@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { listarAlertas } from "../api";
 import { etiquetaConcepto } from "../app/mensajes";
+import { usePared } from "../app/pared";
 import { calcularPlazo } from "../app/plazos";
 import { AccionAcuse } from "../components/AccionAcuse";
 import { ChipPlazo } from "../components/Tags";
@@ -27,12 +28,20 @@ function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
 const clave = (a: AlertaListada) => `${a.documento_id}-${a.version}`;
 const hora = (d: Date) => d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
+/** Hora de emisión; si no es de hoy, con la fecha, para no confundir una alerta de ayer con una de esta mañana. */
+function emitida(iso: string, ahora: Date): string {
+  const d = new Date(iso);
+  const horaCorta = d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === ahora.toDateString() ? `hoy ${horaCorta}` : `${d.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit" })} ${horaCorta}`;
+}
+
 /**
  * Alertas críticas (RN-J7, RN-Q5). Es la pantalla inicial del jefe de urgencias: se actualiza sola, dice cuándo
  * se actualizó, avisa si quedó desactualizada y marca lo que llegó mientras estaba abierta. Las pendientes van
  * de la más vencida a la más reciente; una alerta escalada se marca más fuerte, nunca más suave.
  */
 export function AlertasPage() {
+  const { activo: pared } = usePared();
   const [alertas, setAlertas] = useState<AlertaListada[]>([]);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ahora, setAhora] = useState(() => new Date());
@@ -71,6 +80,7 @@ export function AlertasPage() {
   }, [alertas, ahora]);
   const pendientes = ordenadas.filter((x) => x.a.estado_acuse === "pendiente").length;
   const escaladas = ordenadas.filter((x) => x.a.estado_acuse === "pendiente" && x.plazo.vencido).length;
+  const masAntigua = ordenadas.find((x) => x.a.estado_acuse === "pendiente");
 
   // La cuenta en la pestaña: se ve aunque la pantalla muestre otra cosa.
   useEffect(() => {
@@ -82,6 +92,15 @@ export function AlertasPage() {
   return (
     <>
       <Encabezado titulo="Alertas críticas" sub="La alerta persiste hasta que una persona identificada da el acuse. Nunca lleva datos del paciente. Las más vencidas van primero." />
+      {pared && (
+        <section className={`resumen-pared ${pendientes === 0 ? "en-calma" : ""}`} data-testid="resumen-pared" aria-label="Resumen de alertas">
+          <span className="cuenta">{pendientes}</span>
+          <div>
+            <strong>{pendientes === 0 ? "Ninguna alerta sin acuse" : `${pendientes} sin acuse`}</strong>
+            {masAntigua && <span>la más antigua: {etiquetaConcepto(masAntigua.a.concepto) || "sin concepto"}, {masAntigua.plazo.texto}</span>}
+          </div>
+        </section>
+      )}
       <div className="barra-estado">
         <p className="muted" data-testid="actualizado">
           <RefreshCw size={14} aria-hidden="true" />
@@ -99,21 +118,22 @@ export function AlertasPage() {
       <div role="status" aria-live="polite">{mensaje && <p className="estado-carga ok-estado"><CheckCircle2 size={16} aria-hidden="true" />{mensaje}</p>}</div>
       <section className="tarjeta" style={{ padding: 0 }}>
         <div className="scroll">
-          <table className="tabla-densa">
-            <thead><tr><th>Documento</th><th>Hallazgo</th><th>Emitida</th><th>Plazo</th><th>Estado</th><th><span className="oculto-visual">Acción</span></th></tr></thead>
+          <table className="tabla-densa tabla-alertas">
+            <thead><tr><th>{pared ? "Hallazgo" : "Documento"}</th><th>{pared ? "Documento" : "Hallazgo"}</th><th>Emitida</th><th>Plazo</th><th>Estado</th><th><span className="oculto-visual">Acción</span></th></tr></thead>
             <tbody>
               {ordenadas.map(({ a, plazo }) => {
                 const pendiente = a.estado_acuse === "pendiente";
                 const esNueva = pendiente && nuevas.has(clave(a));
                 return (
                   <tr key={clave(a)} className={`fila ${pendiente ? "critico" : "rutina"}${esNueva ? " nueva" : ""}`} data-testid="fila-alerta">
+                    {pared && <td className="hallazgo">{a.concepto ? etiquetaConcepto(a.concepto) : <span className="muted">Sin concepto</span>}{esNueva && <span className="tag nueva">Nueva</span>}</td>}
                     <td>
                       <Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}><code>{a.documento_id}</code></Link>
-                      {esNueva && <span className="tag nueva">Nueva</span>}
+                      {!pared && esNueva && <span className="tag nueva">Nueva</span>}
                       <span className="secundaria">{a.canal} → {a.destinatario}</span>
                     </td>
-                    <td>{a.concepto ? etiquetaConcepto(a.concepto) : <span className="muted">Sin concepto</span>}</td>
-                    <td>{new Date(a.emitida_en).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</td>
+                    {!pared && <td>{a.concepto ? etiquetaConcepto(a.concepto) : <span className="muted">Sin concepto</span>}</td>}
+                    <td>{emitida(a.emitida_en, ahora)}</td>
                     <td>{pendiente ? <ChipPlazo plazo={plazo} /> : <span className="muted">—</span>}</td>
                     <td>
                       {!pendiente ? <span className="tag exito"><CheckCircle2 size={13} aria-hidden="true" />Acusada · {a.acusado_por}</span>

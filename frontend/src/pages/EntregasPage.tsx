@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { confirmarEntrega, consultarDocumento, ErrorApi, listarDocumentos } from "../api";
+import { confirmarEntrega, consultarDocumento, listarDocumentos } from "../api";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { TagPrioridad } from "../components/Tags";
 import type { DocumentoDetalle } from "../types";
 
@@ -14,7 +15,7 @@ interface FilaEntrega {
 /** Entregas: confirmar destinos de lo enrutado. Enrutado es la decisión; Entregado, el hecho (sección 3.3, RN-J7). */
 export function EntregasPage() {
   const [filas, setFilas] = useState<FilaEntrega[] | null>(null);
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
   useEffect(() => {
     let activo = true;
@@ -30,9 +31,9 @@ export function EntregasPage() {
     try {
       const r = await confirmarEntrega(fila.detalle.documento_id, destino);
       setFilas((actuales) => (actuales ?? []).map((f) => (f.detalle.documento_id === fila.detalle.documento_id ? { ...f, entregas: r.entregas, pendientes: r.pendientes, detalle: { ...f.detalle, estado: r.estado } } : f)));
-      if (r.estado === "ENTREGADO") setMensaje(`${fila.detalle.documento_id} entregado. Estado final (RN-I1).`);
+      if (r.estado === "ENTREGADO") setMensaje({ texto: `${fila.detalle.documento_id} entregado. Es el estado final.` });
     } catch (e) {
-      setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+      setMensaje({ texto: textoDeError(e), error: true });
     }
   }
 
@@ -44,7 +45,7 @@ export function EntregasPage() {
           <p className="sub">Documentos enrutados a la espera de que los destinos confirmen. Un Crítico no se cierra sin el acuse de su alerta; una entrega retenida a Historia Clínica espera la conciliación de identidad.</p>
         </div>
       </header>
-      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
+      <EstadoMensaje mensaje={mensaje} />
       <section className="tarjeta" style={{ padding: 0 }}>
         <div className="scroll">
           <table className="tabla-densa">

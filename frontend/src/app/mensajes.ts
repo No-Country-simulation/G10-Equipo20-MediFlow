@@ -115,3 +115,16 @@ export function motivoLegible(texto: string | null | undefined): { resumen: stri
   }
   return { resumen: texto, tecnico: null };
 }
+
+export const ETIQUETA_DESTINO: Record<string, string> = {
+  Cola_Emergencia_Medica: "Emergencia médica",
+  Auditoria_Autorizaciones: "Auditoría de autorizaciones",
+  Farmacia_Hospitalaria: "Farmacia",
+  Historia_Clinica_Electronica: "Historia clínica",
+  Cola_Revision_Humana: "Revisión humana",
+  Gestion_Programa_Cobertura: "Programa de cobertura",
+};
+
+export function etiquetaDestino(codigo: string): string {
+  return ETIQUETA_DESTINO[codigo] ?? legible(codigo);
+}

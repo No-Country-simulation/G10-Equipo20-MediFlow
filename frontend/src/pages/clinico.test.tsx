@@ -64,6 +64,7 @@ describe("acuse con firma en el momento (RN-Q5)", () => {
   });
 
   it("en la pantalla compartida de urgencias la firma no se guarda ni se propone", async () => {
+    try { localStorage.setItem("mediflow.pared.jefe_urgencias", "no"); } catch { /* sin storage */ }  // fuera de la vista de pared se ve la firma
     const { unmount } = render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
     await userEvent.type(await screen.findByLabelText(/firmo como/i), "dr.perez");
     const fila = (await screen.findAllByTestId("fila-alerta"))[0];
@@ -224,5 +225,63 @@ describe("lenguaje clínico", () => {
     render(<AppRouter rutaInicial="/inicio" rolInicial="auditor_clinico" />);
     expect(await screen.findByText("Revisión humana")).toBeInTheDocument();
     expect(screen.queryByText(/en revision humana/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("vista de pared (pantalla compartida de urgencias)", () => {
+  it("el jefe de urgencias ve una barra de iconos, sin selector de rol ni firma, y un resumen grande", async () => {
+    render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
+    const resumen = await screen.findByTestId("resumen-pared");
+    expect(resumen).toHaveTextContent(/2 sin acuse/);
+    expect(resumen).toHaveTextContent(/la más antigua/i);
+    expect(document.querySelector(".shell")).toHaveClass("pared");
+    expect(screen.queryByLabelText(/^rol$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/firmo como/i)).not.toBeInTheDocument();
+    // la navegación sigue accesible por nombre aunque solo se vean iconos
+    expect(within(screen.getByRole("navigation", { name: /principal/i })).getByRole("link", { name: /alertas críticas/i })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /alto contraste/i })).toBeInTheDocument();
+  });
+
+  it("se puede salir de la vista de pared y la elección se recuerda para ese rol", async () => {
+    const { unmount } = render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
+    await userEvent.click(await screen.findByRole("button", { name: /salir de la vista de pared/i }));
+    expect(document.querySelector(".shell")).not.toHaveClass("pared");
+    expect(screen.getByLabelText(/^rol$/i)).toBeInTheDocument();
+    unmount();
+    render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
+    await screen.findAllByTestId("fila-alerta");
+    expect(document.querySelector(".shell")).not.toHaveClass("pared");
+    expect(screen.getByRole("button", { name: /vista de pared/i })).toBeInTheDocument();
+  });
+
+  it("los demás roles no entran en vista de pared", async () => {
+    render(<AppRouter rutaInicial="/alertas" rolInicial="auditor_clinico" />);
+    await screen.findAllByTestId("fila-alerta");
+    expect(document.querySelector(".shell")).not.toHaveClass("pared");
+    expect(screen.queryByTestId("resumen-pared")).not.toBeInTheDocument();
+  });
+});
+
+describe("observaciones menores de la tercera crítica", () => {
+  it("Lo que vence primero muestra cada documento una sola vez aunque tenga alerta y revisión", async () => {
+    vi.spyOn(api, "colaRevision").mockResolvedValue([itemCola("DOC-VIEJA", "fallo_tecnico", "Crítico")] as never);
+    render(<AppRouter rutaInicial="/inicio" rolInicial="auditor_clinico" />);
+    const lista = await screen.findByTestId("vence-primero");
+    await waitFor(() => expect(within(lista).getAllByText("DOC-VIEJA")).toHaveLength(1));
+    expect(within(lista).getByText("DOC-VIEJA").closest("li")).toHaveTextContent(/alerta/i);
+    expect(within(lista).getByText("DOC-VIEJA").closest("li")).toHaveTextContent(/revisión/i);
+  });
+
+  it("Documentos busca mientras se escribe y habla con nombres, no con códigos", async () => {
+    const listar = vi.spyOn(api, "listarDocumentos");
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
+    expect(await screen.findByLabelText(/id del documento/i)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Revisión humana" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /especial o de excepción/i })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/buscar/i), "EPI");
+    await waitFor(() => expect(listar).toHaveBeenLastCalledWith(expect.objectContaining({ q: "EPI" })), { timeout: 2000 });
+    const cargar = screen.getByRole("button", { name: /cargar documento/i });
+    expect(cargar).toBeDisabled();
+    expect(cargar).toHaveAccessibleDescription(/id del documento/i);
   });
 });

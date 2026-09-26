@@ -1,7 +1,9 @@
 import { FlaskConical, GitBranchPlus, History, ListPlus, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { aprobarConfiguracion, ErrorApi, obtenerConfiguracion, proponerConfiguracion, rechazarConfiguracion, simularConfiguracion } from "../api";
+import { aprobarConfiguracion, obtenerConfiguracion, proponerConfiguracion, rechazarConfiguracion, simularConfiguracion } from "../api";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
+import { alTeclearPestanas } from "../app/pestanas";
 import { useUsuario } from "../app/usuario";
 import { Vacio } from "../components/Vacio";
 import type { Ampliaciones, CambiosConfiguracion, Configuracion, Simulacion, VersionConfiguracion } from "../types";
@@ -78,7 +80,7 @@ export function ConfiguracionPage() {
   const [motivo, setMotivo] = useState("");
   const [simulacion, setSimulacion] = useState<Simulacion | null>(null);
   const [simulando, setSimulando] = useState(false);
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [motivosRechazo, setMotivosRechazo] = useState<Record<number, string>>({});
 
   const cargar = () =>
@@ -87,7 +89,7 @@ export function ConfiguracionPage() {
         setCfg(c);
         setTextos(Object.fromEntries(Object.entries(c.rangos).map(([k, r]) => [k, String(r.efectivo)])));
       })
-      .catch(() => setMensaje("No hay conexión con la API."));
+      .catch(() => setMensaje({ texto: "No hay conexión con el servidor. La página se mostrará cuando vuelva.", error: true }));
   useEffect(() => { cargar(); }, []);
 
   const cambios: CambiosConfiguracion = useMemo(() => {
@@ -117,7 +119,7 @@ export function ConfiguracionPage() {
   const actor = { usuario: yo, rol: "gestor" };
 
   function informar(e: unknown) {
-    setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
+    setMensaje({ texto: textoDeError(e), error: true });
   }
 
   async function simular() {
@@ -136,7 +138,7 @@ export function ConfiguracionPage() {
     setMensaje(null);
     try {
       const v = await proponerConfiguracion({ cambios, usuario: yo, rol: "gestor", motivo: motivo.trim() });
-      setMensaje(`Propuesta #${v.id} creada. ${v.toca_seguridad ? "Toca seguridad: necesita dos aprobadores." : "Necesita una aprobación."}`);
+      setMensaje({ texto: `Propuesta #${v.id} creada. ${v.toca_seguridad ? "Toca seguridad: necesita dos aprobadores." : "Necesita una aprobación."}` });
       setMotivo("");
       setAltoRiesgo("");
       setControlEspecial("");
@@ -154,7 +156,7 @@ export function ConfiguracionPage() {
     setMensaje(null);
     try {
       const r = await aprobarConfiguracion(v.id, actor);
-      setMensaje(r.estado === "vigente" ? `Versión ${r.numero} vigente desde ahora. No es retroactiva.` : `Aprobación registrada: ${r.aprobaciones?.length ?? 0} de ${r.aprobaciones_requeridas}.`);
+      setMensaje({ texto: r.estado === "vigente" ? `Versión ${r.numero} vigente desde ahora. No es retroactiva.` : `Aprobación registrada: ${r.aprobaciones?.length ?? 0} de ${r.aprobaciones_requeridas}.` });
       cargar();
     } catch (e) {
       informar(e);
@@ -166,7 +168,7 @@ export function ConfiguracionPage() {
     setMensaje(null);
     try {
       await rechazarConfiguracion(v.id, { ...actor, motivo: motivosRechazo[v.id] ?? "" });
-      setMensaje(`Propuesta #${v.id} rechazada.`);
+      setMensaje({ texto: `Propuesta #${v.id} rechazada.` });
       cargar();
     } catch (e) {
       informar(e);
@@ -191,14 +193,15 @@ export function ConfiguracionPage() {
           {cfg && cfg.vigente.numero !== 0 && <> · {cfg.vigente.autor} · {fecha(cfg.vigente.vigente_desde)}</>}
         </p>
       </header>
-      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
+      <EstadoMensaje mensaje={mensaje} />
 
-      <div className="pestanas" role="tablist" aria-label="Secciones de configuración">
-        <button type="button" role="tab" aria-selected={pestana === "umbrales"} className={pestana === "umbrales" ? "" : "secundario"} onClick={() => setPestana("umbrales")}><SlidersHorizontal size={16} aria-hidden="true" />Umbrales</button>
-        <button type="button" role="tab" aria-selected={pestana === "listas"} className={pestana === "listas" ? "" : "secundario"} onClick={() => setPestana("listas")}><ListPlus size={16} aria-hidden="true" />Listas ampliables</button>
-        <button type="button" role="tab" aria-selected={pestana === "versiones"} className={pestana === "versiones" ? "" : "secundario"} onClick={() => setPestana("versiones")}><History size={16} aria-hidden="true" />Versiones{pendientes > 0 && <span className="contador-pestana">{pendientes}</span>}</button>
+      <div className="pestanas" role="tablist" aria-label="Secciones de configuración" onKeyDown={alTeclearPestanas}>
+        <button type="button" role="tab" id="tab-umbrales" aria-controls="panel-configuracion" tabIndex={pestana === "umbrales" ? 0 : -1} aria-selected={pestana === "umbrales"} className={pestana === "umbrales" ? "" : "secundario"} onClick={() => setPestana("umbrales")}><SlidersHorizontal size={16} aria-hidden="true" />Umbrales</button>
+        <button type="button" role="tab" id="tab-listas" aria-controls="panel-configuracion" tabIndex={pestana === "listas" ? 0 : -1} aria-selected={pestana === "listas"} className={pestana === "listas" ? "" : "secundario"} onClick={() => setPestana("listas")}><ListPlus size={16} aria-hidden="true" />Listas ampliables</button>
+        <button type="button" role="tab" id="tab-versiones" aria-controls="panel-configuracion" tabIndex={pestana === "versiones" ? 0 : -1} aria-selected={pestana === "versiones"} className={pestana === "versiones" ? "" : "secundario"} onClick={() => setPestana("versiones")}><History size={16} aria-hidden="true" />Versiones{pendientes > 0 && <span className="contador-pestana">{pendientes}</span>}</button>
       </div>
 
+      <div role="tabpanel" id="panel-configuracion" aria-labelledby={`tab-${pestana}`}>
       {pestana === "umbrales" && (
         <div className="dos-columnas">
           <section className="tarjeta">
@@ -314,6 +317,8 @@ export function ConfiguracionPage() {
           </section>
         </>
       )}
+
+      </div>
 
       {pestana !== "versiones" && (
         <>
