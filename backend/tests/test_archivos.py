@@ -108,3 +108,20 @@ def test_renderizar_pagina_devuelve_png():
     with pytest.raises(ArchivoInvalido) as e:
         renderizar_pagina(muestra("cardio_digital.pdf"), 2)
     assert e.value.codigo == "pagina_no_encontrada"
+
+
+# --- Documentos con logo incrustado: el texto embebido manda (hallazgo con las fórmulas y epicrisis del equipo) ---
+
+
+def test_pagina_con_texto_y_logo_va_por_la_ruta_de_texto_RN_M1():
+    lectura = leer_pdf(muestra("fm_losartan_amlodipino.pdf"))
+    assert lectura.paginas_texto == [1]
+    assert lectura.paginas_imagen == []
+    assert "Losartán" in lectura.texto and "FÓRMULA MÉDICA" in lectura.texto
+
+
+def test_epicrisis_de_dos_paginas_con_logo_es_toda_texto():
+    lectura = leer_pdf(muestra("epicrisis_tep.pdf"))
+    assert lectura.paginas_texto == [1, 2]
+    assert lectura.paginas_imagen == []
+    assert "Tromboembolismo" in lectura.texto or "tromboembolismo" in lectura.texto.lower()

@@ -155,3 +155,52 @@ def test_reidentificar_estructura_recorre_dicts_y_listas():
     assert r["diagnosticos"][0]["texto"] == "TEP en Carlos Eduardo Mendes"
     assert r["edad"] == 52
     assert salida["paciente"]["nombre"] == "[PACIENTE_1]"  # no muta la entrada
+
+
+# --- Formatos en columnas (fórmulas y epicrisis del equipo) -------------------------------------------
+
+
+from pathlib import Path as _Path
+
+from app.services.archivos import leer_pdf as _leer_pdf
+
+_MUESTRAS = _Path(__file__).resolve().parents[2] / "samples" / "archivos"
+
+
+def _texto_pdf(nombre: str) -> str:
+    return _leer_pdf((_MUESTRAS / nombre).read_bytes()).texto
+
+
+def test_formula_en_columnas_tokeniza_paciente_profesional_y_documentos(seudo):
+    r = seudo.seudonimizar(_texto_pdf("fm_losartan_amlodipino.pdf"))
+    for dato in ("Gloria Patricia Rincón Aldana", "Rincón", "41.782.305", "Andrés Felipe Cárdenas", "Cárdenas", "79.654.210", "17/01/2023"):
+        assert dato not in r.texto, dato
+    assert "Gloria Patricia Rincón Aldana" in r.mapa.values()
+    assert "Andrés Felipe Cárdenas Molina" in r.mapa.values()
+    # Ninguna etiqueta ni salto de línea dentro de un nombre
+    for token, original in r.mapa.items():
+        if token.startswith(("[PACIENTE_", "[PROFESIONAL_")):
+            assert "\n" not in original, (token, original)
+            assert not original.upper().startswith(("PACIENTE", "NOMBRE", "MÉDICO", "DOCUMENTO", "ESPECIAL")), (token, original)
+    # Lo clínico se conserva
+    for dato in ("Losartán", "50 mg", "30 (treinta)", "I10", "61 años", "Amlodipino"):
+        assert dato in r.texto, dato
+
+
+def test_epicrisis_en_columnas_tokeniza_paciente_y_medico_tratante(seudo):
+    r = seudo.seudonimizar(_texto_pdf("epicrisis_tep.pdf"))
+    for dato in ("Wilson Alberto Jaimes Prada", "Jaimes", "91.478.211", "Sandra Milena Rueda Quintero", "Rueda Quintero", "17/02/1981"):
+        assert dato not in r.texto, dato
+    assert "Wilson Alberto Jaimes Prada" in r.mapa.values()
+    assert "Sandra Milena Rueda Quintero" in r.mapa.values()
+    for token, original in r.mapa.items():
+        if token.startswith(("[PACIENTE_", "[PROFESIONAL_")):
+            assert "\n" not in original, (token, original)
+            assert len(original.split()) <= 6, (token, original)
+    for dato in ("45 años", "Dímero D 4.850", "118 lpm", "90 %", "Wells"):
+        assert dato in r.texto, dato
+
+
+def test_palabras_de_etiqueta_no_se_toman_por_nombres(seudo):
+    r = seudo.seudonimizar("FÓRMULA MÉDICA\nPACIENTE   DOCUMENTO   EDAD / SEXO\nMédico Especialista en Cardiología\nInformación protegida por la Ley 1581")
+    assert not any(t.startswith(("[PACIENTE_", "[PROFESIONAL_")) for t in r.mapa), r.mapa

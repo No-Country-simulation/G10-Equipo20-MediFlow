@@ -13,17 +13,29 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Palabra de nombre propio: Capitalizada o EN MAYÚSCULAS. Conectores habituales en nombres.
+# Dentro de un nombre solo hay espacios o tabuladores: un salto de línea termina el nombre (formatos en columnas).
 _W = r"(?:[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+|[A-ZÁÉÍÓÚÑ]{2,})"
 _C = r"(?:de|del|la|las|los|y|De|Del)"
-_NOMBRE = rf"{_W}(?:\s+(?:{_C}\s+)?{_W}){{1,4}}"
+_E = r"[ \t]+"
+_NOMBRE = rf"{_W}(?:{_E}(?:{_C}{_E})?{_W}){{1,5}}"
+_TRAS_CUE = r"(?![a-záéíóúñ])[ \t]*[:\-]?[ \t]*"
 
 _CUE_PACIENTE = (
-    r"(?:nombre(?:\s+y\s+apellidos?|\s+del\s+paciente|\s+completo)?|paciente|sr\.?|sra\.?|se[ñn]or|se[ñn]ora|don|do[ñn]a)"
+    r"(?:nombre(?:[ \t]+y[ \t]+apellidos?|[ \t]+del[ \t]+paciente|[ \t]+completo)?|paciente|sr\.?|sra\.?|se[ñn]or|se[ñn]ora|don|do[ñn]a)"
 )
 _CUE_PROFESIONAL = (
-    r"(?:dr\.?|dra\.?|doctora?|m[eé]dic[oa](?:\s+tratante)?|profesional|prescriptor|firma|atendido\s+por|especialista"
-    r"|bacteri[oó]log[oa]|enfermer[oa]|odont[oó]log[oa]|fisioterapeuta|qu[ií]mic[oa]\s+farmac[eé]utic[oa])"
+    r"(?:dr\.?|dra\.?|doctora?|m[eé]dic[oa](?:[ \t]+tratante)?|profesional|prescriptor|firma|atendido[ \t]+por|especialista"
+    r"|bacteri[oó]log[oa]|enfermer[oa]|odont[oó]log[oa]|fisioterapeuta|qu[ií]mic[oa][ \t]+farmac[eé]utic[oa])"
 )
+# Palabras que son etiquetas de formulario o encabezados, nunca parte de un nombre.
+_ETIQUETAS = {
+    "paciente", "nombre", "nombres", "apellido", "apellidos", "documento", "edad", "sexo", "eps", "medico", "medica",
+    "especialista", "especialidad", "firma", "sello", "registro", "tratante", "diagnostico", "fecha", "servicio", "canal",
+    "ingreso", "egreso", "procedencia", "ocupacion", "regimen", "telefono", "direccion", "correo", "informacion", "ley",
+    "formula", "epicrisis", "mediflow", "ips", "nit", "centro", "cardiorrespiratorio", "hospital", "clinica", "unidad",
+    "identificacion", "motivo", "consulta", "resumen", "atencion", "hospitalaria", "urgencias", "dosis", "via", "frecuencia",
+    "citas", "control", "recomendaciones", "rethus", "cc", "ti", "rc", "ce", "dr", "dra", "rx", "estancia", "hospitalizacion",
+}
 _CUE_ID = (
     r"(?:C\.?C\.?|T\.?I\.?|R\.?C\.?|C\.?E\.?|P\.?A\.?|P\.?T\.?|NUIP|c[eé]dula(?:\s+de\s+(?:ciudadan[ií]a|extranjer[ií]a))?"
     r"|tarjeta\s+de\s+identidad|registro\s+civil|documento(?:\s+de\s+identidad)?|identificaci[oó]n|identificado\s+con)"
@@ -58,9 +70,34 @@ _PATRONES: list[tuple[str, re.Pattern[str], int]] = [
     ("FECHA", re.compile(rf"\b\d{{1,2}}\s+de\s+(?:{_MESES})(?:\s+de(?:l)?\s+\d{{4}})?\b", re.IGNORECASE), 0),
     # Número largo sin etiqueta: 8 a 11 dígitos seguidos (los valores de laboratorio no llegan a 8 cifras).
     ("ID", re.compile(r"(?<![\d.,])\d{8,11}(?!\d)"), 0),
-    ("PROFESIONAL", re.compile(r"\b" + _CUE_PROFESIONAL + r"\s*[:\-]?\s*(" + _NOMBRE + r")", re.IGNORECASE), 1),
-    ("PACIENTE", re.compile(r"\b" + _CUE_PACIENTE + r"\s*[:\-]?\s*(" + _NOMBRE + r")", re.IGNORECASE), 1),
+    # Cédula con puntos de miles sin etiqueta (79.654.210): dos o tres grupos de tres cifras. Un solo grupo (4.850) es un valor.
+    ("ID", re.compile(r"(?<![\d.,])\d{1,3}(?:\.\d{3}){2,3}(?![\d.,])"), 0),
+    # La etiqueta se lee sin distinguir mayúsculas; el nombre sí las distingue (una palabra en minúscula no es un nombre).
+    ("PACIENTE", re.compile(r"\b(?i:" + _CUE_PACIENTE + r")" + _TRAS_CUE + r"(" + _NOMBRE + r")"), 1),
+    ("PROFESIONAL", re.compile(r"\b(?i:" + _CUE_PROFESIONAL + r")" + _TRAS_CUE + r"(" + _NOMBRE + r")"), 1),
 ]
+_TIPOS_NOMBRE = {"PACIENTE", "PROFESIONAL"}
+
+
+def _sin_tildes(palabra: str) -> str:
+    import unicodedata  # noqa: PLC0415
+
+    return "".join(c for c in unicodedata.normalize("NFD", palabra) if unicodedata.category(c) != "Mn").lower()
+
+
+def _limpiar_nombre(captura: str) -> str | None:
+    """Quita etiquetas de formulario al inicio y corta en la primera etiqueta que aparezca después."""
+    palabras = captura.split()
+    while palabras and _sin_tildes(palabras[0]) in _ETIQUETAS:
+        palabras.pop(0)
+    limpio: list[str] = []
+    for palabra in palabras:
+        if _sin_tildes(palabra) in _ETIQUETAS:
+            break
+        limpio.append(palabra)
+    while limpio and _sin_tildes(limpio[-1]) in {"de", "del", "la", "las", "los", "y"}:
+        limpio.pop()
+    return " ".join(limpio) if len(limpio) >= 2 else None
 
 
 @dataclass
@@ -103,10 +140,18 @@ class Seudonimizador:
 
             def reemplazo(m: re.Match[str], tipo=tipo, grupo=grupo) -> str:
                 original = m.group(grupo)
-                token = token_para(tipo, original)
                 if grupo == 0:
-                    return token
+                    return token_para(tipo, original)
                 inicio, fin = m.span(grupo)
+                if tipo in _TIPOS_NOMBRE:
+                    nombre = _limpiar_nombre(original)
+                    if nombre is None:
+                        return m.group(0)
+                    # Reemplaza solo el nombre limpio dentro de la captura; el resto de la captura se conserva.
+                    pos = original.find(nombre)
+                    inicio, fin = inicio + pos, inicio + pos + len(nombre)
+                    original = nombre
+                token = token_para(tipo, original)
                 return m.group(0)[: inicio - m.start()] + token + m.group(0)[fin - m.start() :]
 
             resultado = patron.sub(reemplazo, resultado)

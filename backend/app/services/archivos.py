@@ -20,6 +20,8 @@ EXTENSION_SALIDA = {"pdf": "pdf", "png": "png", "jpeg": "jpg", "txt": "txt"}
 MAX_PAGINAS_POR_DEFECTO = 20
 MAX_CARACTERES_POR_DEFECTO = 50_000
 ESCALA_RENDER = 2.0
+# Una página con al menos este texto embebido va por la ruta de texto aunque tenga imágenes (logos, sellos).
+MIN_CARACTERES_TEXTO = 40
 
 
 class ArchivoInvalido(Exception):
@@ -129,7 +131,7 @@ def validar_archivo(nombre: str | None, datos: bytes) -> ArchivoValidado:
 
 
 def leer_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_POR_DEFECTO, max_caracteres: int = MAX_CARACTERES_POR_DEFECTO) -> LecturaPDF:
-    """Texto embebido por página; las páginas sin texto o con imagen se renderizan a PNG."""
+    """Texto embebido por página; solo las páginas sin texto útil (escaneos) se renderizan a PNG."""
     pymupdf.TOOLS.mupdf_display_errors(False)
     pymupdf.TOOLS.mupdf_display_warnings(False)
     try:
@@ -149,7 +151,7 @@ def leer_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_POR_DEFECTO, max_ca
         total = 0
         for indice, pagina in enumerate(documento, start=1):
             texto = pagina.get_text("text", sort=True)
-            if texto.strip() and not pagina.get_image_info():
+            if len(texto.strip()) >= MIN_CARACTERES_TEXTO:
                 total += len(texto)
                 if total > max_caracteres:
                     raise ArchivoInvalido("limite_caracteres")
