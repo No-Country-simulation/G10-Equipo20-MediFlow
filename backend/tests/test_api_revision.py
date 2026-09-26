@@ -165,3 +165,21 @@ def test_entrega_retenida_a_HCE_no_bloquea_el_cierre_pero_queda_registrada_RN_A4
 def test_entregar_a_un_destino_que_no_esta_en_el_plan_es_400(client, llm_falso):
     enviar(client, llm_falso, "DOC-1")
     assert client.post("/documentos/DOC-1/entregar", json={"destino": "Farmacia_Hospitalaria"}).status_code == 400
+
+
+# --- Listado de alertas para el banner global (fase A del rediseño) -------------------------------
+
+
+def test_get_alertas_lista_las_pendientes_primero_y_oculta_datos_del_paciente_RN_Q4(client, llm_falso):
+    enviar(client, llm_falso, "DOC-A1")
+    enviar(client, llm_falso, "DOC-A2", texto=TEXTO + " Segunda toma.")
+    client.post("/alertas/DOC-A1/acuse", json={"usuario": "jefe.urgencias"})
+    todas = client.get("/alertas").json()
+    assert [a["documento_id"] for a in todas] == ["DOC-A2", "DOC-A1"]
+    assert todas[0]["estado_acuse"] == "pendiente" and todas[1]["estado_acuse"] == "acusado"
+    assert todas[0]["plazo_minutos"] == 15  # RN-F2
+    assert "Mendes" not in client.get("/alertas").text
+    pendientes = client.get("/alertas", params={"estado_acuse": "pendiente"}).json()
+    assert [a["documento_id"] for a in pendientes] == ["DOC-A2"]
+    assert {"nivel", "mensaje", "canal", "destinatario", "emitida_en", "acusado_por", "concepto"} <= set(pendientes[0])
+    assert pendientes[0]["concepto"] == "TEP_AGUDO"

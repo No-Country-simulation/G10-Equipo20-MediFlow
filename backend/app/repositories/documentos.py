@@ -93,6 +93,15 @@ class RepositorioDocumentos:
         consulta = select(func.count()).select_from(Alerta).where(Alerta.documento_id == documento_id)
         return self.session.scalar(consulta) or 0
 
+    def listar_alertas(self, *, estado_acuse: str | None = None, limit: int = 100) -> list[Alerta]:
+        """Pendientes primero y, dentro de cada grupo, la más antigua primero (RN-J1)."""
+        orden = case((Alerta.estado_acuse == "pendiente", 0), (Alerta.estado_acuse == "escalado", 1), else_=2)
+        consulta = select(Alerta)
+        if estado_acuse:
+            consulta = consulta.where(Alerta.estado_acuse == estado_acuse)
+        consulta = consulta.order_by(orden, Alerta.emitida_en, Alerta.id).limit(limit)
+        return list(self.session.scalars(consulta))
+
     def alerta_por_documento_id(self, documento_id: str) -> Alerta | None:
         consulta = select(Alerta).where(Alerta.documento_id == documento_id).order_by(Alerta.id.desc()).limit(1)
         return self.session.scalars(consulta).first()

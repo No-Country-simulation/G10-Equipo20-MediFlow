@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_llm, get_session, get_storage
 from app.core.config import get_settings
+from app.packs.loader import cargar_umbrales
 from app.repositories.documentos import RepositorioDocumentos
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
@@ -15,6 +16,32 @@ router = APIRouter(prefix="/alertas", tags=["alertas"])
 
 class AcuseRequest(BaseModel):
     usuario: str
+
+
+@router.get("")
+def listar_alertas(estado_acuse: str | None = None, session: Session = Depends(get_session)):
+    """Alertas críticas para el banner y la bandeja del jefe de urgencias. Sin datos del paciente (RN-Q4)."""
+    plazo = cargar_umbrales().tiempos.escalamiento_sin_acuse_min
+    salida = []
+    for a in RepositorioDocumentos(session).listar_alertas(estado_acuse=estado_acuse):
+        resultado = a.documento.resultado_json or {}
+        hallazgos = resultado.get("extraccion", {}).get("hallazgos_criticos_detectados", [])
+        salida.append({
+            "documento_id": a.documento_id,
+            "version": a.documento.version,
+            "nivel": a.nivel,
+            "canal": a.canal,
+            "destinatario": a.destinatario,
+            "mensaje": a.mensaje,
+            "concepto": hallazgos[0] if hallazgos else None,
+            "emitida_en": a.emitida_en.isoformat(),
+            "plazo_minutos": plazo,
+            "estado_acuse": a.estado_acuse,
+            "acusado_por": a.acusado_por,
+            "acusado_en": a.acusado_en.isoformat() if a.acusado_en else None,
+            "estado_documento": a.documento.estado,
+        })
+    return salida
 
 
 @router.post("/{documento_id}/acuse")
