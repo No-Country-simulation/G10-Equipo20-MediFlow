@@ -375,3 +375,49 @@ kbd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.72em;
 .menu li button { width: 100%; text-align: left; text-decoration: none; padding: 8px 10px; border-radius: 8px; display: block; font-weight: 600; }
 .menu li button:hover { background: var(--menta-suave); }
 .menu li button .secundaria { font-weight: 400; white-space: normal; }
+
+/* --- Alto contraste: pantallas compartidas de urgencias ---------------------------
+   Texto negro sobre blanco, bordes visibles, prioridad con relleno sólido y letra más grande.
+   Texto normal por encima de 7:1 (WCAG AAA). Gana sobre el tema oscuro del sistema. */
+:root[data-contraste="alto"] {
+  color-scheme: light;
+  --fondo: #FFFFFF; --superficie: #FFFFFF; --superficie-2: #EDEFEE;
+  --texto: #000000; --muted: #26302D; --borde: #4A5753;
+  --primario: #134238; --primario-900: #0B2A23; --primario-tinta: #0E3A31; --menta: #7FCB9C; --menta-suave: #CDEBD9;
+  --critico: #8A0F07; --critico-fondo: #FFE3E0; --urgente: #6B2A00; --urgente-fondo: #FFE9C2;
+  --rutina: #1F2A37; --rutina-fondo: #E3E6EA; --exito: #04502F; --exito-fondo: #D5F5E2;
+  --foco: #000000; --sombra: none; --sombra-suave: none;
+}
+:root[data-contraste="alto"] body { font-size: 16px; }
+:root[data-contraste="alto"] :focus-visible { outline: 3px solid #000; outline-offset: 2px; box-shadow: 0 0 0 5px #FFD400; }
+:root[data-contraste="alto"] .tarjeta, :root[data-contraste="alto"] .panel { border-width: 2px; }
+:root[data-contraste="alto"] .tabla-densa td, :root[data-contraste="alto"] .tabla-densa th { border-bottom-width: 2px; }
+:root[data-contraste="alto"] .tabla-densa th { color: #000; font-size: 0.8rem; }
+:root[data-contraste="alto"] .tabla-densa tr.fila { border-left-width: 6px; }
+:root[data-contraste="alto"] .tabla-densa tr.fila.critico { border-left-color: var(--critico); }
+:root[data-contraste="alto"] .tabla-densa tr.fila.urgente { border-left-color: var(--urgente); }
+:root[data-contraste="alto"] .tag { border-width: 2px; font-size: 0.85rem; }
+:root[data-contraste="alto"] .tag.critico { background: var(--critico); color: #fff; border-color: var(--critico); }
+:root[data-contraste="alto"] .tag.urgente { background: var(--urgente); color: #fff; border-color: var(--urgente); }
+:root[data-contraste="alto"] .tag.rutina { border-color: var(--rutina); }
+:root[data-contraste="alto"] .plazo { font-size: 1.02em; font-weight: 700; }
+:root[data-contraste="alto"] .plazo.vencido { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+:root[data-contraste="alto"] .banner-alertas { background: var(--critico); color: #fff; border: 2px solid #000; }
+:root[data-contraste="alto"] .banner-alertas .detalle, :root[data-contraste="alto"] .banner-alertas a, :root[data-contraste="alto"] .banner-alertas .plazo { color: #fff; }
+:root[data-contraste="alto"] .banner-alertas code { background: #fff; color: #000; }
+:root[data-contraste="alto"] .banner-alertas .punto { background: #fff; color: var(--critico); }
+:root[data-contraste="alto"] button { border-width: 2px; }
+:root[data-contraste="alto"] button:disabled { opacity: 1; background: #D9DDDB; color: #3A4541; border-color: #6B7773; }
+:root[data-contraste="alto"] input, :root[data-contraste="alto"] select, :root[data-contraste="alto"] textarea { border: 2px solid var(--borde); }
+:root[data-contraste="alto"] .lateral { background: #000; }
+:root[data-contraste="alto"] .lateral nav a { color: #fff; }
+:root[data-contraste="alto"] .lateral nav a.activo { background: #fff; color: #000; }
+:root[data-contraste="alto"] .lateral nav a.activo svg { color: #000; }
+:root[data-contraste="alto"] .lateral .usuario label, :root[data-contraste="alto"] .interruptor-lateral { color: #fff; }
+:root[data-contraste="alto"] .lateral .usuario input, :root[data-contraste="alto"] .lateral .usuario select { border-color: #fff; }
+:root[data-contraste="alto"] a { text-decoration-thickness: 2px; }
+.interruptor-lateral { flex-direction: row; align-items: center; gap: 8px; color: #D9F1E3; cursor: pointer; }
+.interruptor-lateral input { width: auto; accent-color: var(--menta); }
+:root[data-contraste="alto"] .chip.critico { background: var(--critico); color: #fff; font-weight: 700; }
+:root[data-contraste="alto"] .chip.urgente { background: var(--urgente); color: #fff; font-weight: 700; }
+:root[data-contraste="alto"] .alerta-doc { border-width: 2px; }

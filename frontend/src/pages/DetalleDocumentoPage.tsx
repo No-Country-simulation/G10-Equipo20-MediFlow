@@ -209,7 +209,7 @@ export function DetalleDocumentoPage() {
           {detalle.formato === "txt" && (
             <pre className="texto-original">{textoOriginal === null ? "Original no disponible." : modoDiscreto ? (detalle.texto_enviado_llm ?? "") : textoOriginal}</pre>
           )}
-          {modoDiscreto && detalle.formato !== "txt" && <p className="muted">Vista previa difuminada: datos del paciente ocultos en esta pantalla (RN-K1).</p>}
+          {modoDiscreto && detalle.formato !== "txt" && <p className="muted">Vista previa difuminada: datos del paciente ocultos en esta pantalla.</p>}
           <p><a href={urlOriginal(detalle.documento_id)} target="_blank" rel="noreferrer">Ver original</a></p>
           <details>
             <summary>Qué salió al LLM (texto seudonimizado)</summary>

@@ -154,3 +154,28 @@ describe("menú compacto (pantallas angostas)", () => {
     expect(screen.getByRole("button", { name: /abrir menú/i })).toBeInTheDocument();
   });
 });
+
+describe("alto contraste (pantallas compartidas de urgencias)", () => {
+  afterEach(() => document.documentElement.removeAttribute("data-contraste"));
+
+  it("el jefe de urgencias arranca en alto contraste y el auditor no", async () => {
+    const { unmount } = render(<AppRouter rutaInicial="/inicio" rolInicial="jefe_urgencias" />);
+    const interruptor = await screen.findByRole("switch", { name: /alto contraste/i });
+    expect(interruptor).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-contraste", "alto");
+    unmount();
+    document.documentElement.removeAttribute("data-contraste");
+    render(<AppRouter rutaInicial="/inicio" rolInicial="auditor_clinico" />);
+    expect(await screen.findByRole("switch", { name: /alto contraste/i })).not.toBeChecked();
+    expect(document.documentElement).not.toHaveAttribute("data-contraste");
+  });
+
+  it("se alterna desde la barra lateral y la elección se recuerda", async () => {
+    const { unmount } = render(<AppRouter rutaInicial="/inicio" rolInicial="auditor_clinico" />);
+    await userEvent.click(await screen.findByRole("switch", { name: /alto contraste/i }));
+    expect(document.documentElement).toHaveAttribute("data-contraste", "alto");
+    unmount();
+    render(<AppRouter rutaInicial="/inicio" rolInicial="auditor_clinico" />);
+    expect(await screen.findByRole("switch", { name: /alto contraste/i })).toBeChecked();
+  });
+});

@@ -1,8 +1,9 @@
-import { BarChart3, BellRing, ClipboardCheck, FileCheck2, FileText, Home, Menu, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
+import { BarChart3, BellRing, ClipboardCheck, Contrast, FileCheck2, FileText, Home, Menu, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { colaRevision, listarAlertas } from "../../api";
+import { useAltoContraste } from "../../app/contraste";
 import { useRol } from "../../app/RolContext";
 import { ROLES, rolPuedeVer, type RolId } from "../../app/roles";
 import { useUsuario } from "../../app/usuario";
@@ -30,6 +31,7 @@ export function AppShell() {
   const location = useLocation();
   const [contadores, setContadores] = useState({ revision: 0, alertas: 0 });
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [altoContraste, alternarContraste] = useAltoContraste(rol.altoContraste);
 
   useEffect(() => {
     if (!rol.veDocumentos) return;
@@ -96,6 +98,11 @@ export function AppShell() {
           <label>
             Firmo como
             <input id="firmo-como" value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="nombre.apellido" autoComplete="off" />
+          </label>
+          <label className="interruptor-lateral">
+            <input type="checkbox" role="switch" checked={altoContraste} onChange={alternarContraste} />
+            <Contrast size={16} aria-hidden="true" />
+            Alto contraste
           </label>
         </div>
       </aside>
