@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     openai_timeout_s: float = 60.0
     llm_max_intentos: int = 3  # RN-P2
     prompt_version: str = "triaje_v1"  # RN-R5
+    # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
+    base_legal_tratamiento: str = ""  # RN-M8
+    contrato_transmision_internacional: bool = False  # RN-CO19
 
 
 @lru_cache

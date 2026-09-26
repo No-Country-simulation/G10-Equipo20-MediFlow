@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_llm, get_session, get_storage
 from app.core.config import get_settings
-from app.packs.loader import cargar_umbrales
+from app.services.configuracion import ServicioConfiguracion
 from app.repositories.documentos import RepositorioDocumentos
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
@@ -21,7 +21,7 @@ class AcuseRequest(BaseModel):
 @router.get("")
 def listar_alertas(estado_acuse: str | None = None, session: Session = Depends(get_session)):
     """Alertas críticas para el banner y la bandeja del jefe de urgencias. Sin datos del paciente (RN-Q4)."""
-    plazo = cargar_umbrales().tiempos.escalamiento_sin_acuse_min
+    plazo = ServicioConfiguracion(session).umbrales().tiempos.escalamiento_sin_acuse_min
     salida = []
     for a in RepositorioDocumentos(session).listar_alertas(estado_acuse=estado_acuse):
         resultado = a.documento.resultado_json or {}

@@ -33,12 +33,15 @@ from app.schemas.resultado import (
     TipoDocumento as T,
 )
 from app.services.ciclo_vida import prefijo_storage
+from app.services.configuracion import ServicioConfiguracion
 from app.services.enrutamiento import ContextoEnrutamiento, enrutar
+from app.services.errores import ErrorDeRevision
 from app.services.evaluacion import ContextoEvaluacion, evaluar
 from app.services.hallazgos import detectar_en_texto
 from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, ServicioExtraccion
 from app.services.seudonimizacion import limpiar_tokens_no_resueltos, reidentificar_estructura
 from app.services.storage import Storage
+from app.services.usuarios import ServicioUsuarios
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +52,7 @@ _MIME_POR_EXTENSION = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/j
 _ROLES_CLINICOS = {"auditor_clinico", "jefe_urgencias"}
 
 
-class ErrorDeRevision(Exception):
-    def __init__(self, codigo: int, detalle: str):
-        super().__init__(detalle)
-        self.codigo = codigo
-        self.detalle = detalle
+__all__ = ["ErrorDeRevision", "Orquestador", "ACTOR_SISTEMA"]
 
 
 class Orquestador:
@@ -71,8 +70,11 @@ class Orquestador:
         self.storage = storage
         self.extraccion = extraccion
         settings = get_settings()
-        self.pack = pack or cargar_pack(settings.pais_instalacion)
-        self.umbrales = umbrales or cargar_umbrales()
+        # RN-L4: la configuración vigente (base + versión activa) rige lo que se procesa desde ahora.
+        configuracion = ServicioConfiguracion(repositorio.session) if pack is None or umbrales is None else None
+        self.pack = pack or configuracion.pack(settings.pais_instalacion)
+        self.umbrales = umbrales or configuracion.umbrales()
+        self.usuarios = ServicioUsuarios(repositorio.session)
         self.url_base = url_base or settings.url_base_documentos
         self.version_reglas = settings.version_reglas
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
@@ -121,7 +123,10 @@ class Orquestador:
     def nodo_enrutar(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
         resultado = enrutar(estado["evaluado"], self._contexto_enrutamiento(doc), self.pack, self.umbrales)
-        self.repo.transicionar(doc, resultado.estado, actor=ACTOR_SISTEMA, motivo=resultado.enrutamiento.justificacion_enrutamiento[:500])
+        motivo = resultado.enrutamiento.justificacion_enrutamiento
+        if resultado.evaluacion.motivo_auditoria is not None:
+            motivo = f"{resultado.evaluacion.motivo_auditoria.value}: {motivo}"
+        self.repo.transicionar(doc, resultado.estado, actor=ACTOR_SISTEMA, motivo=motivo[:500])
         self._persistir(doc, resultado)
         return {"resultado": resultado}
 
@@ -167,6 +172,7 @@ class Orquestador:
     # --- acciones humanas (RN-J) ---------------------------------------------------------
 
     def resolver_revision(self, doc: Documento, *, accion: str, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any] | None = None) -> ResultadoTriaje:
+        self.usuarios.validar_actor(usuario, "resolver_revision", rol)
         if doc.estado != E.EN_REVISION_HUMANA:
             raise ErrorDeRevision(409, f"RN-I4: el documento está en {doc.estado}, no en revisión humana")
         if not usuario.strip():
@@ -246,6 +252,7 @@ class Orquestador:
     def acusar(self, doc: Documento, usuario: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-Q5: el acuse lo da un usuario identificado")
+        self.usuarios.validar_actor(usuario, "acusar_alerta")
         alerta = self.repo.alerta_activa(doc)
         if alerta is None:
             raise ErrorDeRevision(404, "el documento no tiene alerta crítica")
@@ -292,6 +299,7 @@ class Orquestador:
     def verificar_farmacia(self, doc: Documento, usuario: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-K5: la verificación exige un usuario identificado")
+        self.usuarios.validar_actor(usuario, "verificar_receta")
         if not self.es_receta_por_verificar(doc):
             raise ErrorDeRevision(409, "solo se verifican recetas enrutadas a Farmacia y aún no verificadas")
         resultado = ResultadoTriaje.model_validate(doc.resultado_json)
@@ -328,6 +336,7 @@ class Orquestador:
     def resolver_autorizacion(self, doc: Documento, *, accion: str, usuario: str, motivo: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-K5: la acción exige un usuario identificado")
+        self.usuarios.validar_actor(usuario, "resolver_autorizacion")
         if accion not in ("aprobar", "devolver"):
             raise ErrorDeRevision(422, f"acción desconocida: {accion}")
         if accion == "devolver" and not motivo.strip():
@@ -391,6 +400,11 @@ class Orquestador:
             raise FileNotFoundError("documento sin texto ni páginas legibles")
         return EntradaLLM(documento_id=doc.documento_id, texto=texto, canal_origen=doc.canal_origen, pais=doc.pais_origen,
                           cobertura=doc.cobertura_paciente, imagenes=imagenes)
+
+    def recalcular(self, doc: Documento, *, pack: PackPais, umbrales: Umbrales) -> ResultadoTriaje:
+        """RN-L6: qué decidirían las reglas con otra configuración. No toca el documento ni llama al LLM."""
+        evaluado = evaluar(PropuestaLLM.model_validate(doc.propuesta_json), self._contexto_evaluacion(doc), pack, umbrales)
+        return enrutar(evaluado, self._contexto_enrutamiento(doc), pack, umbrales)
 
     def _contexto_evaluacion(self, doc: Documento) -> ContextoEvaluacion:
         return ContextoEvaluacion(canal_origen=doc.canal_origen, pais=doc.pais_origen, cobertura_request=doc.cobertura_paciente,

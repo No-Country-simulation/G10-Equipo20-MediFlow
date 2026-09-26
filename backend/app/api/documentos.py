@@ -2,7 +2,7 @@
 vista previa y entrega."""
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_llm, get_session, get_storage
 from app.core.config import get_settings
 from app.models.documento import Documento
-from app.packs.loader import cargar_umbrales
+from app.services.configuracion import ServicioConfiguracion
+from app.services.usuarios import ServicioUsuarios
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import CanalOrigen, CoberturaPaciente, DocumentoRequest
 from app.services.archivos import MIME, ArchivoInvalido, contar_paginas, renderizar_pagina
@@ -119,15 +120,16 @@ def _documento_o_404(session: Session, documento_id: str) -> Documento:
 
 
 @router.get("/{documento_id}")
-def consultar_documento(documento_id: str, session: Session = Depends(get_session)):
+def consultar_documento(documento_id: str, session: Session = Depends(get_session), x_usuario: str | None = Header(default=None)):
     doc = _documento_o_404(session, documento_id)
+    ServicioUsuarios(session).registrar_acceso(doc.documento_id, x_usuario, "detalle")  # RN-K3
     return {
         **_resumen(doc),
         "pais_origen": doc.pais_origen,
         "paginas": doc.paginas_json or [],
         # RN-C3: confianza por campo que dio el LLM, junto con los umbrales vigentes de la sección 7.
         "confianzas": (doc.propuesta_json or {}).get("confianzas", {}),
-        "umbrales": cargar_umbrales().confianza.model_dump(),
+        "umbrales": ServicioConfiguracion(session).umbrales().confianza.model_dump(),
         # RN-M1: lo único que viajó al LLM. Sin mapa: nunca se expone.
         "texto_enviado_llm": doc.texto_seudonimizado,
         "entregas": doc.entregas_json or {},
@@ -153,9 +155,11 @@ def _alerta(doc: Documento) -> dict | None:
 
 
 @router.get("/{documento_id}/original")
-def descargar_original(documento_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage)):
+def descargar_original(documento_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage),
+                       x_usuario: str | None = Header(default=None)):
     """El original tal como llegó (RN-P1). Solo para revisores con acceso al documento (RN-K3)."""
     doc = _documento_o_404(session, documento_id)
+    ServicioUsuarios(session).registrar_acceso(doc.documento_id, x_usuario, "original")  # RN-K3
     if not doc.ruta_storage:
         raise HTTPException(status_code=404, detail="original no respaldado")
     try:
@@ -174,9 +178,12 @@ def vista_previa(
     pagina: Annotated[int, Query(ge=1)] = 1,
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
+    x_usuario: str | None = Header(default=None),
 ):
     """PNG de una página del PDF original para la pantalla de revisión."""
     doc = _documento_o_404(session, documento_id)
+    if pagina == 1:
+        ServicioUsuarios(session).registrar_acceso(doc.documento_id, x_usuario, "vista_previa")  # RN-K3
     if doc.formato != "pdf":
         raise HTTPException(status_code=415, detail="la vista previa solo aplica a PDF")
     if not doc.ruta_storage:

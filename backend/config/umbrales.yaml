@@ -35,3 +35,22 @@ news2:                            # RN-D3, RN-D4. NO configurable (RN-D5)
   pas_bajo: 90
   total_critico: 7
   edad_minima: 16                 # RN-N1
+
+rangos:                           # RN-L1: el gestor mueve cada umbral solo dentro de su rango
+  confianza.clasificacion:        {min: 0.70, max: 0.99}
+  confianza.identidad_paciente:   {min: 0.90, max: 0.99}
+  confianza.medicamento_dosis:    {min: 0.90, max: 0.99}
+  confianza.diagnostico_codigo:   {min: 0.80, max: 0.99}
+  confianza.profesional:          {min: 0.75, max: 0.99}
+  confianza.resto:                {min: 0.70, max: 0.99}
+  consistencia.tolerancia_edad_anios:      {min: 0, max: 3}
+  tiempos.comunicacion_critico_min:        {min: 15, max: 60, solo_a_la_baja: true}   # RN-D1
+  tiempos.escalamiento_sin_acuse_min:      {min: 5, max: 30}
+  tiempos.atencion_urgente_h:              {min: 4, max: 48}
+  tiempos.cola_revision.critico_min:       {min: 5, max: 30}
+  tiempos.cola_revision.urgente_h:         {min: 1, max: 8}
+  tiempos.cola_revision.rutina_h_habiles:  {min: 8, max: 72}
+
+calidad:
+  limite_correccion_campo: 0.10   # RN-R4: sobre esta tasa se avisa al gestor y se propone subir el umbral
+  simulacion_ultimos: 50          # RN-L6: documentos recientes sobre los que se simula una configuración

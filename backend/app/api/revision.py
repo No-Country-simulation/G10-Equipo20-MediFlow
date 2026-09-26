@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_llm, get_session, get_storage
 from app.core.config import get_settings
-from app.packs.loader import cargar_umbrales
+from app.services.configuracion import ServicioConfiguracion
 from app.repositories.documentos import RepositorioDocumentos
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
@@ -16,9 +16,8 @@ from app.services.storage import Storage
 router = APIRouter(prefix="/revision", tags=["revision humana"])
 
 
-def _plazo_minutos(nivel: str | None) -> int:
+def _plazo_minutos(nivel: str | None, cola) -> int:
     """RN-J2: Crítico 15 min, Urgente 2 h, Rutina 24 h hábiles."""
-    cola = cargar_umbrales().tiempos.cola_revision
     if nivel == "Crítico":
         return cola.critico_min
     if nivel == "Urgente":
@@ -29,6 +28,7 @@ def _plazo_minutos(nivel: str | None) -> int:
 @router.get("")
 def cola_de_revision(session: Session = Depends(get_session)):
     documentos = RepositorioDocumentos(session).en_revision()
+    cola = ServicioConfiguracion(session).umbrales().tiempos.cola_revision
     return [
         {
             "documento_id": d.documento_id,
@@ -38,7 +38,7 @@ def cola_de_revision(session: Session = Depends(get_session)):
             "campos_dudosos": (d.resultado_json or {}).get("evaluacion", {}).get("campos_dudosos", []),
             "tipo": (d.resultado_json or {}).get("clasificacion", {}).get("tipo"),
             "creado_en": d.creado_en.isoformat(),
-            "plazo_minutos": _plazo_minutos(d.nivel_prioridad),
+            "plazo_minutos": _plazo_minutos(d.nivel_prioridad, cola),
         }
         for d in documentos
     ]

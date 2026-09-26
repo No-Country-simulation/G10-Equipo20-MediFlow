@@ -176,6 +176,19 @@ class UmbralesNews2(BaseModel):
     edad_minima: int
 
 
+class Rango(BaseModel):
+    """RN-L1: límites entre los que el gestor puede mover un umbral."""
+
+    min: float
+    max: float
+    solo_a_la_baja: bool = False  # RN-D1: comunicación de un Crítico, nunca por encima del valor base
+
+
+class Calidad(BaseModel):
+    limite_correccion_campo: float = 0.10  # RN-R4
+    simulacion_ultimos: int = 50  # RN-L6
+
+
 class Umbrales(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -183,6 +196,8 @@ class Umbrales(BaseModel):
     consistencia: UmbralesConsistencia
     tiempos: UmbralesTiempo
     news2: UmbralesNews2
+    rangos: dict[str, Rango] = Field(default_factory=dict)
+    calidad: Calidad = Field(default_factory=Calidad)
 
     def supera(self, campo: str, score: float) -> bool:
         """RN-C3: un campo pasa cuando su score es mayor o igual a su umbral."""
