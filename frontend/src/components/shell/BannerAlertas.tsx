@@ -5,12 +5,25 @@ import { Link } from "react-router-dom";
 import { listarAlertas } from "../../api";
 import { etiquetaConcepto } from "../../app/mensajes";
 import { calcularPlazo } from "../../app/plazos";
+import { useRol } from "../../app/RolContext";
+import { ROLES, rolPuedeVer } from "../../app/roles";
 import type { AlertaListada } from "../../types";
 
 const INTERVALO_MS = 30_000;
 
-/** Un solo banner para todas las alertas críticas sin acuse (RN-F1, RN-F2, RN-Q4). */
+/** Quiénes dan acuse, en palabras: "el auditor clínico o el jefe de urgencias". */
+function quienesAtienden(): string {
+  const nombres = ROLES.filter((r) => rolPuedeVer(r, "/alertas")).map((r) => `el ${r.nombre.charAt(0).toLowerCase()}${r.nombre.slice(1)}`);
+  return nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} o ${nombres[nombres.length - 1]}` : nombres[0] ?? "";
+}
+
+/**
+ * Un solo banner para todas las alertas críticas sin acuse (RN-F1, RN-F2, RN-Q4). Enlaza a Alertas solo
+ * para quien puede dar acuse; los demás roles saben que existen y quién las atiende (RN-K1, RN-Q2).
+ */
 export function BannerAlertas() {
+  const { rol } = useRol();
+  const puedeAtender = rolPuedeVer(rol, "/alertas");
   const [alertas, setAlertas] = useState<AlertaListada[]>([]);
   const [ahora, setAhora] = useState(() => new Date());
 
@@ -44,7 +57,9 @@ export function BannerAlertas() {
         <span className="oculto-visual">{plazo.vencido ? "vencida" : "en plazo"}</span>
         {plazo.vencido && " · escalada al siguiente rol"}
       </span>
-      <Link to="/alertas">Ver alertas</Link>
+      {puedeAtender
+        ? <Link to="/alertas">Ver alertas</Link>
+        : <span className="quien-atiende">{cuantas === 1 ? "La atiende" : "Las atiende"} {quienesAtienden()}.</span>}
     </div>
   );
 }

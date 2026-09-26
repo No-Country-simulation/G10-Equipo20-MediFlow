@@ -60,6 +60,12 @@ export function AppShell() {
   }
 
   const permitido = rolPuedeVer(rol, location.pathname);
+  const alertasDelMenu = rolPuedeVer(rol, "/alertas") ? contadores.alertas : 0;
+  const nombreMenu = menuAbierto
+    ? "Cerrar menú"
+    : alertasDelMenu > 0
+      ? `Abrir menú, ${alertasDelMenu === 1 ? "1 alerta crítica sin acuse" : `${alertasDelMenu} alertas críticas sin acuse`}`
+      : "Abrir menú";
 
   const interruptorContraste = (
     <label className="interruptor-lateral">
@@ -79,9 +85,9 @@ export function AppShell() {
               <strong>Medi<span>Flow</span></strong>
               <small>Pack Colombia · Sede demo</small>
             </div>
-            <button type="button" className="hamburguesa" aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={menuAbierto} aria-controls="menu-principal" onClick={() => setMenuAbierto((v) => !v)}>
+            <button type="button" className="hamburguesa" aria-label={nombreMenu} aria-expanded={menuAbierto} aria-controls="menu-principal" onClick={() => setMenuAbierto((v) => !v)}>
               {menuAbierto ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
-              {!menuAbierto && rol.veDocumentos && contadores.alertas > 0 && <span className="contador critico">{contadores.alertas}</span>}
+              {!menuAbierto && alertasDelMenu > 0 && <span className="contador critico" aria-hidden="true">{alertasDelMenu}</span>}
             </button>
           </div>
           <nav id="menu-principal" aria-label="Principal">

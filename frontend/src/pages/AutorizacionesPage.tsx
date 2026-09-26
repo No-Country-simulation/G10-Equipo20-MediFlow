@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { bandejaAutorizaciones, resolverAutorizacion } from "../api";
-import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
+import { useEstadoMotor } from "../app/motor";
 import { alTeclearPestanas } from "../app/pestanas";
+import { AvisoCaidaEnBandeja } from "../components/AvisoSistema";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { useUsuario } from "../app/usuario";
 import { FranjaConfirmacion } from "../components/FranjaConfirmacion";
 import { TagPrioridad } from "../components/Tags";
@@ -24,6 +26,8 @@ export function AutorizacionesPage() {
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const motor = useEstadoMotor();
+  const caido = motor?.degradado ?? false;
 
   const cargar = () => bandejaAutorizaciones().then(setBandeja).catch(() => setError("No hay conexión con la API."));
   useEffect(() => { cargar(); }, []);
@@ -54,6 +58,7 @@ export function AutorizacionesPage() {
           <p className="sub">Órdenes ambulatorias con su documentación mínima: justificación, diagnóstico codificado, CUPS y cobertura. Las de urgencias y hospitalización no esperan aquí: llegan como aviso.</p>
         </div>
       </header>
+      {motor && caido && <AvisoCaidaEnBandeja estado={motor} que="órdenes" />}
       <div className="pestanas" role="tablist" aria-label="Bandejas de autorización" onKeyDown={alTeclearPestanas}>
         <button type="button" role="tab" id="tab-por_autorizar" aria-controls="panel-autorizaciones" tabIndex={pestana === "por_autorizar" ? 0 : -1} aria-selected={pestana === "por_autorizar"} className={pestana === "por_autorizar" ? "" : "secundario"} onClick={() => setPestana("por_autorizar")}>Por autorizar ({porAutorizar.length})</button>
         <button type="button" role="tab" id="tab-avisos" aria-controls="panel-autorizaciones" tabIndex={pestana === "avisos" ? 0 : -1} aria-selected={pestana === "avisos"} className={pestana === "avisos" ? "" : "secundario"} onClick={() => setPestana("avisos")}>Avisos de urgencias ({avisos.length})</button>
@@ -100,7 +105,7 @@ export function AutorizacionesPage() {
                     </tr>
                   );
                 })}
-                {bandeja && porAutorizar.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 24 }}>No hay órdenes por autorizar.</td></tr>}
+                {bandeja && porAutorizar.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 24 }}>{caido ? "Ninguna orden lista para autorizar. Las que estén entre los documentos sin leer llegarán cuando se transcriban." : "No hay órdenes por autorizar."}</td></tr>}
               </tbody>
             </table>
           </div>

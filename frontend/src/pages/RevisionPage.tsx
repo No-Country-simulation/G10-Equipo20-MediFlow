@@ -4,14 +4,12 @@ import { Link } from "react-router-dom";
 
 import { colaRevision } from "../api";
 import { etiquetaMotivo, etiquetaTipo, tituloHallazgos } from "../app/mensajes";
+import { resumirFalloTecnico } from "../app/motor";
 import { calcularPlazo } from "../app/plazos";
-import { AvisoSistemaDegradado, conPunto, horaCorta } from "../components/AvisoSistema";
+import { AvisoSistemaDegradado, tituloCaida } from "../components/AvisoSistema";
 import { ChipPlazo, TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
 import type { ItemCola } from "../types";
-
-/** Desde cuántos casos por fallo técnico se trata como una caída del motor y no como casos sueltos. */
-const UMBRAL_SISTEMA_DEGRADADO = 3;
 
 function Filas({ items }: { items: ItemCola[] }) {
   return (
@@ -54,11 +52,9 @@ export function RevisionPage() {
 
   const esFallo = (c: ItemCola) => c.motivo_auditoria === "fallo_tecnico";
   const porFallo = (cola ?? []).filter(esFallo);
-  const degradado = porFallo.length >= UMBRAL_SISTEMA_DEGRADADO;
+  const { degradado, criticos: criticosFallo, desde } = resumirFalloTecnico(cola ?? []);
   const plegables = degradado ? porFallo.filter((c) => c.nivel_prioridad !== "Crítico") : [];
   const principales = degradado ? (cola ?? []).filter((c) => !esFallo(c) || c.nivel_prioridad === "Crítico") : cola ?? [];
-  const criticosFallo = porFallo.length - plegables.length;
-  const desde = porFallo.reduce<string | null>((min, c) => (min === null || c.creado_en < min ? c.creado_en : min), null);
 
   return (
     <>
@@ -71,7 +67,7 @@ export function RevisionPage() {
       {error && <p className="error">{error}</p>}
 
       {degradado && (
-        <AvisoSistemaDegradado titulo={conPunto(`El motor de extracción no está respondiendo${desde ? ` desde las ${horaCorta(desde)}` : ""}`)}>
+        <AvisoSistemaDegradado titulo={tituloCaida(desde)}>
           <p>{porFallo.length} documentos pasaron a revisión manual por esa sola causa.{criticosFallo > 0 && ` ${criticosFallo === 1 ? "El crítico queda" : `Los ${criticosFallo} críticos quedan`} arriba, en la cola.`} La detección de hallazgos críticos por texto sigue activa y sus alertas salen igual.</p>
         </AvisoSistemaDegradado>
       )}

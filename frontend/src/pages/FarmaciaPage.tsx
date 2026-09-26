@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { colaFarmacia, verificarReceta } from "../api";
+import { useEstadoMotor } from "../app/motor";
+import { AvisoCaidaEnBandeja } from "../components/AvisoSistema";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { useUsuario } from "../app/usuario";
 import { FranjaConfirmacion } from "../components/FranjaConfirmacion";
@@ -16,6 +18,8 @@ export function FarmaciaPage() {
   const [usuario] = useUsuario();
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const motor = useEstadoMotor();
+  const caido = motor?.degradado ?? false;
 
   const cargar = () => colaFarmacia().then(setRecetas).catch(() => setError("No hay conexión con la API."));
   useEffect(() => { cargar(); }, []);
@@ -44,6 +48,7 @@ export function FarmaciaPage() {
           <p className="sub">Recetas enrutadas a Farmacia. Las de alto riesgo y control especial necesitan dos verificaciones de personas distintas.</p>
         </div>
       </header>
+      {motor && caido && <AvisoCaidaEnBandeja estado={motor} que="recetas" />}
       <EstadoMensaje mensaje={mensaje} />
       {error && <p className="error">{error}</p>}
       <section className="tarjeta" style={{ padding: 0 }}>
@@ -90,7 +95,9 @@ export function FarmaciaPage() {
                   </tr>
                 );
               })}
-              {recetas && recetas.length === 0 && <tr><td colSpan={5}><Vacio icono={Pill} titulo="No hay recetas por verificar" texto="Las fórmulas enrutadas a Farmacia llegan aquí. Las de alto riesgo y control especial piden dos firmas." /></td></tr>}
+              {recetas && recetas.length === 0 && <tr><td colSpan={5}>{caido
+                ? <Vacio icono={Pill} titulo="Ninguna receta lista para verificar" texto="Las que estén entre los documentos sin leer llegarán cuando se transcriban." />
+                : <Vacio icono={Pill} titulo="No hay recetas por verificar" texto="Las fórmulas enrutadas a Farmacia llegan aquí. Las de alto riesgo y control especial piden dos firmas." />}</td></tr>}
             </tbody>
           </table>
         </div>
