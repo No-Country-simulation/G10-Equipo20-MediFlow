@@ -107,7 +107,7 @@ export function AppShell() {
         </div>
       </aside>
       <main className="contenido">
-        {rol.veDocumentos && <BannerAlertas />}
+        {rol.veDocumentos && location.pathname !== "/alertas" && <BannerAlertas />}
         {permitido ? (
           <Outlet />
         ) : (

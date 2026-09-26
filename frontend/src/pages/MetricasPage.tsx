@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { obtenerMetricas } from "../api";
+import { etiquetaEstado, etiquetaMotivo } from "../app/mensajes";
 import type { Metricas } from "../types";
 import { etiquetaUmbral } from "./ConfiguracionPage";
 
 const PERIODOS = [7, 30, 90];
+const VERSIONES: Record<string, string> = { modelo_llm: "Modelo LLM", version_prompt: "Versión del prompt", version_reglas: "Versión de reglas", pack: "Pack de país" };
 
 function pct(v: number | null | undefined): string {
   return v == null ? "—" : `${Math.round(v * 100)} %`;
@@ -58,12 +60,12 @@ export function MetricasPage() {
       </div>
 
       {m && m.avisos.length > 0 && (
-        <section className="tarjeta" data-testid="avisos" style={{ marginTop: 12, borderLeft: "4px solid var(--urgente)" }}>
+        <section className="tarjeta aviso-tarjeta" data-testid="avisos" style={{ marginTop: 12 }}>
           <h2>Avisos al gestor</h2>
           <ul className="accesos">
             {m.avisos.map((a) => (
               <li key={a.campo}>
-                <strong>{a.regla}</strong> · {legible(a.campo)}: tasa de corrección {pct(a.tasa)} sobre un límite de {pct(a.limite)}.
+                {legible(a.campo)}: tasa de corrección {pct(a.tasa)} sobre un límite de {pct(a.limite)}.
                 {" "}Se propone subir <strong>{etiquetaUmbral(a.umbral)}</strong> de {a.umbral_actual} a {a.umbral_propuesto}. <Link to="/configuracion">Ir a Configuración ›</Link>
               </li>
             ))}
@@ -78,7 +80,7 @@ export function MetricasPage() {
             <thead><tr><th>Motivo</th><th>Documentos</th><th>% de procesados</th></tr></thead>
             <tbody>
               {Object.entries(m?.revision_por_motivo ?? {}).map(([motivo, v]) => (
-                <tr key={motivo}><td>{legible(motivo)}<span className="barra"><i style={{ width: `${Math.round(v.porcentaje * 100)}%` }} /></span></td><td className="num">{v.n}</td><td className="num">{pct(v.porcentaje)}</td></tr>
+                <tr key={motivo}><td>{etiquetaMotivo(motivo) || legible(motivo)}<span className="barra"><i style={{ width: `${Math.round(v.porcentaje * 100)}%` }} /></span></td><td className="num">{v.n}</td><td className="num">{pct(v.porcentaje)}</td></tr>
               ))}
               {m && Object.keys(m.revision_por_motivo).length === 0 && <tr><td colSpan={3} className="muted">Nada fue a revisión humana en el periodo.</td></tr>}
             </tbody>
@@ -91,7 +93,7 @@ export function MetricasPage() {
             <thead><tr><th>Transición</th><th>Promedio</th></tr></thead>
             <tbody>
               {Object.entries(m?.tiempo_por_etapa_s ?? {}).map(([etapa, s]) => (
-                <tr key={etapa}><td>{legible(etapa)}</td><td className="num">{s >= 60 ? `${num(s / 60)} min` : `${num(s, 2)} s`}</td></tr>
+                <tr key={etapa}><td>{etapa.split("→").map(etiquetaEstado).join(" → ")}</td><td className="num">{s >= 60 ? `${num(s / 60)} min` : `${num(s, 2)} s`}</td></tr>
               ))}
             </tbody>
           </table>
@@ -121,12 +123,12 @@ export function MetricasPage() {
         <section className="tarjeta" data-testid="versiones">
           <h2>Versiones por documento</h2>
           {Object.entries(m?.versiones ?? {}).map(([tipo, valores]) => (
-            <p key={tipo} style={{ margin: "4px 0" }}><strong>{legible(tipo)}:</strong> {Object.entries(valores).map(([k, n]) => `${k} (${n})`).join(" · ") || "—"}</p>
+            <p key={tipo} style={{ margin: "4px 0" }}><strong>{VERSIONES[tipo] ?? legible(tipo)}:</strong> {Object.entries(valores).map(([k, n]) => `${k} (${n})`).join(" · ") || "—"}</p>
           ))}
         </section>
         <section className="tarjeta">
           <h2>Por estado y prioridad</h2>
-          <p className="muted">{Object.entries(m?.por_estado ?? {}).map(([k, v]) => `${legible(k)}: ${v}`).join(" · ") || "—"}</p>
+          <p className="muted">{Object.entries(m?.por_estado ?? {}).map(([k, v]) => `${etiquetaEstado(k)}: ${v}`).join(" · ") || "—"}</p>
           <p className="muted">{Object.entries(m?.por_prioridad ?? {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—"}</p>
           {fn && fn.documentos.length > 0 && (
             <p className="muted">Falsos negativos críticos: {fn.documentos.map((d) => <Link key={d} to={`/documentos/${encodeURIComponent(d)}`} style={{ marginRight: 6 }}>{d}</Link>)}</p>

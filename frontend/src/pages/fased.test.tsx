@@ -153,9 +153,9 @@ describe("Métricas (RN-R1, RN-R4)", () => {
     expect(await screen.findByTestId("kpi-automatizacion")).toHaveTextContent("67");
     expect(screen.getByTestId("kpi-acuse")).toHaveTextContent("3,2");
     const aviso = screen.getByTestId("avisos");
-    expect(aviso).toHaveTextContent("RN-R4");
+    expect(aviso).toHaveTextContent(/tasa de corrección/i);
     expect(aviso).toHaveTextContent("0.97");
-    expect(screen.getByTestId("por-motivo")).toHaveTextContent("campo dudoso");
+    expect(screen.getByTestId("por-motivo")).toHaveTextContent("Campo bajo el umbral");
     expect(screen.getByTestId("versiones")).toHaveTextContent("gpt-4.1-mini");
     expect(within(aviso).getByRole("link", { name: /configuración/i })).toHaveAttribute("href", "/configuracion");
   });

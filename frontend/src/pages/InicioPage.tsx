@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { colaRevision, listarAlertas, listarUsuarios, obtenerConfiguracion, obtenerMetricas, obtenerResumen, puestaEnMarcha } from "../api";
-import { etiquetaMotivo } from "../app/mensajes";
+import { etiquetaConcepto, etiquetaEstado, etiquetaMotivo } from "../app/mensajes";
 import { calcularPlazo } from "../app/plazos";
 import { useRol } from "../app/RolContext";
 import { TagPrioridad } from "../components/Tags";
@@ -51,7 +51,7 @@ export function InicioPage() {
         const lista: Pendiente[] = [
           ...alertas.map((a) => {
             const p = calcularPlazo(a.emitida_en, a.plazo_minutos, ahora);
-            return { documento_id: a.documento_id, tipo: "alerta" as const, nivel: "Crítico" as const, texto: a.concepto ? `Alerta · ${a.concepto}` : "Alerta crítica sin acuse",
+            return { documento_id: a.documento_id, tipo: "alerta" as const, nivel: "Crítico" as const, texto: a.concepto ? `Alerta · ${etiquetaConcepto(a.concepto)}` : "Alerta crítica sin acuse",
                      vencido: p.vencido, apremia: p.apremia, plazo: p.texto, restante: p.minutosRestantes, ruta: `/documentos/${encodeURIComponent(a.documento_id)}` };
           }),
           ...cola.map((c) => {
@@ -142,10 +142,10 @@ export function InicioPage() {
           ) : <p className="muted">Sin documentos clasificados todavía.</p>}
           <h2 style={{ marginTop: 14 }}>Por estado</h2>
           <ul className="leyenda">
-            {Object.entries(r?.por_estado ?? {}).map(([k, v]) => <li key={k}><span className="muted">{k.replace(/_/g, " ").toLowerCase()}</span> <strong>{v}</strong></li>)}
+            {Object.entries(r?.por_estado ?? {}).map(([k, v]) => <li key={k}><span className="muted">{etiquetaEstado(k)}</span> <strong>{v}</strong></li>)}
             {r && Object.keys(r.por_estado).length === 0 && <li className="muted">—</li>}
           </ul>
-          <p className="muted" style={{ marginTop: 12 }}><Link to="/demo">Modo demostración ›</Link> el recorrido de seis pasos para el jurado</p>
+          <p className="muted" style={{ marginTop: 12 }}><Link to="/demo">Modo demostración ›</Link> recorrido guiado con casos sintéticos</p>
         </section>
       </div>
     </>

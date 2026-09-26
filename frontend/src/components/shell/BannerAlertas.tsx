@@ -1,7 +1,9 @@
+import { OctagonAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { listarAlertas } from "../../api";
+import { etiquetaConcepto } from "../../app/mensajes";
 import { calcularPlazo } from "../../app/plazos";
 import type { AlertaListada } from "../../types";
 
@@ -31,13 +33,15 @@ export function BannerAlertas() {
   const cuantas = alertas.length;
   return (
     <div className={`banner-alertas ${plazo.vencido ? "escalada" : ""}`} role="status" aria-label="Alertas críticas">
-      <span className="punto" aria-hidden="true">!</span>
+      <OctagonAlert className="punto" size={22} aria-hidden="true" />
       <strong>{cuantas === 1 ? "1 alerta crítica sin acuse" : `${cuantas} alertas críticas sin acuse`}</strong>
       <span className="detalle">
         <code>{primera.documento_id}</code>
-        {primera.concepto && <> · {primera.concepto}</>}
+        {primera.concepto && <> · {etiquetaConcepto(primera.concepto)}</>}
         {" · "}
-        <span className={`plazo ${plazo.vencido ? "vencido" : plazo.apremia ? "apremia" : ""}`}>{plazo.texto}</span>
+        {/* La cuenta regresiva cambia cada 15 s: se oculta al lector de pantalla para que no la anuncie en bucle. */}
+        <span className={`plazo ${plazo.vencido ? "vencido" : plazo.apremia ? "apremia" : ""}`} aria-hidden="true">{plazo.texto}</span>
+        <span className="oculto-visual">{plazo.vencido ? "vencida" : "en plazo"}</span>
         {plazo.vencido && " · escalada al siguiente rol"}
       </span>
       <Link to="/alertas">Ver alertas</Link>

@@ -1,4 +1,6 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+
+import { useRol } from "./RolContext";
 
 const CLAVE = "mediflow.usuario";
 
@@ -24,11 +26,22 @@ function guardar(u: string) {
 
 /**
  * Usuario que firma acciones (RN-G4, RN-Q5) y al que se atribuyen los accesos (RN-K3).
- * Sin autenticación en el MVP: se escribe una sola vez en la barra lateral ("Firmo como") y se recuerda en este navegador.
+ * Sin autenticación en el MVP: se escribe en la barra lateral ("Firmo como") y se recuerda en este navegador,
+ * salvo en una pantalla compartida: ahí la firma vive solo en memoria, para que nadie firme con el nombre del anterior.
  */
 export function UsuarioProvider({ children }: { children: ReactNode }) {
-  const [usuario, setUsuarioEstado] = useState<string>(leerGuardado);
-  const valor = useMemo<Estado>(() => [usuario, (u) => { setUsuarioEstado(u); guardar(u); }], [usuario]);
+  const { rol } = useRol();
+  const compartida = rol.pantallaCompartida;
+  const [usuario, setUsuarioEstado] = useState<string>(() => (compartida ? "" : leerGuardado()));
+
+  useEffect(() => {
+    setUsuarioEstado(compartida ? "" : leerGuardado());
+  }, [compartida]);
+
+  const valor = useMemo<Estado>(() => [usuario, (u) => {
+    setUsuarioEstado(u);
+    if (!compartida) guardar(u);
+  }], [usuario, compartida]);
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }
 

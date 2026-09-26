@@ -69,3 +69,49 @@ export function claseEstado(estado: EstadoDocumento): "exito" | "critico" | "mar
   if (estado === "ENRUTADO" || estado === "RESUELTO") return "marca";
   return "neutro";
 }
+
+/** Hallazgos críticos del pack con su nombre clínico. Un concepto ampliado por el gestor se muestra legible igual. */
+export const ETIQUETA_CONCEPTO: Record<string, string> = {
+  TEP_AGUDO: "Tromboembolismo pulmonar agudo",
+  IAM_STEMI: "Infarto con elevación del ST",
+  DISECCION_AORTICA: "Disección aórtica",
+  NEUMOTORAX_TENSION: "Neumotórax a tensión",
+  TAPONAMIENTO_CARDIACO: "Taponamiento cardíaco",
+  INSUF_RESPIRATORIA_AGUDA: "Insuficiencia respiratoria aguda",
+  ARRITMIA_MALIGNA: "Arritmia maligna",
+  EDEMA_AGUDO_PULMON: "Edema agudo de pulmón",
+};
+
+function legible(codigo: string): string {
+  const texto = codigo.toLowerCase().replace(/_/g, " ").trim();
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+export function etiquetaConcepto(codigo: string | null | undefined): string {
+  if (!codigo) return "";
+  return ETIQUETA_CONCEPTO[codigo] ?? legible(codigo);
+}
+
+export function etiquetaEstado(codigo: string | null | undefined): string {
+  if (!codigo) return "";
+  return (ETIQUETA_ESTADO as Record<string, string>)[codigo] ?? legible(codigo);
+}
+
+const RESUMEN_MOTIVO: Record<string, string> = {
+  fallo_tecnico: "El motor de extracción no respondió; el documento pasa a revisión manual.",
+};
+
+/**
+ * Motivo de una transición para el clínico: una frase en español y, aparte, el detalle técnico
+ * (excepciones, claves de configuración) para quien lo necesite.
+ */
+export function motivoLegible(texto: string | null | undefined): { resumen: string; tecnico: string | null } {
+  if (!texto) return { resumen: "", tecnico: null };
+  const separador = texto.indexOf(":");
+  const codigo = (separador >= 0 ? texto.slice(0, separador) : texto).trim();
+  if (codigo in MOTIVO_AUDITORIA) {
+    const resto = separador >= 0 ? texto.slice(separador + 1).trim() : "";
+    return { resumen: RESUMEN_MOTIVO[codigo] ?? `${etiquetaMotivo(codigo)}.`, tecnico: resto || null };
+  }
+  return { resumen: texto, tecnico: null };
+}

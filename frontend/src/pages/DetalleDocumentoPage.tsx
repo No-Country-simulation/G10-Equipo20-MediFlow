@@ -1,13 +1,14 @@
-import { BellRing, Check, Pencil, X } from "lucide-react";
+import { Check, Pencil, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { acusarAlerta, colaRevision, confirmarEntrega, consultarDocumento, ErrorApi, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
-import { etiquetaMotivo } from "../app/mensajes";
+import { colaRevision, confirmarEntrega, consultarDocumento, ErrorApi, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
+import { etiquetaConcepto, etiquetaEstado, etiquetaMotivo, motivoLegible } from "../app/mensajes";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
 import { useRol } from "../app/RolContext";
 import { enmascarar, useUsuario } from "../app/usuario";
 import { HistorialDecisiones } from "../components/HistorialDecisiones";
+import { AccionAcuse } from "../components/AccionAcuse";
 import { TagEstado, TagPrioridad } from "../components/Tags";
 import type { AccionRevision, DocumentoDetalle, ItemCola } from "../types";
 
@@ -84,7 +85,7 @@ export function DetalleDocumentoPage() {
     setMensaje(null);
     try {
       const resp = await resolverRevision(detalle.documento_id, { accion, usuario: usuario.trim(), rol: rol.id, motivo, correcciones: correcciones ?? null });
-      setMensaje(`${accion === "aprobar" ? "Aprobado" : accion === "corregir" ? "Corregido y re-evaluado" : "Rechazado"} · estado ${resp.estado}`);
+      setMensaje(`${accion === "aprobar" ? "Aprobado" : accion === "corregir" ? "Corregido y re-evaluado" : "Rechazado"}. Queda en ${etiquetaEstado(resp.estado)}.`);
       setCorreccion(null);
       setMotivo("");
       cargar();
@@ -111,17 +112,6 @@ export function DetalleDocumentoPage() {
     return () => window.removeEventListener("keydown", alTeclear);
   }, [irA, resolver, enRevision]);
 
-  async function acusar() {
-    if (!detalle) return;
-    try {
-      const resp = await acusarAlerta(detalle.documento_id, usuario.trim());
-      setMensaje(`Acuse registrado por ${resp.acusado_por}.`);
-      cargar();
-    } catch (e) {
-      setMensaje(e instanceof ErrorApi ? e.detalle : "No hay conexión con la API.");
-    }
-  }
-
   async function entregar(destino: string) {
     if (!detalle) return;
     try {
@@ -146,9 +136,9 @@ export function DetalleDocumentoPage() {
   const plan = r ? (enRevision ? r.enrutamiento.destinos_tras_revision : [r.enrutamiento.destino_principal, ...r.enrutamiento.destinos_secundarios]) : [];
   const retenidas = r?.enrutamiento.entregas_retenidas ?? {};
   const eventos = [
-    ...(detalle.transiciones ?? []).map((t) => ({ fecha: t.fecha_hora, texto: `${t.a_estado} · ${t.actor}`, detalle: t.motivo, tipo: "estado" as const })),
+    ...(detalle.transiciones ?? []).map((t) => ({ fecha: t.fecha_hora, texto: `${etiquetaEstado(t.a_estado)} · ${t.actor}`, detalle: t.motivo, tipo: "estado" as const })),
     ...(alerta ? [{ fecha: alerta.emitida_en, texto: "Alerta crítica emitida", detalle: `${alerta.canal} → ${alerta.destinatario}`, tipo: "alerta" as const }] : []),
-    ...(alerta?.acusado_por ? [{ fecha: alerta.emitida_en, texto: `Acuse de ${alerta.acusado_por}`, detalle: "circuito cerrado (RN-J7)", tipo: "acuse" as const }] : []),
+    ...(alerta?.acusado_por ? [{ fecha: alerta.emitida_en, texto: `Acuse de ${alerta.acusado_por}`, detalle: "circuito cerrado", tipo: "acuse" as const }] : []),
   ].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
   return (
@@ -168,7 +158,7 @@ export function DetalleDocumentoPage() {
             {r?.clasificacion.tipo ?? "Sin clasificar"} · {detalle.canal_origen?.replace("_", " ")} · versión {detalle.version}
             {detalle.nombre_archivo && <> · {detalle.nombre_archivo}</>}
             {r && r.extraccion.hallazgos_criticos_detectados.length > 0 && (
-              <> · <span className="chips" style={{ display: "inline-flex" }}>{r.extraccion.hallazgos_criticos_detectados.map((h) => <span key={h} className="chip critico">{h}</span>)}</span></>
+              <> · <span className="chips" style={{ display: "inline-flex" }}>{r.extraccion.hallazgos_criticos_detectados.map((h) => <span key={h} className="chip critico" title={h}>{etiquetaConcepto(h)}</span>)}</span></>
             )}
           </p>
         </div>
@@ -176,7 +166,7 @@ export function DetalleDocumentoPage() {
           <div className={`alerta-doc ${alerta.estado_acuse === "acusado" ? "acusada" : plazoAlerta.vencido ? "escalada" : ""}`} data-testid="alerta-documento">
             <strong>{alerta.estado_acuse === "acusado" ? `Alerta acusada por ${alerta.acusado_por}` : plazoAlerta.vencido ? "Alerta crítica escalada" : "Alerta crítica sin acuse"}</strong>
             <span className="muted">{alerta.canal} → {alerta.destinatario}{alerta.estado_acuse !== "acusado" && <> · <span className={`plazo ${plazoAlerta.vencido ? "vencido" : plazoAlerta.apremia ? "apremia" : ""}`}>{plazoAlerta.texto}</span></>}</span>
-            {alerta.estado_acuse !== "acusado" && <button type="button" disabled={!usuario.trim()} onClick={acusar}><BellRing size={16} aria-hidden="true" />Dar acuse</button>}
+            {alerta.estado_acuse !== "acusado" && <AccionAcuse documentoId={detalle.documento_id} onAcusado={(resp) => { setMensaje(`Acuse registrado por ${resp.acusado_por}. Circuito cerrado.`); cargar(); }} />}
           </div>
         )}
       </header>
@@ -213,7 +203,7 @@ export function DetalleDocumentoPage() {
           <p><a href={urlOriginal(detalle.documento_id)} target="_blank" rel="noreferrer">Ver original</a></p>
           <details>
             <summary>Qué salió al LLM (texto seudonimizado)</summary>
-            <pre className="texto-original">{detalle.texto_enviado_llm || "Sin texto: el documento fue a la ruta de imagen (RN-M2)."}</pre>
+            <pre className="texto-original">{detalle.texto_enviado_llm || "Sin texto: el documento se leyó como imagen."}</pre>
           </details>
         </section>
 
@@ -227,7 +217,7 @@ export function DetalleDocumentoPage() {
                   <dt>Paciente</dt>
                   <dd><span>{ver(r.extraccion.paciente.nombre)}</span><span>· {r.extraccion.paciente.edad ?? "—"} años</span> <PildoraConfianza valor={conf.identidad_paciente} umbral={umb.identidad_paciente} /></dd>
                   <dd className="muted">Documento: {r.extraccion.paciente.documento.tipo} {r.extraccion.paciente.documento.valor ? ver(r.extraccion.paciente.documento.valor) : ""} ({r.extraccion.paciente.documento.estado})</dd>
-                  {bajo("identidad_paciente") && <dd className="aviso">Bajo el umbral {umb.identidad_paciente?.toFixed(2)} (RN-C3) <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.paciente.documento.valor", valor: r.extraccion.paciente.documento.valor ?? "" })}>Corregir</button></dd>}
+                  {bajo("identidad_paciente") && <dd className="aviso">Bajo el umbral {umb.identidad_paciente?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.paciente.documento.valor", valor: r.extraccion.paciente.documento.valor ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div data-testid="campo-diagnostico_codigo" className={bajo("diagnostico_codigo") ? "dudoso" : ""}>
                   <dt>Diagnósticos</dt>
@@ -235,12 +225,12 @@ export function DetalleDocumentoPage() {
                     <dd key={i}>{d.texto} <code>{d.cie10_sugerido ?? "—"}</code> {d.cie11_sugerido && <code>{d.cie11_sugerido}</code>} {i === 0 && <PildoraConfianza valor={conf.diagnostico_codigo} umbral={umb.diagnostico_codigo} />}</dd>
                   ))}
                   {r.extraccion.diagnosticos.length === 0 && <dd className="muted">ninguno</dd>}
-                  {bajo("diagnostico_codigo") && <dd className="aviso">Bajo el umbral {umb.diagnostico_codigo?.toFixed(2)} (RN-C3){r.clasificacion.nivel_prioridad === "Crítico" && ": crítico con baja confianza, la alerta ya salió (RN-D9)"} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.diagnosticos[0].cie10_sugerido", valor: r.extraccion.diagnosticos[0]?.cie10_sugerido ?? "" })}>Corregir</button></dd>}
+                  {bajo("diagnostico_codigo") && <dd className="aviso">Bajo el umbral {umb.diagnostico_codigo?.toFixed(2)}{r.clasificacion.nivel_prioridad === "Crítico" && ": crítico con baja confianza, la alerta ya salió"} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.diagnosticos[0].cie10_sugerido", valor: r.extraccion.diagnosticos[0]?.cie10_sugerido ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div data-testid="campo-profesional" className={bajo("profesional") ? "dudoso" : ""}>
                   <dt>Profesional</dt>
                   <dd><span>{ver(r.extraccion.profesional.nombre)}</span><span>· {r.extraccion.profesional.registro_profesional ?? "sin registro"}</span> <PildoraConfianza valor={conf.profesional} umbral={umb.profesional} /></dd>
-                  {bajo("profesional") && <dd className="aviso">Bajo el umbral {umb.profesional?.toFixed(2)} (RN-C3) <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.profesional.registro_profesional", valor: r.extraccion.profesional.registro_profesional ?? "" })}>Corregir</button></dd>}
+                  {bajo("profesional") && <dd className="aviso">Bajo el umbral {umb.profesional?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.profesional.registro_profesional", valor: r.extraccion.profesional.registro_profesional ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div>
                   <dt>Fecha del documento</dt>
@@ -260,15 +250,17 @@ export function DetalleDocumentoPage() {
                     </dd>
                   ))}
                   {r.extraccion.medicamentos.length === 0 && <dd className="muted">ninguno</dd>}
-                  {bajo("medicamento_dosis") && <dd className="aviso">Bajo el umbral {umb.medicamento_dosis?.toFixed(2)} (RN-C3) <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.medicamentos[0].dosis", valor: r.extraccion.medicamentos[0]?.dosis ?? "" })}>Corregir</button></dd>}
+                  {bajo("medicamento_dosis") && <dd className="aviso">Bajo el umbral {umb.medicamento_dosis?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.medicamentos[0].dosis", valor: r.extraccion.medicamentos[0]?.dosis ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div>
                   <dt>Hallazgos críticos</dt>
-                  <dd>{r.extraccion.hallazgos_criticos_detectados.length ? <span className="chips">{r.extraccion.hallazgos_criticos_detectados.map((h) => <span key={h} className="chip critico">{h}</span>)}</span> : <span className="muted">ninguno</span>}</dd>
+                  <dd>{r.extraccion.hallazgos_criticos_detectados.length ? <span className="chips">{r.extraccion.hallazgos_criticos_detectados.map((h) => <span key={h} className="chip critico" title={h}>{etiquetaConcepto(h)}</span>)}</span> : <span className="muted">ninguno</span>}</dd>
                 </div>
               </dl>
-              <h3 style={{ marginTop: 16 }}>Reglas disparadas (RN-G2)</h3>
-              <HistorialDecisiones historial={r.historial_decisiones} />
+              <details className="tecnico">
+                <summary>Detalle técnico: reglas disparadas ({r.historial_decisiones.length})</summary>
+                <HistorialDecisiones historial={r.historial_decisiones} />
+              </details>
             </>
           )}
         </section>
@@ -276,11 +268,12 @@ export function DetalleDocumentoPage() {
         {/* ------------------------------------------------ Decisión */}
         <section className="panel" aria-labelledby="p-decision">
           <div className="panel-cabecera"><h2 id="p-decision">Decisión</h2></div>
-          <p className="muted firma">Firma: <strong>{usuario.trim() || "escribe tu usuario en la barra lateral"}</strong> · {rol.nombre}</p>
+          <p className="muted firma" id="firma-decision">{usuario.trim() ? <>Firmas como <strong>{usuario.trim()}</strong> · {rol.nombre}</> : <>Para aprobar, corregir o rechazar, escribe tu usuario en <strong>Firmo como</strong>, en la barra lateral.</>}</p>
 
           {enRevision && r && (
             <>
               <p className="aviso">Requiere revisión: <strong>{etiquetaMotivo(r.evaluacion.motivo_auditoria)}</strong>{r.evaluacion.campos_dudosos.length > 0 && <> · dudosos: {r.evaluacion.campos_dudosos.join(", ")}</>}</p>
+              {r.evaluacion.motivo_auditoria === "fallo_tecnico" && <p className="muted">El motor de extracción no leyó este documento. Revísalo contra el original y corrige los campos que falten.</p>}
               <p><span className="muted">Plan tras revisión:</span> {plan.join(" + ") || "—"}</p>
               <label>
                 Motivo (obligatorio para rechazar o bajar la prioridad)
@@ -288,23 +281,29 @@ export function DetalleDocumentoPage() {
               </label>
               {correccion && (
                 <div className="tarjeta correccion">
-                  <label>
-                    Campo (ruta en la extracción; "nivel_prioridad" cambia el nivel)
-                    <input value={correccion.campo} onChange={(e) => setCorreccion({ ...correccion, campo: e.target.value })} />
-                  </label>
+                  <SelectorCampo correccion={correccion} onChange={setCorreccion} />
                   <label>
                     Valor corregido
-                    <input value={correccion.valor} onChange={(e) => setCorreccion({ ...correccion, valor: e.target.value })} />
+                    {correccion.campo === "nivel_prioridad" ? (
+                      <select value={correccion.valor} onChange={(e) => setCorreccion({ ...correccion, valor: e.target.value })}>
+                        <option value="">Elige la prioridad…</option>
+                        <option value="Crítico">Crítico</option>
+                        <option value="Urgente">Urgente</option>
+                        <option value="Rutina">Rutina</option>
+                      </select>
+                    ) : (
+                      <input value={correccion.valor} onChange={(e) => setCorreccion({ ...correccion, valor: e.target.value })} />
+                    )}
                   </label>
                   <div className="acciones">
                     <button type="button" disabled={!usuario.trim() || !correccion.campo.trim()} onClick={() => resolver("corregir", { [correccion.campo.trim()]: correccion.valor })}>Aplicar corrección</button>
                     <button type="button" className="secundario" onClick={() => setCorreccion(null)}>Cancelar</button>
                   </div>
-                  <p className="muted">Se re-ejecutan las reglas sin volver al LLM (RN-J4) y queda el par extraído-corregido (RN-J8).</p>
+                  <p className="muted">Las reglas se vuelven a aplicar sin llamar otra vez al LLM, y queda registrado el valor leído y el corregido.</p>
                 </div>
               )}
               <div className="acciones" style={{ marginTop: 8 }}>
-                <button type="button" disabled={!usuario.trim() || enviando} onClick={() => resolver("aprobar")}><Check size={16} aria-hidden="true" />Aprobar <kbd>A</kbd></button>
+                <button type="button" aria-describedby="firma-decision" disabled={!usuario.trim() || enviando} onClick={() => resolver("aprobar")}><Check size={16} aria-hidden="true" />Aprobar <kbd>A</kbd></button>
                 <button type="button" className="secundario" disabled={!usuario.trim() || enviando} onClick={() => setCorreccion((c) => c ?? { campo: "", valor: "" })}><Pencil size={16} aria-hidden="true" />Corregir <kbd>C</kbd></button>
                 <button type="button" className="peligro" disabled={!usuario.trim() || !motivo.trim() || enviando} onClick={() => resolver("rechazar")}><X size={16} aria-hidden="true" />Rechazar <kbd>R</kbd></button>
               </div>
@@ -326,7 +325,7 @@ export function DetalleDocumentoPage() {
                 ))}
               </ul>
               {pendientes && pendientes.length > 0 && <p className="aviso">Pendiente para cerrar: {pendientes.join(", ")}</p>}
-              {detalle.estado === "ENTREGADO" && <p className="ok">Entregado. Estado final (RN-I1).</p>}
+              {detalle.estado === "ENTREGADO" && <p className="ok">Entregado. Es el estado final.</p>}
               <p className="muted">{r.enrutamiento.justificacion_enrutamiento}</p>
             </>
           )}
@@ -337,18 +336,81 @@ export function DetalleDocumentoPage() {
               <li key={i} data-testid="evento" className={e.tipo}>
                 <span className="estado">{e.texto}</span>
                 <span className="muted"> · {new Date(e.fecha).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
-                <div className="motivo">{e.detalle}</div>
+                <Motivo texto={e.detalle} />
               </li>
             ))}
           </ol>
           {(detalle.correcciones?.length ?? 0) > 0 && (
             <>
-              <h3>Correcciones registradas (RN-J8)</h3>
-              <ul>{detalle.correcciones!.map((c, i) => <li key={i}><code>{c.campo}</code>: {String(c.extraido ?? "—")} → {String(c.corregido)} <span className="muted">· {c.usuario}</span></li>)}</ul>
+              <h3>Correcciones registradas</h3>
+              <ul>{detalle.correcciones!.map((c, i) => <li key={i}>{etiquetaCampo(c.campo)}: {String(c.extraido ?? "—")} → {String(c.corregido)} <span className="muted">· {c.usuario}</span></li>)}</ul>
             </>
           )}
         </section>
       </div>
     </>
+  );
+}
+
+/** Campos que un auditor corrige con frecuencia, por su nombre. La ruta técnica queda como último recurso. */
+const CAMPOS_CORREGIBLES: { ruta: string; etiqueta: string }[] = [
+  { ruta: "nivel_prioridad", etiqueta: "Prioridad" },
+  { ruta: "clasificacion.tipo", etiqueta: "Tipo de documento" },
+  { ruta: "extraccion.fecha_documento", etiqueta: "Fecha del documento" },
+  { ruta: "extraccion.paciente.documento.tipo", etiqueta: "Tipo de documento del paciente" },
+  { ruta: "extraccion.paciente.documento.valor", etiqueta: "Número de documento del paciente" },
+  { ruta: "extraccion.paciente.edad", etiqueta: "Edad del paciente" },
+  { ruta: "extraccion.diagnosticos[0].texto", etiqueta: "Diagnóstico principal" },
+  { ruta: "extraccion.diagnosticos[0].cie10_sugerido", etiqueta: "Código CIE-10 del diagnóstico" },
+  { ruta: "extraccion.profesional.registro_profesional", etiqueta: "Registro del profesional" },
+  { ruta: "extraccion.medicamentos[0].dci", etiqueta: "Medicamento (DCI)" },
+  { ruta: "extraccion.medicamentos[0].dosis", etiqueta: "Dosis del medicamento" },
+  { ruta: "extraccion.medicamentos[0].frecuencia", etiqueta: "Frecuencia del medicamento" },
+];
+const OTRO = "__otro";
+
+function etiquetaCampo(ruta: string): string {
+  return CAMPOS_CORREGIBLES.find((c) => c.ruta === ruta)?.etiqueta ?? ruta;
+}
+
+function SelectorCampo({ correccion, onChange }: { correccion: Correccion; onChange: (c: Correccion) => void }) {
+  const conocido = correccion.campo === "" || CAMPOS_CORREGIBLES.some((c) => c.ruta === correccion.campo);
+  const [otro, setOtro] = useState(!conocido);
+  return (
+    <>
+      <label>
+        Campo a corregir
+        <select value={otro ? OTRO : correccion.campo} onChange={(e) => {
+          if (e.target.value === OTRO) { setOtro(true); onChange({ ...correccion, campo: "" }); }
+          else { setOtro(false); onChange({ ...correccion, campo: e.target.value }); }
+        }}>
+          <option value="">Elige el campo…</option>
+          {CAMPOS_CORREGIBLES.map((c) => <option key={c.ruta} value={c.ruta}>{c.etiqueta}</option>)}
+          <option value={OTRO}>Otro campo (ruta técnica)…</option>
+        </select>
+      </label>
+      {otro && (
+        <label>
+          Ruta técnica del campo
+          <input value={correccion.campo} onChange={(e) => onChange({ ...correccion, campo: e.target.value })} placeholder="extraccion.signos_vitales.SpO2" />
+        </label>
+      )}
+    </>
+  );
+}
+
+/** Motivo de un evento: frase clínica visible y, plegado, el detalle técnico para soporte. */
+function Motivo({ texto }: { texto: string }) {
+  const { resumen, tecnico } = motivoLegible(texto);
+  return (
+    <div className="motivo">
+      {resumen}
+      {tecnico && (
+        <details className="tecnico">
+          <summary>Detalle técnico</summary>
+          <code>{tecnico}</code>
+        </details>
+      )}
+    </div>
   );
 }

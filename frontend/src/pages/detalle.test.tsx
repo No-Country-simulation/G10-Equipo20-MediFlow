@@ -62,7 +62,7 @@ describe("banco de trabajo: tres paneles", () => {
     expect(dx).toHaveTextContent(/bajo el umbral 0.90/i);
     expect(within(dx).getByRole("button", { name: /corregir/i })).toBeInTheDocument();
     expect(screen.getByTestId("campo-identidad_paciente")).toHaveTextContent("0.96");
-    expect(screen.getAllByText("TEP_AGUDO").length).toBeGreaterThanOrEqual(1);  // en el encabezado y en la extracción
+    expect(screen.getAllByText("Tromboembolismo pulmonar agudo").length).toBeGreaterThanOrEqual(1);  // en el encabezado y en la extracción
     expect(screen.getByText(/NEWS2 total/)).toHaveTextContent("10");
     // reglas y línea de tiempo
     expect(screen.getByText("RN-D2")).toBeInTheDocument();
@@ -99,7 +99,7 @@ describe("banco de trabajo: tres paneles", () => {
     await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     await userEvent.click(within(screen.getByTestId("campo-diagnostico_codigo")).getByRole("button", { name: /corregir/i }));
     const valor = screen.getByLabelText(/valor corregido/i);
-    expect(screen.getByLabelText(/campo/i)).toHaveValue("extraccion.diagnosticos[0].cie10_sugerido");
+    expect(screen.getByLabelText(/campo a corregir/i)).toHaveValue("extraccion.diagnosticos[0].cie10_sugerido");
     await userEvent.clear(valor);
     await userEvent.type(valor, "I26.0");
     await userEvent.type(screen.getByLabelText(/^motivo/i), "código confirmado en el informe");
@@ -147,8 +147,9 @@ describe("banco de trabajo: tres paneles", () => {
     const alerta = await screen.findByTestId("alerta-documento");
     expect(alerta).toHaveTextContent(/restantes|vencido/);
     expect(alerta).not.toHaveTextContent("Mendes");
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "jefe.urgencias");
     await userEvent.click(within(alerta).getByRole("button", { name: /dar acuse/i }));
+    await userEvent.type(within(alerta).getByLabelText(/quién da el acuse/i), "jefe.urgencias");
+    await userEvent.click(within(alerta).getByRole("button", { name: /confirmar acuse/i }));
     await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-CLIN-2026-8942", "jefe.urgencias"));
   });
 

@@ -27,6 +27,8 @@ export interface Rol {
   modoDiscreto: boolean;
   /** Alto contraste por defecto: pantallas de urgencias, vistas a distancia y con luz variable. */
   altoContraste: boolean;
+  /** Pantalla que usan varias personas: la firma no se recuerda y se pide en el momento de cada acuse (RN-Q5). */
+  pantallaCompartida: boolean;
 }
 
 const INICIO: ItemNavegacion = { ruta: "/inicio", etiqueta: "Inicio" };
@@ -48,6 +50,7 @@ export const ROLES: Rol[] = [
     rutaInicial: "/revision",
     navegacion: [INICIO, DOCUMENTOS, REVISION, ALERTAS, ENTREGAS],
     veDocumentos: true,
+    pantallaCompartida: false,
     altoContraste: false,
     modoDiscreto: false,
   },
@@ -58,6 +61,7 @@ export const ROLES: Rol[] = [
     rutaInicial: "/farmacia",
     navegacion: [INICIO, FARMACIA, DOCUMENTOS],
     veDocumentos: true,
+    pantallaCompartida: false,
     altoContraste: false,
     modoDiscreto: false,
   },
@@ -68,6 +72,7 @@ export const ROLES: Rol[] = [
     rutaInicial: "/autorizaciones",
     navegacion: [INICIO, AUTORIZACIONES, DOCUMENTOS],
     veDocumentos: true,
+    pantallaCompartida: false,
     altoContraste: false,
     modoDiscreto: false,
   },
@@ -78,6 +83,7 @@ export const ROLES: Rol[] = [
     rutaInicial: "/alertas",
     navegacion: [INICIO, ALERTAS, DOCUMENTOS],
     veDocumentos: true,
+    pantallaCompartida: true,
     altoContraste: true,
     modoDiscreto: true,
   },
@@ -88,6 +94,7 @@ export const ROLES: Rol[] = [
     rutaInicial: "/metricas",
     navegacion: [INICIO, METRICAS, CONFIGURACION],
     veDocumentos: false,
+    pantallaCompartida: false,
     altoContraste: false,
     modoDiscreto: true,
   },
@@ -98,6 +105,7 @@ export const ROLES: Rol[] = [
     rutaInicial: "/administracion",
     navegacion: [INICIO, ADMINISTRACION],
     veDocumentos: false,
+    pantallaCompartida: false,
     altoContraste: false,
     modoDiscreto: true,
   },
