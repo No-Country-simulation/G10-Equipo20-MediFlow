@@ -37,6 +37,8 @@ def cola_de_revision(session: Session = Depends(get_session)):
             "motivo_auditoria": (d.resultado_json or {}).get("evaluacion", {}).get("motivo_auditoria"),
             "campos_dudosos": (d.resultado_json or {}).get("evaluacion", {}).get("campos_dudosos", []),
             "tipo": (d.resultado_json or {}).get("clasificacion", {}).get("tipo"),
+            # Conceptos del pack (TEP_AGUDO…), nunca texto del paciente (RN-M4): la cola muestra qué es cada caso.
+            "hallazgos": (d.resultado_json or {}).get("extraccion", {}).get("hallazgos_criticos_detectados", []),
             "creado_en": d.creado_en.isoformat(),
             "plazo_minutos": _plazo_minutos(d.nivel_prioridad, cola),
         }

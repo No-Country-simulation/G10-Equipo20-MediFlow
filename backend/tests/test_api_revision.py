@@ -58,6 +58,16 @@ def test_cola_se_ordena_por_prioridad_y_luego_antiguedad_RN_J1(client, llm_falso
     assert cola[0]["plazo_minutos"] == 15  # RN-J2
 
 
+def test_la_cola_muestra_el_hallazgo_critico_para_no_abrir_cada_caso(client, llm_falso):
+    """La señal clínica va en la cola: el revisor ve qué es cada caso sin abrirlo. Sin datos del paciente (RN-M4)."""
+    enviar(client, llm_falso, "DOC-CRIT", propuesta_para_revision())
+    enviar(client, llm_falso, "DOC-RUT-1", propuesta_rutina_dudosa(), texto=TEXTO_RUTINA)
+    por_id = {d["documento_id"]: d for d in client.get("/revision").json()}
+    assert por_id["DOC-CRIT"]["hallazgos"] == ["TEP_AGUDO"]
+    assert por_id["DOC-RUT-1"]["hallazgos"] == []
+    assert "Mendes" not in client.get("/revision").text
+
+
 # --- Acciones del revisor (RN-J3) ---------------------------------------------------------------
 
 
