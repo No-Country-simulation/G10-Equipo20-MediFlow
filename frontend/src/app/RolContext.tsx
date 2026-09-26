@@ -13,8 +13,11 @@ interface ContextoRol {
 
 const Contexto = createContext<ContextoRol | null>(null);
 
+/** `?rol=gestor` en la URL abre la aplicación con ese rol (enlaces de demostración); si no, el rol recordado en este navegador. */
 function leerRolGuardado(): Rol {
   try {
+    const enUrl = new URLSearchParams(window.location.search).get("rol");
+    if (enUrl) return rolPorId(enUrl);
     return rolPorId(localStorage.getItem(CLAVE));
   } catch {
     return rolPorId(null);
