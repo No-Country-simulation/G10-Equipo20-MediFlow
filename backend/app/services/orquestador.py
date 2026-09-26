@@ -171,7 +171,8 @@ class Orquestador:
 
     # --- acciones humanas (RN-J) ---------------------------------------------------------
 
-    def resolver_revision(self, doc: Documento, *, accion: str, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any] | None = None) -> ResultadoTriaje:
+    def resolver_revision(self, doc: Documento, *, accion: str, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any] | None = None,
+                          transcripcion: dict[str, Any] | None = None) -> ResultadoTriaje:
         self.usuarios.validar_actor(usuario, "resolver_revision", rol)
         if doc.estado != E.EN_REVISION_HUMANA:
             raise ErrorDeRevision(409, f"RN-I4: el documento está en {doc.estado}, no en revisión humana")
@@ -207,6 +208,9 @@ class Orquestador:
 
         if accion == "corregir":
             return self._corregir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, correcciones=correcciones or {})
+
+        if accion == "transcribir":
+            return self._transcribir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, transcripcion=transcripcion or {})
 
         raise ErrorDeRevision(422, f"acción desconocida: {accion}")
 
@@ -244,6 +248,50 @@ class Orquestador:
         nuevo = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
         nuevo.historial_decisiones = resultado.historial_decisiones + [
             DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) corrigió {list(correcciones)}: {motivo}", decision="corregido")
+        ] + nuevo.historial_decisiones
+        self.repo.transicionar(doc, nuevo.estado, actor=usuario, motivo=nuevo.enrutamiento.justificacion_enrutamiento[:500])
+        self._persistir(doc, nuevo, emitir_alerta=self.repo.alerta_activa(doc) is None)
+        return nuevo
+
+    def _transcribir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, transcripcion: dict[str, Any]) -> ResultadoTriaje:
+        """Sin lectura del LLM (RN-P2), la persona transcribe desde el original y las reglas se aplican igual.
+
+        La transcripción tiene la forma de la propuesta del LLM y se valida con el mismo esquema estricto (RN-P3).
+        La prioridad transcrita entra como propuesta: el código puede subirla y nunca bajarla (RN-D8), así que un
+        hallazgo crítico detectado en el texto (RN-P4) se mantiene. Cada dato queda como corrección (RN-J8).
+        """
+        if doc.propuesta_json:
+            raise ErrorDeRevision(409, "el documento ya tiene lectura del LLM; use la acción corregir")
+        tipo = (transcripcion.get("clasificacion") or {}).get("tipo")
+        if not tipo:
+            raise ErrorDeRevision(422, "la transcripción exige el tipo de documento (clasificacion.tipo)")
+        base: dict[str, Any] = {
+            "clasificacion": {"tipo": tipo, "setting": _SETTING_POR_CANAL.get(doc.canal_origen, Setting.AMBULATORIO).value,
+                              "especialidad": "No indicada", "dominio": Dominio.OTRO.value, "rol_autor": None,
+                              "score_confianza": 1.0, "nivel_prioridad_propuesto": N.RUTINA.value},
+            "extraccion": {},
+            "condiciones": {},
+            # Lo transcribe una persona desde el original: no hay incertidumbre de lectura que medir.
+            "confianzas": {"identidad_paciente": 1.0, "medicamento_dosis": 1.0, "diagnostico_codigo": 1.0, "profesional": 1.0},
+            "campos_dudosos": [],
+        }
+        propuesta_dict = _fusionar(base, transcripcion)
+        try:
+            propuesta = PropuestaLLM.model_validate(propuesta_dict)
+        except ValueError as error:
+            raise ErrorDeRevision(422, f"la transcripción no tiene la forma esperada: {error}") from error
+
+        for ruta, valor in _hojas(transcripcion):
+            self.repo.registrar_correccion(doc, campo=ruta, extraido=None, corregido=valor, usuario=usuario)  # RN-J8
+        doc.propuesta_json = propuesta.model_dump(mode="json")
+        self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "transcrito desde el original")
+        contexto = self._contexto_evaluacion(doc)
+        contexto.usuario_humano = usuario
+        evaluado = evaluar(propuesta, contexto, self.pack, self.umbrales)
+        self.repo.transicionar(doc, E.EVALUADO, actor=usuario, motivo="RN-J4: reglas aplicadas sobre la transcripción humana")
+        nuevo = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
+        nuevo.historial_decisiones = resultado.historial_decisiones + [
+            DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) transcribió el documento desde el original: {motivo}", decision="transcrito")
         ] + nuevo.historial_decisiones
         self.repo.transicionar(doc, nuevo.estado, actor=usuario, motivo=nuevo.enrutamiento.justificacion_enrutamiento[:500])
         self._persistir(doc, nuevo, emitir_alerta=self.repo.alerta_activa(doc) is None)
@@ -462,3 +510,26 @@ def _asignar(estructura: dict[str, Any], ruta: str, valor: Any) -> Any:
     anterior = nodo[clave] if (isinstance(nodo, list) or clave in nodo) else None
     nodo[clave] = valor
     return anterior
+
+
+def _fusionar(base: dict[str, Any], encima: dict[str, Any]) -> dict[str, Any]:
+    """Fusión profunda de diccionarios; las listas y los valores simples de `encima` reemplazan a los de `base`."""
+    salida = dict(base)
+    for clave, valor in encima.items():
+        if isinstance(valor, dict) and isinstance(salida.get(clave), dict):
+            salida[clave] = _fusionar(salida[clave], valor)
+        else:
+            salida[clave] = valor
+    return salida
+
+
+def _hojas(datos: dict[str, Any], prefijo: str = "") -> list[tuple[str, Any]]:
+    """Rutas con puntos de cada dato transcrito. Las listas (diagnósticos, medicamentos) se registran enteras."""
+    salida: list[tuple[str, Any]] = []
+    for clave, valor in datos.items():
+        ruta = f"{prefijo}.{clave}" if prefijo else clave
+        if isinstance(valor, dict):
+            salida.extend(_hojas(valor, ruta))
+        else:
+            salida.append((ruta, valor))
+    return salida

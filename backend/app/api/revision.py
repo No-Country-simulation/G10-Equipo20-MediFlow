@@ -45,11 +45,13 @@ def cola_de_revision(session: Session = Depends(get_session)):
 
 
 class ResolucionRequest(BaseModel):
-    accion: Literal["aprobar", "corregir", "rechazar"]  # RN-J3 (reasignar y escalar quedan para después)
+    accion: Literal["aprobar", "corregir", "rechazar", "transcribir"]  # RN-J3 (reasignar y escalar quedan para después)
     usuario: str = Field(..., min_length=1)  # RN-G4, RN-K5
     rol: str = Field(..., min_length=1)
     motivo: str = ""
     correcciones: dict[str, Any] | None = None
+    # Fallo técnico (RN-P2): sin lectura del LLM, la persona transcribe con la misma forma de la propuesta.
+    transcripcion: dict[str, Any] | None = None
 
 
 @router.post("/{documento_id}/resolver")
@@ -67,7 +69,8 @@ def resolver(
     orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos))
     try:
         resultado = orquestador.resolver_revision(
-            doc, accion=cuerpo.accion, usuario=cuerpo.usuario, rol=cuerpo.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones
+            doc, accion=cuerpo.accion, usuario=cuerpo.usuario, rol=cuerpo.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones,
+            transcripcion=cuerpo.transcripcion,
         )
     except ErrorDeRevision as error:
         session.rollback()
