@@ -86,7 +86,7 @@ describe("banco de trabajo: tres paneles", () => {
     await screen.findByRole("heading", { name: /^decisión/i });
     const aprobar = screen.getByRole("button", { name: /^aprobar/i });
     expect(aprobar).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "ana.auditora");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana.auditora");
     await userEvent.click(aprobar);
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar", usuario: "ana.auditora", rol: "auditor_clinico" })));
     await waitFor(() => expect(api.consultarDocumento).toHaveBeenCalledTimes(2));
@@ -96,7 +96,7 @@ describe("banco de trabajo: tres paneles", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "ana");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     await userEvent.click(within(screen.getByTestId("campo-diagnostico_codigo")).getByRole("button", { name: /corregir/i }));
     const valor = screen.getByLabelText(/valor corregido/i);
     expect(screen.getByLabelText(/campo/i)).toHaveValue("extraccion.diagnosticos[0].cie10_sugerido");
@@ -113,7 +113,7 @@ describe("banco de trabajo: tres paneles", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "RECHAZADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "ana");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     expect(screen.getByRole("button", { name: /^rechazar/i })).toBeDisabled();
     fireEvent.keyDown(document.body, { key: "r" });
     expect(resolver).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe("banco de trabajo: tres paneles", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "ana");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     fireEvent.keyDown(document.body, { key: "a" });
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar" })));
   });
@@ -147,7 +147,7 @@ describe("banco de trabajo: tres paneles", () => {
     const alerta = await screen.findByTestId("alerta-documento");
     expect(alerta).toHaveTextContent(/restantes|vencido/);
     expect(alerta).not.toHaveTextContent("Mendes");
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "jefe.urgencias");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "jefe.urgencias");
     await userEvent.click(within(alerta).getByRole("button", { name: /dar acuse/i }));
     await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-CLIN-2026-8942", "jefe.urgencias"));
   });

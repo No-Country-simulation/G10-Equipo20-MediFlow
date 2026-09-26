@@ -17,7 +17,7 @@ const MOTIVO_DESTINO: Record<string, string> = {
 export function AutorizacionesPage() {
   const [bandeja, setBandeja] = useState<BandejaAutorizaciones | null>(null);
   const [pestana, setPestana] = useState<"por_autorizar" | "avisos">("por_autorizar");
-  const [usuario, setUsuario] = useUsuario();
+  const [usuario] = useUsuario();
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,12 +45,8 @@ export function AutorizacionesPage() {
       <header className="encabezado">
         <div>
           <h1>Autorizaciones</h1>
-          <p className="sub">Órdenes ambulatorias con su documentación mínima: justificación, diagnóstico con código, CUPS y cobertura (RN-E5). Las de urgencias u hospitalización no esperan aquí: llegan como aviso (RN-CO13).</p>
+          <p className="sub">Órdenes ambulatorias con su documentación mínima: justificación, diagnóstico codificado, CUPS y cobertura. Las de urgencias y hospitalización no esperan aquí: llegan como aviso.</p>
         </div>
-        <label style={{ minWidth: 260 }}>
-          Usuario que resuelve
-          <input value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="aut.luis" />
-        </label>
       </header>
       <div className="pestanas" role="tablist">
         <button type="button" role="tab" aria-selected={pestana === "por_autorizar"} className={pestana === "por_autorizar" ? "" : "secundario"} onClick={() => setPestana("por_autorizar")}>Por autorizar ({porAutorizar.length})</button>
@@ -107,7 +103,7 @@ export function AutorizacionesPage() {
                     <td><Link to={`/documentos/${encodeURIComponent(o.documento_id)}`}><code>{o.documento_id}</code></Link><span className="secundaria"><TagPrioridad nivel={o.nivel_prioridad} /></span></td>
                     <td>{o.procedimientos.join(", ")}<span className="secundaria">CUPS {o.cups.join(", ") || "sin código"}</span></td>
                     <td>{o.canal_origen.replace("_", " ")}</td>
-                    <td><span className="tag marca">Atención sin autorización previa</span><span className="secundaria">{MOTIVO_DESTINO[o.motivo_destino ?? ""] ?? ""} · solo informa a la EPS (RN-CO13)</span></td>
+                    <td><span className="tag marca">Atención sin autorización previa</span><span className="secundaria">{MOTIVO_DESTINO[o.motivo_destino ?? ""] ?? ""} · solo informa a la EPS</span></td>
                   </tr>
                 ))}
                 {bandeja && avisos.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: "center", padding: 24 }}>Sin avisos de urgencias.</td></tr>}

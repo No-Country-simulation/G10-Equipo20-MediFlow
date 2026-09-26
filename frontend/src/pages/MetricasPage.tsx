@@ -39,7 +39,7 @@ export function MetricasPage() {
       <header className="encabezado">
         <div>
           <h1>Métricas</h1>
-          <p className="sub">Indicadores calculados del historial (RN-R1). Cada documento registra modelo, prompt, reglas y pack (RN-R5) y su costo en tokens (RN-T3).</p>
+          <p className="sub">Indicadores calculados del historial. Cada documento registra modelo, prompt, reglas y pack, y su costo en tokens.</p>
         </div>
         <div className="pestanas" role="tablist" aria-label="Periodo">
           {PERIODOS.map((p) => (
@@ -51,15 +51,15 @@ export function MetricasPage() {
 
       <div className="kpis">
         <div className="tarjeta kpi" data-testid="kpi-automatizacion"><span className="n">{pct(m?.tasa_automatizacion)}</span><span className="muted">tasa de automatización · {m?.procesados ?? "—"} procesados</span></div>
-        <div className="tarjeta kpi" data-testid="kpi-acuse"><span className={`n ${acuse && acuse.pendientes > 0 ? "critico" : ""}`}>{num(acuse?.minutos_promedio)} min</span><span className="muted">hasta el acuse en críticos · {acuse?.dentro_de_plazo ?? 0} de {acuse?.acusadas ?? 0} dentro de {acuse?.plazo_min ?? 15} min · {acuse?.pendientes ?? 0} pendientes</span></div>
+        <div className="tarjeta kpi" data-testid="kpi-acuse"><span className={`n ${acuse && acuse.pendientes > 0 ? "critico" : ""}`}>{acuse?.minutos_promedio == null ? "sin acuses" : `${num(acuse.minutos_promedio)} min`}</span><span className="muted">hasta el acuse en críticos · {acuse?.dentro_de_plazo ?? 0} de {acuse?.acusadas ?? 0} dentro de {acuse?.plazo_min ?? 15} min · {acuse?.pendientes ?? 0} pendientes</span></div>
         <div className="tarjeta kpi" data-testid="kpi-falsos-negativos"><span className={`n ${fn && fn.n > 0 ? "critico" : ""}`}>{fn?.n ?? "—"}</span><span className="muted">falsos negativos críticos · {pct(fn?.tasa)} de {fn?.criticos_totales ?? 0} críticos</span></div>
-        <div className="tarjeta kpi" data-testid="kpi-tokens"><span className="n">{num((m?.tokens.entrada ?? 0) + (m?.tokens.salida ?? 0), 0)}</span><span className="muted">tokens · {num(m?.tokens.entrada, 0)} entrada / {num(m?.tokens.salida, 0)} salida (RN-T3)</span></div>
+        <div className="tarjeta kpi" data-testid="kpi-tokens"><span className="n">{num((m?.tokens.entrada ?? 0) + (m?.tokens.salida ?? 0), 0)}</span><span className="muted">tokens · {num(m?.tokens.entrada, 0)} entrada / {num(m?.tokens.salida, 0)} salida</span></div>
         <div className="tarjeta kpi"><span className="n">{m?.documentos ?? "—"}</span><span className="muted">documentos en el periodo</span></div>
       </div>
 
       {m && m.avisos.length > 0 && (
         <section className="tarjeta" data-testid="avisos" style={{ marginTop: 12, borderLeft: "4px solid var(--urgente)" }}>
-          <h2>Avisos al gestor (RN-R4)</h2>
+          <h2>Avisos al gestor</h2>
           <ul className="accesos">
             {m.avisos.map((a) => (
               <li key={a.campo}>
@@ -99,7 +99,7 @@ export function MetricasPage() {
       </div>
 
       <section className="tarjeta" style={{ marginTop: 12, padding: 0 }} data-testid="por-campo">
-        <div style={{ padding: "12px 14px 0" }}><h2>Tasa de corrección por campo</h2><p className="muted">Límite {pct(m?.limite_correccion_campo)}. Sobre el límite se avisa y se propone subir el umbral del campo (RN-R4).</p></div>
+        <div style={{ padding: "12px 14px 0" }}><h2>Tasa de corrección por campo</h2><p className="muted">Límite {pct(m?.limite_correccion_campo)}. Sobre el límite se avisa y se propone subir el umbral del campo.</p></div>
         <div className="scroll">
           <table className="tabla-densa">
             <thead><tr><th>Campo</th><th>Correcciones</th><th>Documentos revisados</th><th>Tasa</th><th>Umbral que lo gobierna</th></tr></thead>
@@ -119,7 +119,7 @@ export function MetricasPage() {
 
       <div className="dos-columnas" style={{ marginTop: 12 }}>
         <section className="tarjeta" data-testid="versiones">
-          <h2>Versiones por documento (RN-R5)</h2>
+          <h2>Versiones por documento</h2>
           {Object.entries(m?.versiones ?? {}).map(([tipo, valores]) => (
             <p key={tipo} style={{ margin: "4px 0" }}><strong>{legible(tipo)}:</strong> {Object.entries(valores).map(([k, n]) => `${k} (${n})`).join(" · ") || "—"}</p>
           ))}

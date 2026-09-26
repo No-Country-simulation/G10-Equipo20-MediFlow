@@ -55,13 +55,13 @@ describe("Farmacia (RN-E6, RN-J6)", () => {
     expect(filas[0]).toHaveTextContent(/alto riesgo/i);
     expect(filas[0]).toHaveTextContent("1 de 2");
     // la misma persona que hizo la primera no puede hacer la segunda
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "qf.maria");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "qf.maria");
     const boton = within(filas[0]).getByRole("button", { name: /segunda verificación/i });
     expect(boton).toBeDisabled();
     expect(filas[0]).toHaveTextContent(/requiere otra persona/i);
     // otra persona sí
-    await userEvent.clear(screen.getByLabelText(/^usuario/i));
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "qf.pedro");
+    await userEvent.clear(screen.getByLabelText(/firmo como/i));
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "qf.pedro");
     await userEvent.click(within(filas[0]).getByRole("button", { name: /segunda verificación/i }));
     await waitFor(() => expect(verificar).toHaveBeenCalledWith("REC-2", "qf.pedro"));
     expect(await screen.findByRole("status")).toHaveTextContent(/REC-2.*verificada/i);
@@ -83,7 +83,7 @@ describe("Autorizaciones (RN-E5, RN-E9, RN-CO13)", () => {
     expect(avisos[0]).toHaveTextContent("ORD-URG");
     expect(avisos[0]).toHaveTextContent(/sin autorización previa/i);
     await userEvent.click(screen.getByRole("tab", { name: /por autorizar/i }));
-    await userEvent.type(screen.getByLabelText(/^usuario/i), "aut.luis");
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "aut.luis");
     const filaInc = (await screen.findAllByTestId("fila-orden"))[1];
     expect(within(filaInc).getByRole("button", { name: /devolver/i })).toBeDisabled();
     await userEvent.type(within(filaInc).getByLabelText(/motivo/i), "falta justificación clínica");

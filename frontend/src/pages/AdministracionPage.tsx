@@ -13,7 +13,7 @@ function nombreRol(id: string): string {
 
 /** Administración del sistema: usuarios y pack de país. Nada clínico (RN-K2). */
 export function AdministracionPage() {
-  const [actor, setActor] = useUsuario();
+  const [actor] = useUsuario();
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[] | null>(null);
   const [puesta, setPuesta] = useState<PuestaEnMarcha | null>(null);
   const [pack, setPack] = useState<FichaPack | null>(null);
@@ -54,7 +54,7 @@ export function AdministracionPage() {
     setMensaje(null);
     try {
       const r = await cambiarEstadoUsuario(u.usuario, !u.activo, actor.trim());
-      setMensaje(r.activo ? `${r.usuario} reactivado.` : `${r.usuario} desactivado: pierde acceso de inmediato; su historial permanece (RN-K4).`);
+      setMensaje(r.activo ? `${r.usuario} reactivado.` : `${r.usuario} desactivado: pierde acceso de inmediato; su historial permanece.`);
       cargar();
     } catch (e) {
       informar(e);
@@ -69,18 +69,14 @@ export function AdministracionPage() {
       <header className="encabezado">
         <div>
           <h1>Administración</h1>
-          <p className="sub">Usuarios, accesos y pack de país. Quien administra no ve datos clínicos (RN-K2); aquí solo hay IDs de documento (RN-M4).</p>
+          <p className="sub">Usuarios, accesos y pack de país. Quien administra no ve datos clínicos; aquí solo hay identificadores de documento.</p>
         </div>
-        <label style={{ minWidth: 240 }}>
-          Administrador que firma
-          <input value={actor} onChange={(e) => setActor(e.target.value)} placeholder="admin.root" />
-        </label>
       </header>
       {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
 
       <div className="dos-columnas">
         <section className="tarjeta" data-testid="puesta-en-marcha">
-          <h2>Puesta en marcha (RN-S3)</h2>
+          <h2>Puesta en marcha</h2>
           <p className="muted">{puesta ? `${cumplidos} de ${puesta.requisitos.length} requisitos cumplidos${puesta.listo ? ". La instalación puede activarse." : ". Aún no se activa."}` : "—"}</p>
           <ul className="lista-check">
             {puesta?.requisitos.map((r) => (
@@ -93,18 +89,18 @@ export function AdministracionPage() {
         </section>
 
         <section className="tarjeta" data-testid="pack">
-          <h2>Pack de país (sección 4.3)</h2>
+          <h2>Pack de país</h2>
           {pack ? (
             <>
               <p><strong>{pack.nombre} ({pack.pais})</strong> · versión {pack.version_pack}</p>
               <ul className="accesos">
                 <li>Registro profesional: <strong>{pack.identidad_profesional.registro}</strong> ({pack.identidad_profesional.ambito})</li>
                 <li>Diagnósticos: {pack.terminologia.diagnosticos} · procedimientos: {pack.terminologia.procedimientos} · medicamentos: {pack.terminologia.medicamentos}</li>
-                <li>Fechas {pack.formato.formato_fecha} · decimal "{pack.formato.separador_decimal}" · miles "{pack.formato.separador_miles}" (RN-CO10)</li>
-                <li>Retención: <strong>{pack.retencion.anios} años</strong> ({pack.retencion.archivo_gestion_anios} gestión + {pack.retencion.archivo_central_anios} central) · purga automática: {pack.retencion.purga_automatica ? "sí" : "nunca"} (RN-CO18)</li>
+                <li>Fechas {pack.formato.formato_fecha} · decimal "{pack.formato.separador_decimal}" · miles "{pack.formato.separador_miles}"</li>
+                <li>Retención: <strong>{pack.retencion.anios} años</strong> ({pack.retencion.archivo_gestion_anios} gestión + {pack.retencion.archivo_central_anios} central) · purga automática: {pack.retencion.purga_automatica ? "sí" : "nunca"}</li>
                 <li>Listas: {pack.listas.hallazgos_criticos} hallazgos críticos · {pack.listas.alto_riesgo} alto riesgo · {pack.listas.control_especial} control especial</li>
                 <li>Tipos de documento: {Object.entries(pack.tipos_documento_paciente).map(([k, v]) => `${k} (${v.estado.replace(/_/g, " ")})`).join(", ")}</li>
-                {pack.por_confirmar.length > 0 && <li><span className="tag urgente">por confirmar</span> {pack.por_confirmar.join(", ")} (RN-E11: no activan decisiones automáticas)</li>}
+                {pack.por_confirmar.length > 0 && <li><span className="tag urgente">por confirmar</span> {pack.por_confirmar.join(", ")} · no activan decisiones automáticas</li>}
               </ul>
             </>
           ) : <p className="muted">—</p>}
@@ -112,8 +108,8 @@ export function AdministracionPage() {
       </div>
 
       <section className="tarjeta" style={{ marginTop: 12 }}>
-        <h2>Usuarios (tabla K)</h2>
-        <p className="muted">Un usuario desactivado pierde acceso de inmediato y conserva su historial (RN-K4). Las cuentas de servicio no firman acciones clínicas (RN-K5).</p>
+        <h2>Usuarios</h2>
+        <p className="muted">Un usuario desactivado pierde acceso de inmediato y conserva su historial. Las cuentas de servicio no firman acciones clínicas.</p>
         <div className="formulario" style={{ marginBottom: 10 }}>
           <label>Nombre de usuario<input value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} placeholder="jefe.rojas" /></label>
           <label>Nombre completo<input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Andrés Rojas" /></label>
@@ -151,7 +147,7 @@ export function AdministracionPage() {
 
       <section className="tarjeta" style={{ marginTop: 12 }} data-testid="accesos">
         <div className="encabezado" style={{ marginBottom: 6 }}>
-          <h2>Accesos a documentos (RN-K3)</h2>
+          <h2>Accesos a documentos</h2>
           <label style={{ minWidth: 220 }}>
             Filtrar por documento
             <input value={filtroDoc} onChange={(e) => setFiltroDoc(e.target.value)} placeholder="DOC-2026-001" />

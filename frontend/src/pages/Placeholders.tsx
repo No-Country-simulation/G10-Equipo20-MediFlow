@@ -1,9 +1,11 @@
+import { BellRing, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { acusarAlerta, ErrorApi, listarAlertas } from "../api";
 import { calcularPlazo } from "../app/plazos";
 import { useUsuario } from "../app/usuario";
+import { Vacio } from "../components/Vacio";
 import type { AlertaListada } from "../types";
 
 function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
@@ -19,7 +21,7 @@ function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
 
 export function AlertasPage() {
   const [alertas, setAlertas] = useState<AlertaListada[]>([]);
-  const [usuario, setUsuario] = useUsuario();
+  const [usuario] = useUsuario();
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   const cargar = () => listarAlertas().then(setAlertas).catch(() => setAlertas([]));
@@ -37,14 +39,8 @@ export function AlertasPage() {
 
   return (
     <>
-      <Encabezado titulo="Alertas críticas" sub="Circuito cerrado: la alerta persiste hasta el acuse de un usuario identificado (RN-J7, RN-Q5). Sin datos del paciente (RN-Q4)." />
-      <section className="tarjeta" style={{ marginBottom: 12 }}>
-        <label style={{ maxWidth: 320 }}>
-          Usuario que da el acuse
-          <input value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="jefe.urgencias" />
-        </label>
-        {mensaje && <p className="muted" role="status">{mensaje}</p>}
-      </section>
+      <Encabezado titulo="Alertas críticas" sub="La alerta persiste hasta que una persona identificada da el acuse. Nunca lleva datos del paciente." />
+      {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
       <section className="tarjeta" style={{ padding: 0 }}>
         <div className="scroll">
           <table className="tabla-densa">
@@ -59,11 +55,11 @@ export function AlertasPage() {
                     <td>{new Date(a.emitida_en).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</td>
                     <td>{a.estado_acuse === "pendiente" ? <span className={`plazo ${plazo.vencido ? "vencido" : plazo.apremia ? "apremia" : ""}`}>{plazo.texto}</span> : <span className="muted">—</span>}</td>
                     <td>{a.estado_acuse === "acusado" ? <span className="tag exito">Acusada · {a.acusado_por}</span> : plazo.vencido ? <span className="tag urgente">Escalada</span> : <span className="tag critico">Pendiente</span>}</td>
-                    <td>{a.estado_acuse === "pendiente" && <button type="button" className="peligro" disabled={!usuario.trim()} onClick={() => acusar(a.documento_id)}>Dar acuse</button>}</td>
+                    <td>{a.estado_acuse === "pendiente" && <button type="button" disabled={!usuario.trim()} onClick={() => acusar(a.documento_id)}><BellRing size={16} aria-hidden="true" />Dar acuse</button>}</td>
                   </tr>
                 );
               })}
-              {alertas.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 24 }}>No hay alertas críticas.</td></tr>}
+              {alertas.length === 0 && <tr><td colSpan={6}><Vacio icono={CheckCircle2} titulo="No hay alertas críticas" texto="Cuando un documento resulte Crítico aparecerá aquí hasta que alguien dé el acuse." /></td></tr>}
             </tbody>
           </table>
         </div>

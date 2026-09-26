@@ -119,7 +119,7 @@ export function DocumentosPage() {
       <header className="encabezado">
         <div>
           <h1>Documentos</h1>
-          <p className="sub">Carga, consulta y estado del procesamiento. Las listas no muestran datos del paciente (RN-K1).</p>
+          <p className="sub">Carga, consulta y estado del procesamiento. Las listas no muestran datos del paciente.</p>
         </div>
         <div className="casos" aria-label="Casos sintéticos">
           {CASOS.map((c) => (

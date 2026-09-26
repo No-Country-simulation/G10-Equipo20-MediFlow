@@ -1,20 +1,37 @@
+import { BarChart3, BellRing, ClipboardCheck, FileCheck2, FileText, Home, Pill, Send, SlidersHorizontal, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { colaRevision, listarAlertas } from "../../api";
 import { useRol } from "../../app/RolContext";
 import { ROLES, rolPuedeVer, type RolId } from "../../app/roles";
+import { useUsuario } from "../../app/usuario";
 import { BannerAlertas } from "./BannerAlertas";
 
 const INTERVALO_MS = 30_000;
 
+const ICONOS: Record<string, LucideIcon> = {
+  "/inicio": Home,
+  "/documentos": FileText,
+  "/revision": ClipboardCheck,
+  "/alertas": BellRing,
+  "/farmacia": Pill,
+  "/autorizaciones": FileCheck2,
+  "/entregas": Send,
+  "/configuracion": SlidersHorizontal,
+  "/metricas": BarChart3,
+  "/administracion": Users,
+};
+
 export function AppShell() {
   const { rol, cambiarRol } = useRol();
+  const [usuario, setUsuario] = useUsuario();
   const navigate = useNavigate();
   const location = useLocation();
   const [contadores, setContadores] = useState({ revision: 0, alertas: 0 });
 
   useEffect(() => {
+    if (!rol.veDocumentos) return;
     let activo = true;
     const cargar = () =>
       Promise.all([colaRevision().catch(() => []), listarAlertas({ estado_acuse: "pendiente" }).catch(() => [])]).then(
@@ -26,7 +43,7 @@ export function AppShell() {
       activo = false;
       clearInterval(id);
     };
-  }, [location.pathname]);
+  }, [location.pathname, rol.veDocumentos]);
 
   function alCambiarRol(id: RolId) {
     cambiarRol(id);
@@ -47,13 +64,17 @@ export function AppShell() {
           </div>
         </div>
         <nav aria-label="Principal">
-          {rol.navegacion.map((item) => (
-            <NavLink key={item.ruta} to={item.ruta} className={({ isActive }) => (isActive ? "activo" : "")}>
-              <span>{item.etiqueta}</span>
-              {item.contador === "revision" && contadores.revision > 0 && <span className="contador">{contadores.revision}</span>}
-              {item.contador === "alertas" && contadores.alertas > 0 && <span className="contador critico">{contadores.alertas}</span>}
-            </NavLink>
-          ))}
+          {rol.navegacion.map((item) => {
+            const Icono = ICONOS[item.ruta];
+            return (
+              <NavLink key={item.ruta} to={item.ruta} className={({ isActive }) => (isActive ? "activo" : "")}>
+                {Icono && <Icono size={18} aria-hidden="true" />}
+                <span className="etiqueta">{item.etiqueta}</span>
+                {item.contador === "revision" && contadores.revision > 0 && <span className="contador">{contadores.revision}</span>}
+                {item.contador === "alertas" && contadores.alertas > 0 && <span className="contador critico">{contadores.alertas}</span>}
+              </NavLink>
+            );
+          })}
         </nav>
         <NavLink to="/demo" className="demo">Modo demostración ›</NavLink>
         <div className="usuario">
@@ -63,18 +84,21 @@ export function AppShell() {
               {ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
             </select>
           </label>
-          <small>{rol.descripcion}</small>
+          <label>
+            Firmo como
+            <input id="firmo-como" value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="nombre.apellido" autoComplete="off" />
+          </label>
         </div>
       </aside>
       <main className="contenido">
-        <BannerAlertas />
+        {rol.veDocumentos && <BannerAlertas />}
         {permitido ? (
           <Outlet />
         ) : (
           <section className="tarjeta" style={{ marginTop: 16 }}>
             <h1>Sin acceso para este rol</h1>
             <p className="muted">
-              {rol.nombre} no ve esta sección (RN-K1, RN-K2). Elige otra opción de la barra lateral o cambia de rol.
+              {rol.nombre} no ve esta sección. Quien configura no revisa y quien administra no ve datos clínicos. Elige otra opción de la barra lateral o cambia de rol.
             </p>
           </section>
         )}

@@ -1,15 +1,17 @@
+import { Pill } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { colaFarmacia, ErrorApi, verificarReceta } from "../api";
 import { useUsuario } from "../app/usuario";
 import { TagPrioridad } from "../components/Tags";
+import { Vacio } from "../components/Vacio";
 import type { RecetaPorVerificar } from "../types";
 
 /** Farmacia: recetas por verificar. Alto riesgo y control especial exigen dos personas distintas (RN-E6, RN-J6, RN-CO9). */
 export function FarmaciaPage() {
   const [recetas, setRecetas] = useState<RecetaPorVerificar[] | null>(null);
-  const [usuario, setUsuario] = useUsuario();
+  const [usuario] = useUsuario();
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,12 +36,8 @@ export function FarmaciaPage() {
       <header className="encabezado">
         <div>
           <h1>Farmacia</h1>
-          <p className="sub">Recetas enrutadas a Farmacia. Alto riesgo y control especial piden doble verificación por dos personas distintas (RN-E6, RN-J6).</p>
+          <p className="sub">Recetas enrutadas a Farmacia. Las de alto riesgo y control especial necesitan dos verificaciones de personas distintas.</p>
         </div>
-        <label style={{ minWidth: 260 }}>
-          Usuario que verifica
-          <input value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="qf.maria" />
-        </label>
       </header>
       {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
       {error && <p className="error">{error}</p>}
@@ -81,7 +79,7 @@ export function FarmaciaPage() {
                   </tr>
                 );
               })}
-              {recetas && recetas.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 24 }}>No hay recetas por verificar.</td></tr>}
+              {recetas && recetas.length === 0 && <tr><td colSpan={5}><Vacio icono={Pill} titulo="No hay recetas por verificar" texto="Las fórmulas enrutadas a Farmacia llegan aquí. Las de alto riesgo y control especial piden dos firmas." /></td></tr>}
             </tbody>
           </table>
         </div>

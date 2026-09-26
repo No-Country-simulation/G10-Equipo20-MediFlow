@@ -15,6 +15,7 @@ import { AlertasPage } from "../pages/Placeholders";
 import { RevisionPage } from "../pages/RevisionPage";
 import { RolProvider } from "./RolContext";
 import type { RolId } from "./roles";
+import { UsuarioProvider } from "./usuario";
 
 function Rutas() {
   return (
@@ -43,7 +44,9 @@ function Rutas() {
 export function AppRouter({ rutaInicial, rolInicial }: { rutaInicial?: string; rolInicial?: RolId }) {
   const contenido = (
     <RolProvider rolInicial={rolInicial}>
-      <Rutas />
+      <UsuarioProvider>
+        <Rutas />
+      </UsuarioProvider>
     </RolProvider>
   );
   if (rutaInicial) return <MemoryRouter initialEntries={[rutaInicial]}>{contenido}</MemoryRouter>;

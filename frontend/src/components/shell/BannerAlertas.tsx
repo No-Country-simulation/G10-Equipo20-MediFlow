@@ -38,7 +38,7 @@ export function BannerAlertas() {
         {primera.concepto && <> · {primera.concepto}</>}
         {" · "}
         <span className={`plazo ${plazo.vencido ? "vencido" : plazo.apremia ? "apremia" : ""}`}>{plazo.texto}</span>
-        {plazo.vencido && " · escalada al siguiente rol (RN-F2)"}
+        {plazo.vencido && " · escalada al siguiente rol"}
       </span>
       <Link to="/alertas">Ver alertas</Link>
     </div>

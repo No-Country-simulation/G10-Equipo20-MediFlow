@@ -1,3 +1,4 @@
+import { FlaskConical, GitBranchPlus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { aprobarConfiguracion, ErrorApi, obtenerConfiguracion, proponerConfiguracion, rechazarConfiguracion, simularConfiguracion } from "../api";
@@ -60,7 +61,7 @@ export function ConfiguracionPage() {
   const [altoRiesgo, setAltoRiesgo] = useState("");
   const [controlEspecial, setControlEspecial] = useState("");
   const [hallazgo, setHallazgo] = useState({ concepto: "", sinonimos: "", cie10: "" });
-  const [usuario, setUsuario] = useUsuario();
+  const [usuario] = useUsuario();
   const [motivo, setMotivo] = useState("");
   const [simulacion, setSimulacion] = useState<Simulacion | null>(null);
   const [simulando, setSimulando] = useState(false);
@@ -122,7 +123,7 @@ export function ConfiguracionPage() {
     setMensaje(null);
     try {
       const v = await proponerConfiguracion({ cambios, usuario: yo, rol: "gestor", motivo: motivo.trim() });
-      setMensaje(`Propuesta #${v.id} creada. ${v.toca_seguridad ? "Toca seguridad: necesita dos aprobadores (RN-L5)." : "Necesita una aprobación."}`);
+      setMensaje(`Propuesta #${v.id} creada. ${v.toca_seguridad ? "Toca seguridad: necesita dos aprobadores." : "Necesita una aprobación."}`);
       setMotivo("");
       setAltoRiesgo("");
       setControlEspecial("");
@@ -139,7 +140,7 @@ export function ConfiguracionPage() {
     setMensaje(null);
     try {
       const r = await aprobarConfiguracion(v.id, actor);
-      setMensaje(r.estado === "vigente" ? `Versión ${r.numero} vigente desde ahora. No es retroactiva (RN-L4).` : `Aprobación registrada: ${r.aprobaciones?.length ?? 0} de ${r.aprobaciones_requeridas}.`);
+      setMensaje(r.estado === "vigente" ? `Versión ${r.numero} vigente desde ahora. No es retroactiva.` : `Aprobación registrada: ${r.aprobaciones?.length ?? 0} de ${r.aprobaciones_requeridas}.`);
       cargar();
     } catch (e) {
       informar(e, "No hay conexión con la API.");
@@ -166,14 +167,10 @@ export function ConfiguracionPage() {
         <div>
           <h1>Configuración</h1>
           <p className="sub">
-            Umbrales dentro de rango (RN-L1). Cada cambio es una versión con autor, fecha y vigencia, y no es retroactiva (RN-L4).
-            Antes de activarla, la simulación muestra qué habría cambiado sobre los últimos {cfg?.calidad.simulacion_ultimos ?? 50} documentos (RN-L6).
+            Cada umbral se mueve dentro de su rango. Cada cambio es una versión con autor, fecha y vigencia, y no es retroactiva.
+            Antes de activarla, la simulación muestra qué habría cambiado sobre los últimos {cfg?.calidad.simulacion_ultimos ?? 50} documentos.
           </p>
         </div>
-        <label style={{ minWidth: 240 }}>
-          Gestor que firma
-          <input value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="gestor.ana" />
-        </label>
       </header>
       {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
 
@@ -189,13 +186,13 @@ export function ConfiguracionPage() {
               ))}
             </tbody>
           </table>
-          {fueraDeRango.length > 0 && <p className="error">Fuera de rango (RN-L1): {fueraDeRango.map(etiquetaUmbral).join(", ")}</p>}
+          {fueraDeRango.length > 0 && <p className="error">Fuera de rango: {fueraDeRango.map(etiquetaUmbral).join(", ")}</p>}
         </section>
 
         <div>
           <section className="tarjeta" data-testid="no-configurable">
-            <h2>No configurable (RN-L2)</h2>
-            <p className="muted">Umbrales NEWS2 de guía clínica, seudonimización y separación de funciones. Se muestran, no se editan (RN-D5).</p>
+            <h2>No configurable</h2>
+            <p className="muted">Umbrales NEWS2 de guía clínica, seudonimización y separación de funciones. Se muestran, no se editan.</p>
             <table className="umbrales">
               <tbody>
                 {Object.entries(cfg?.no_configurable.news2 ?? {}).map(([k, v]) => (
@@ -206,12 +203,12 @@ export function ConfiguracionPage() {
           </section>
 
           <section className="tarjeta" style={{ marginTop: 12 }}>
-            <h2>Listas solo ampliables (RN-L3)</h2>
+            <h2>Listas solo ampliables</h2>
             <p className="muted">Se puede agregar, nunca quitar los de base. Separa con comas.</p>
-            <ListaAmpliable testid="lista-alto_riesgo" titulo="Medicamentos de alto riesgo (RN-E6)" base={cfg?.listas.alto_riesgo.base ?? []} ampliadas={cfg?.listas.alto_riesgo.ampliadas ?? []} valor={altoRiesgo} onChange={setAltoRiesgo} />
-            <ListaAmpliable testid="lista-control_especial" titulo="Control especial (RN-CO9)" base={cfg?.listas.control_especial.base ?? []} ampliadas={cfg?.listas.control_especial.ampliadas ?? []} valor={controlEspecial} onChange={setControlEspecial} />
+            <ListaAmpliable testid="lista-alto_riesgo" titulo="Medicamentos de alto riesgo" base={cfg?.listas.alto_riesgo.base ?? []} ampliadas={cfg?.listas.alto_riesgo.ampliadas ?? []} valor={altoRiesgo} onChange={setAltoRiesgo} />
+            <ListaAmpliable testid="lista-control_especial" titulo="Control especial" base={cfg?.listas.control_especial.base ?? []} ampliadas={cfg?.listas.control_especial.ampliadas ?? []} valor={controlEspecial} onChange={setControlEspecial} />
             <div data-testid="lista-hallazgos_criticos">
-              <h3 style={{ margin: "10px 0 4px" }}>Hallazgos críticos (RN-D2)</h3>
+              <h3 style={{ margin: "10px 0 4px" }}>Hallazgos críticos</h3>
               <div className="chips-lectura">
                 {(cfg?.listas.hallazgos_criticos.base ?? []).map((x) => <span key={x} className="chip">{x}</span>)}
                 {(cfg?.listas.hallazgos_criticos.ampliados ?? []).map((x) => <span key={x} className="chip nuevo">{x}</span>)}
@@ -230,13 +227,13 @@ export function ConfiguracionPage() {
         <h2>Simular y proponer</h2>
         <div className="acciones" style={{ alignItems: "end", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="secundario" disabled={!hayCambios || fueraDeRango.length > 0 || simulando} onClick={simular}>
-            {simulando ? "Simulando…" : "Simular sobre los últimos documentos"}
+            <FlaskConical size={16} aria-hidden="true" />{simulando ? "Simulando…" : "Simular sobre los últimos documentos"}
           </button>
           <label style={{ flex: 1, minWidth: 260 }}>
             Motivo de la versión
             <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="cero errores de dosis pasan solos (sección 8)" />
           </label>
-          <button type="button" disabled={!hayCambios || fueraDeRango.length > 0 || !yo || !motivo.trim()} onClick={proponer}>Proponer versión</button>
+          <button type="button" disabled={!hayCambios || fueraDeRango.length > 0 || !yo || !motivo.trim()} onClick={proponer}><GitBranchPlus size={16} aria-hidden="true" />Proponer versión</button>
         </div>
         {hayCambios && <p className="muted" style={{ marginTop: 8 }}>Cambios: {resumenCambios(cambios).join(" · ")}</p>}
         {simulacion && <ResultadoSimulacion s={simulacion} />}
@@ -249,7 +246,7 @@ export function ConfiguracionPage() {
           <article key={v.id ?? 0} className="panel" data-testid={`propuesta-${v.id}`} style={{ marginTop: 8 }}>
             <div className="panel-cabecera">
               <strong>Propuesta #{v.id}</strong> · {v.autor} · {v.creado_en ? new Date(v.creado_en).toLocaleString("es-CO") : ""}
-              {v.toca_seguridad && <span className="tag urgente" style={{ marginLeft: 8 }}>Toca seguridad · 2 aprobadores (RN-L5)</span>}
+              {v.toca_seguridad && <span className="tag urgente" style={{ marginLeft: 8 }}>Toca seguridad · dos aprobadores</span>}
             </div>
             <p style={{ margin: "6px 0" }}>{v.motivo}</p>
             <ul className="accesos">{resumenCambios(v.cambios).map((c) => <li key={c}>{c}</li>)}</ul>
@@ -271,7 +268,7 @@ export function ConfiguracionPage() {
       </section>
 
       <section className="tarjeta" style={{ marginTop: 12, padding: 0 }} data-testid="historial">
-        <div style={{ padding: "12px 14px 0" }}><h2>Historial de versiones (RN-L4)</h2></div>
+        <div style={{ padding: "12px 14px 0" }}><h2>Historial de versiones</h2></div>
         <div className="scroll">
           <table className="tabla-densa">
             <thead><tr><th>Versión</th><th>Autor</th><th>Cambios</th><th>Vigencia</th><th>Estado</th></tr></thead>

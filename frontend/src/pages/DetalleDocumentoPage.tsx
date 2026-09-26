@@ -1,3 +1,4 @@
+import { BellRing, Check, Pencil, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -29,7 +30,7 @@ export function DetalleDocumentoPage() {
   const desdeCola = params.get("cola") === "1";
   const navigate = useNavigate();
   const { rol, modoDiscreto, alternarModoDiscreto } = useRol();
-  const [usuario, setUsuario] = useUsuario();
+  const [usuario] = useUsuario();
 
   const [detalle, setDetalle] = useState<DocumentoDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +176,7 @@ export function DetalleDocumentoPage() {
           <div className={`alerta-doc ${alerta.estado_acuse === "acusado" ? "acusada" : plazoAlerta.vencido ? "escalada" : ""}`} data-testid="alerta-documento">
             <strong>{alerta.estado_acuse === "acusado" ? `Alerta acusada por ${alerta.acusado_por}` : plazoAlerta.vencido ? "Alerta crítica escalada" : "Alerta crítica sin acuse"}</strong>
             <span className="muted">{alerta.canal} → {alerta.destinatario}{alerta.estado_acuse !== "acusado" && <> · <span className={`plazo ${plazoAlerta.vencido ? "vencido" : plazoAlerta.apremia ? "apremia" : ""}`}>{plazoAlerta.texto}</span></>}</span>
-            {alerta.estado_acuse !== "acusado" && <button type="button" className="peligro" disabled={!usuario.trim()} onClick={acusar}>Dar acuse</button>}
+            {alerta.estado_acuse !== "acusado" && <button type="button" disabled={!usuario.trim()} onClick={acusar}><BellRing size={16} aria-hidden="true" />Dar acuse</button>}
           </div>
         )}
       </header>
@@ -211,7 +212,7 @@ export function DetalleDocumentoPage() {
           {modoDiscreto && detalle.formato !== "txt" && <p className="muted">Vista previa difuminada: datos del paciente ocultos en esta pantalla (RN-K1).</p>}
           <p><a href={urlOriginal(detalle.documento_id)} target="_blank" rel="noreferrer">Ver original</a></p>
           <details>
-            <summary>Qué salió al LLM (texto seudonimizado, RN-M1)</summary>
+            <summary>Qué salió al LLM (texto seudonimizado)</summary>
             <pre className="texto-original">{detalle.texto_enviado_llm || "Sin texto: el documento fue a la ruta de imagen (RN-M2)."}</pre>
           </details>
         </section>
@@ -248,7 +249,7 @@ export function DetalleDocumentoPage() {
                 <div>
                   <dt>Signos vitales</dt>
                   <dd>FR {r.extraccion.signos_vitales.FR ?? "—"} · SpO2 {r.extraccion.signos_vitales.SpO2 ?? "—"} · FC {r.extraccion.signos_vitales.FC ?? "—"} · PAS {r.extraccion.signos_vitales.PAS ?? "—"} · T {r.extraccion.signos_vitales.Temp ?? "—"}</dd>
-                  <dd><strong>NEWS2 total: {r.extraccion.signos_vitales.NEWS2_total ?? "no aplica"}</strong> <span className="muted">calculado por el sistema (RN-D3)</span></dd>
+                  <dd><strong>NEWS2 total: {r.extraccion.signos_vitales.NEWS2_total ?? "no aplica"}</strong> <span className="muted">calculado por el sistema</span></dd>
                 </div>
                 <div data-testid="campo-medicamento_dosis" className={bajo("medicamento_dosis") ? "dudoso" : ""}>
                   <dt>Medicamentos</dt>
@@ -275,18 +276,14 @@ export function DetalleDocumentoPage() {
         {/* ------------------------------------------------ Decisión */}
         <section className="panel" aria-labelledby="p-decision">
           <div className="panel-cabecera"><h2 id="p-decision">Decisión</h2></div>
-          <label>
-            Usuario
-            <input value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="ana.auditora" />
-          </label>
-          <p className="muted">Rol: {rol.nombre}</p>
+          <p className="muted firma">Firma: <strong>{usuario.trim() || "escribe tu usuario en la barra lateral"}</strong> · {rol.nombre}</p>
 
           {enRevision && r && (
             <>
               <p className="aviso">Requiere revisión: <strong>{etiquetaMotivo(r.evaluacion.motivo_auditoria)}</strong>{r.evaluacion.campos_dudosos.length > 0 && <> · dudosos: {r.evaluacion.campos_dudosos.join(", ")}</>}</p>
               <p><span className="muted">Plan tras revisión:</span> {plan.join(" + ") || "—"}</p>
               <label>
-                Motivo (obligatorio para rechazar o bajar prioridad, RN-J5)
+                Motivo (obligatorio para rechazar o bajar la prioridad)
                 <input value={motivo} onChange={(e) => setMotivo(e.target.value)} />
               </label>
               {correccion && (
@@ -307,9 +304,9 @@ export function DetalleDocumentoPage() {
                 </div>
               )}
               <div className="acciones" style={{ marginTop: 8 }}>
-                <button type="button" disabled={!usuario.trim() || enviando} onClick={() => resolver("aprobar")}>Aprobar <kbd>A</kbd></button>
-                <button type="button" className="secundario" disabled={!usuario.trim() || enviando} onClick={() => setCorreccion((c) => c ?? { campo: "", valor: "" })}>Corregir <kbd>C</kbd></button>
-                <button type="button" className="peligro" disabled={!usuario.trim() || !motivo.trim() || enviando} onClick={() => resolver("rechazar")}>Rechazar <kbd>R</kbd></button>
+                <button type="button" disabled={!usuario.trim() || enviando} onClick={() => resolver("aprobar")}><Check size={16} aria-hidden="true" />Aprobar <kbd>A</kbd></button>
+                <button type="button" className="secundario" disabled={!usuario.trim() || enviando} onClick={() => setCorreccion((c) => c ?? { campo: "", valor: "" })}><Pencil size={16} aria-hidden="true" />Corregir <kbd>C</kbd></button>
+                <button type="button" className="peligro" disabled={!usuario.trim() || !motivo.trim() || enviando} onClick={() => resolver("rechazar")}><X size={16} aria-hidden="true" />Rechazar <kbd>R</kbd></button>
               </div>
             </>
           )}

@@ -41,7 +41,7 @@ export function EntregasPage() {
       <header className="encabezado">
         <div>
           <h1>Entregas</h1>
-          <p className="sub">Documentos enrutados a la espera de que los destinos confirmen. Un Crítico no se cierra sin acuse de su alerta (RN-J7); una entrega retenida a HCE espera la conciliación de identidad (RN-A4).</p>
+          <p className="sub">Documentos enrutados a la espera de que los destinos confirmen. Un Crítico no se cierra sin el acuse de su alerta; una entrega retenida a Historia Clínica espera la conciliación de identidad.</p>
         </div>
       </header>
       {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
