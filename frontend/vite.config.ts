@@ -12,6 +12,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    css: false,
+    // Solo la hoja de estilos leída como texto por sus pruebas; el resto del CSS no se procesa.
+    css: { include: [/styles\.css\?raw$/] },
   },
 });
