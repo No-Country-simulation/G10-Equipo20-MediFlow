@@ -2,9 +2,9 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: mediflow
-      POSTGRES_PASSWORD: mediflow
-      POSTGRES_DB: mediflow
+      POSTGRES_USER: ${POSTGRES_USER:-mediflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mediflow}
+      POSTGRES_DB: ${POSTGRES_DB:-mediflow}
     ports:
       - "5432:5432"
     volumes:
@@ -20,7 +20,7 @@ services:
       - path: ./backend/.env
         required: false
     environment:
-      DATABASE_URL: postgresql+psycopg://mediflow:mediflow@db:5432/mediflow
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mediflow}:${POSTGRES_PASSWORD:-mediflow}@db:5432/${POSTGRES_DB:-mediflow}
       STORAGE_LOCAL_DIR: /srv/storage
     volumes:
       - documentos:/srv/storage          # respaldo local de originales y JSON cuando OCI no está configurado
@@ -29,13 +29,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   web:
     build: ./frontend
     ports:
       - "5173:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
