@@ -1,14 +1,19 @@
 /** Cliente de la API REST de MediFlow. Todas las rutas pasan por /api (proxy de Vite o nginx). */
 import type {
   AlertaListada,
+  Autorizacion,
+  BandejaAutorizaciones,
   DatosArchivo,
   DocumentoDetalle,
   DocumentoRequest,
   ItemCola,
   Listado,
+  RecetaPorVerificar,
   ResolucionRequest,
   RespuestaEntrega,
+  RespuestaVerificacion,
   ResultadoTriaje,
+  Resumen,
 } from "./types";
 
 export const BASE_URL = "/api";
@@ -100,4 +105,27 @@ export function urlVistaPrevia(documentoId: string, pagina = 1): string {
 export function listarAlertas(filtros: { estado_acuse?: string } = {}): Promise<AlertaListada[]> {
   const consulta = filtros.estado_acuse ? `?estado_acuse=${encodeURIComponent(filtros.estado_acuse)}` : "";
   return llamar<AlertaListada[]>(`/alertas${consulta}`);
+}
+
+export function colaFarmacia(): Promise<RecetaPorVerificar[]> {
+  return llamar<RecetaPorVerificar[]>("/farmacia");
+}
+
+export function verificarReceta(documentoId: string, usuario: string): Promise<RespuestaVerificacion> {
+  return llamar(`/farmacia/${encodeURIComponent(documentoId)}/verificar`, { method: "POST", body: JSON.stringify({ usuario }) });
+}
+
+export function bandejaAutorizaciones(): Promise<BandejaAutorizaciones> {
+  return llamar<BandejaAutorizaciones>("/autorizaciones");
+}
+
+export function resolverAutorizacion(
+  documentoId: string,
+  cuerpo: { accion: "aprobar" | "devolver"; usuario: string; motivo: string },
+): Promise<{ documento_id: string; autorizacion: Autorizacion; estado: string; pendientes: string[] }> {
+  return llamar(`/autorizaciones/${encodeURIComponent(documentoId)}/resolver`, { method: "POST", body: JSON.stringify(cuerpo) });
+}
+
+export function obtenerResumen(): Promise<Resumen> {
+  return llamar<Resumen>("/resumen");
 }

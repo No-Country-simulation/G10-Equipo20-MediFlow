@@ -230,3 +230,20 @@ details summary { cursor: pointer; color: var(--primario-tinta); font-weight: 60
 kbd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.72em; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; opacity: 0.8; margin-left: 4px; }
 .timeline li.alerta::before { background: var(--critico); }
 .timeline li.acuse::before { background: var(--exito); }
+
+/* --- Fase C: pestañas, contadores ------------------------------------------ */
+.pestanas { display: flex; gap: 8px; margin: 4px 0 12px; }
+.pestanas [role="tab"][aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--menta); }
+.contadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.contador { padding: 12px 14px; border-left: 4px solid var(--borde); }
+.contador.critico { border-left-color: var(--critico); }
+.contador.urgente { border-left-color: var(--urgente); }
+.contador.marca { border-left-color: var(--primario); }
+.contador.exito { border-left-color: var(--exito); }
+.contador .n { display: block; font-family: "Sora", sans-serif; font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.contador .n.critico { color: var(--critico); }
+.contador .n.urgente { color: var(--urgente); }
+.contador .n.marca { color: var(--primario-tinta); }
+.contador .n.exito { color: var(--exito); }
+.contador-enlace { text-decoration: none; color: inherit; display: block; }
+.accesos { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }

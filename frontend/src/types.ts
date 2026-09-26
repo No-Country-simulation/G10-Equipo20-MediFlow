@@ -147,6 +147,8 @@ export interface DocumentoDetalle {
   alerta?: Alerta | null;
   correcciones?: { campo: string; extraido: unknown; corregido: unknown; usuario: string }[];
   transiciones?: Transicion[];
+  verificaciones?: { orden: number; usuario: string; fecha_hora?: string }[];
+  autorizacion?: Autorizacion | null;
 }
 
 export interface ItemCola {
@@ -223,4 +225,68 @@ export interface RespuestaEntrega {
   entregas: Record<string, boolean>;
   retenidas: Record<string, string>;
   pendientes: string[];
+}
+
+/** Fase C: Farmacia, Autorizaciones y resumen. */
+export interface RecetaPorVerificar {
+  documento_id: string;
+  version: number;
+  nivel_prioridad: NivelPrioridad | null;
+  creado_en: string | null;
+  medicamentos: Medicamento[];
+  alto_riesgo: boolean;
+  control_especial: boolean;
+  verificaciones_requeridas: number;
+  verificaciones: { orden: number; usuario: string }[];
+  motivo_destino: string | null;
+  fecha_documento: string | null;
+}
+
+export interface RespuestaVerificacion {
+  documento_id: string;
+  verificaciones: { orden: number; usuario: string }[];
+  requeridas: number;
+  completa: boolean;
+  estado: EstadoDocumento;
+  pendientes: string[];
+}
+
+export interface OrdenPorAutorizar {
+  documento_id: string;
+  version: number;
+  nivel_prioridad: NivelPrioridad | null;
+  canal_origen: string;
+  creado_en: string | null;
+  cobertura: string | null;
+  motivo_destino: string | null;
+  documentacion_incompleta: boolean;
+  procedimientos: string[];
+  cups: string[];
+  diagnosticos: string[];
+  justificacion: string;
+  fecha_documento: string | null;
+}
+
+export interface BandejaAutorizaciones {
+  por_autorizar: OrdenPorAutorizar[];
+  avisos_urgencias: OrdenPorAutorizar[];
+}
+
+export interface Autorizacion {
+  estado: "aprobada" | "devuelta";
+  usuario: string;
+  motivo: string;
+  fecha_hora: string;
+}
+
+export interface Resumen {
+  total: number;
+  por_estado: Record<string, number>;
+  por_prioridad: Record<string, number>;
+  en_revision: number;
+  alertas_sin_acuse: number;
+  recetas_por_verificar: number;
+  ordenes_por_autorizar: number;
+  enrutados: number;
+  entregados_hoy: number;
 }

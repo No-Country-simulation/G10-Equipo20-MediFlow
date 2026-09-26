@@ -27,6 +27,7 @@ export interface Rol {
   modoDiscreto: boolean;
 }
 
+const INICIO: ItemNavegacion = { ruta: "/inicio", etiqueta: "Inicio" };
 const DOCUMENTOS: ItemNavegacion = { ruta: "/documentos", etiqueta: "Documentos" };
 const REVISION: ItemNavegacion = { ruta: "/revision", etiqueta: "Cola de revisión", contador: "revision" };
 const ALERTAS: ItemNavegacion = { ruta: "/alertas", etiqueta: "Alertas críticas", contador: "alertas" };
@@ -43,7 +44,7 @@ export const ROLES: Rol[] = [
     nombre: "Auditor clínico",
     descripcion: "Resuelve la cola de revisión humana; puede bajar prioridad con justificación (RN-J5).",
     rutaInicial: "/revision",
-    navegacion: [DOCUMENTOS, REVISION, ALERTAS, ENTREGAS],
+    navegacion: [INICIO, DOCUMENTOS, REVISION, ALERTAS, ENTREGAS],
     veDocumentos: true,
     modoDiscreto: false,
   },
@@ -52,7 +53,7 @@ export const ROLES: Rol[] = [
     nombre: "Químico farmacéutico",
     descripcion: "Verifica recetas; doble verificación de alto riesgo y control especial (RN-J6).",
     rutaInicial: "/farmacia",
-    navegacion: [FARMACIA, DOCUMENTOS],
+    navegacion: [INICIO, FARMACIA, DOCUMENTOS],
     veDocumentos: true,
     modoDiscreto: false,
   },
@@ -61,7 +62,7 @@ export const ROLES: Rol[] = [
     nombre: "Auditor de autorizaciones",
     descripcion: "Aprueba o devuelve órdenes ambulatorias con su justificación mínima (RN-E5).",
     rutaInicial: "/autorizaciones",
-    navegacion: [AUTORIZACIONES, DOCUMENTOS],
+    navegacion: [INICIO, AUTORIZACIONES, DOCUMENTOS],
     veDocumentos: true,
     modoDiscreto: false,
   },
@@ -70,7 +71,7 @@ export const ROLES: Rol[] = [
     nombre: "Jefe de urgencias",
     descripcion: "Da acuse a las alertas críticas y las reasigna (RN-J7, RN-Q5).",
     rutaInicial: "/alertas",
-    navegacion: [ALERTAS, DOCUMENTOS],
+    navegacion: [INICIO, ALERTAS, DOCUMENTOS],
     veDocumentos: true,
     modoDiscreto: true,
   },
@@ -79,7 +80,7 @@ export const ROLES: Rol[] = [
     nombre: "Gestor de la clínica",
     descripcion: "Configuración dentro de límites y métricas. No revisa documentos (RN-K2).",
     rutaInicial: "/metricas",
-    navegacion: [METRICAS, CONFIGURACION],
+    navegacion: [INICIO, METRICAS, CONFIGURACION],
     veDocumentos: false,
     modoDiscreto: true,
   },
@@ -88,7 +89,7 @@ export const ROLES: Rol[] = [
     nombre: "Administrador del sistema",
     descripcion: "Usuarios y pack de país. Nada clínico (RN-K2).",
     rutaInicial: "/administracion",
-    navegacion: [ADMINISTRACION],
+    navegacion: [INICIO, ADMINISTRACION],
     veDocumentos: false,
     modoDiscreto: true,
   },

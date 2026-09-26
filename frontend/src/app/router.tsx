@@ -2,17 +2,13 @@ import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-rout
 
 import App from "../App";
 import { AppShell } from "../components/shell/AppShell";
+import { AutorizacionesPage } from "../pages/AutorizacionesPage";
 import { DetalleDocumentoPage } from "../pages/DetalleDocumentoPage";
 import { DocumentosPage } from "../pages/DocumentosPage";
-import {
-  AdministracionPage,
-  AlertasPage,
-  AutorizacionesPage,
-  ConfiguracionPage,
-  EntregasPage,
-  FarmaciaPage,
-  MetricasPage,
-} from "../pages/Placeholders";
+import { EntregasPage } from "../pages/EntregasPage";
+import { FarmaciaPage } from "../pages/FarmaciaPage";
+import { InicioPage } from "../pages/InicioPage";
+import { AdministracionPage, AlertasPage, ConfiguracionPage, MetricasPage } from "../pages/Placeholders";
 import { RevisionPage } from "../pages/RevisionPage";
 import { RolProvider } from "./RolContext";
 import type { RolId } from "./roles";
@@ -21,7 +17,8 @@ function Rutas() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/documentos" replace />} />
+        <Route index element={<Navigate to="/inicio" replace />} />
+        <Route path="/inicio" element={<InicioPage />} />
         <Route path="/documentos" element={<DocumentosPage />} />
         <Route path="/documentos/:id" element={<DetalleDocumentoPage />} />
         <Route path="/revision" element={<RevisionPage />} />
@@ -32,7 +29,7 @@ function Rutas() {
         <Route path="/configuracion" element={<ConfiguracionPage />} />
         <Route path="/metricas" element={<MetricasPage />} />
         <Route path="/administracion" element={<AdministracionPage />} />
-        <Route path="*" element={<Navigate to="/documentos" replace />} />
+        <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Route>
       <Route path="/demo" element={<App />} />
     </Routes>

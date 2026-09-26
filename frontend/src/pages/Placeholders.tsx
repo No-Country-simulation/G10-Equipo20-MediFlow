@@ -83,15 +83,6 @@ export function AlertasPage() {
   );
 }
 
-export function FarmaciaPage() {
-  return <Pendiente titulo="Farmacia" sub="Recetas por verificar, con doble verificación en alto riesgo y control especial (RN-E6, RN-J6, RN-CO9)." fase="fase C" />;
-}
-export function AutorizacionesPage() {
-  return <Pendiente titulo="Autorizaciones" sub="Órdenes ambulatorias con su documentación mínima (RN-E5). Las de urgencias no esperan aquí (RN-CO13)." fase="fase C" />;
-}
-export function EntregasPage() {
-  return <Pendiente titulo="Entregas" sub="Confirmación de destinos y entregas retenidas (RN-A4, RN-J7)." fase="fase C" />;
-}
 export function ConfiguracionPage() {
   return <Pendiente titulo="Configuración" sub="Umbrales dentro de rango, destinos, plazos y modo simulación (RN-L1, RN-L6)." fase="fase D" />;
 }
