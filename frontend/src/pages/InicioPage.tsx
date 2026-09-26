@@ -100,11 +100,11 @@ export function InicioPage() {
 
       <div className="contadores">
         {rol.veDocumentos && <Contador testid="contador-alertas" icono={BellRing} valor={r?.alertas_sin_acuse} etiqueta="alertas críticas sin acuse" clase="critico" ruta={tiene("/alertas") ? "/alertas" : undefined} accion="Ir a Alertas críticas" />}
-        {veRevision && <Contador testid="contador-revision" icono={ClipboardCheck} valor={r?.en_revision} etiqueta="en revisión humana" clase="urgente" ruta="/revision" accion="Ir a la cola de revisión" />}
-        {tiene("/farmacia") && <Contador testid="contador-recetas" icono={Pill} valor={r?.recetas_por_verificar} etiqueta="recetas por verificar" clase="urgente" ruta="/farmacia" accion="Ir a Farmacia" />}
-        {tiene("/autorizaciones") && <Contador testid="contador-ordenes" icono={FileCheck2} valor={r?.ordenes_por_autorizar} etiqueta="órdenes por autorizar" clase="urgente" ruta="/autorizaciones" accion="Ir a Autorizaciones" />}
+        {veRevision && <Contador testid="contador-revision" icono={ClipboardCheck} valor={r?.en_revision} etiqueta="en revisión humana" clase="marca" ruta="/revision" accion="Ir a la cola de revisión" />}
+        {tiene("/farmacia") && <Contador testid="contador-recetas" icono={Pill} valor={r?.recetas_por_verificar} etiqueta="recetas por verificar" clase="marca" ruta="/farmacia" accion="Ir a Farmacia" />}
+        {tiene("/autorizaciones") && <Contador testid="contador-ordenes" icono={FileCheck2} valor={r?.ordenes_por_autorizar} etiqueta="órdenes por autorizar" clase="marca" ruta="/autorizaciones" accion="Ir a Autorizaciones" />}
         {tiene("/entregas") && <Contador testid="contador-enrutados" icono={Send} valor={r?.enrutados} etiqueta="enrutados por entregar" clase="marca" ruta="/entregas" accion="Ir a Entregas" />}
-        {veConfiguracion && <Contador testid="contador-propuestas" icono={GitBranchPlus} valor={gestion?.propuestas} etiqueta="propuestas de configuración por aprobar" clase="urgente" ruta="/configuracion" accion="Ir a Configuración" />}
+        {veConfiguracion && <Contador testid="contador-propuestas" icono={GitBranchPlus} valor={gestion?.propuestas} etiqueta="propuestas de configuración por aprobar" clase="marca" ruta="/configuracion" accion="Ir a Configuración" />}
         {tiene("/metricas") && <Contador testid="contador-avisos" icono={ShieldCheck} valor={gestion?.avisos} etiqueta="avisos de calidad" clase="marca" ruta="/metricas" accion="Ir a Métricas" />}
         {veAdministracion && <Contador testid="contador-usuarios" icono={Users} valor={admin?.activos} etiqueta="usuarios activos" clase="marca" ruta="/administracion" accion="Ir a Administración" />}
         {veAdministracion && <Contador testid="contador-puesta" icono={ShieldCheck} valor={admin ? `${admin.cumplidos} de ${admin.total}` : undefined} etiqueta="requisitos de puesta en marcha" clase={admin && admin.cumplidos === admin.total ? "exito" : "urgente"} />}

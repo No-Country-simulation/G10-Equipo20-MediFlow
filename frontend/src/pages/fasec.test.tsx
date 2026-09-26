@@ -63,6 +63,8 @@ describe("Farmacia (RN-E6, RN-J6)", () => {
     await userEvent.clear(screen.getByLabelText(/firmo como/i));
     await userEvent.type(screen.getByLabelText(/firmo como/i), "qf.pedro");
     await userEvent.click(within(filas[0]).getByRole("button", { name: /segunda verificación/i }));
+    expect(verificar).not.toHaveBeenCalled();  // igual que en el detalle: primero se confirma
+    await userEvent.click(within(filas[0]).getByRole("button", { name: /confirmar verificación/i }));
     await waitFor(() => expect(verificar).toHaveBeenCalledWith("REC-2", "qf.pedro"));
     expect(await screen.findByRole("status")).toHaveTextContent(/REC-2.*verificada/i);
     expect(filas[1]).toHaveTextContent("0 de 1");
@@ -88,6 +90,9 @@ describe("Autorizaciones (RN-E5, RN-E9, RN-CO13)", () => {
     expect(within(filaInc).getByRole("button", { name: /devolver/i })).toBeDisabled();
     await userEvent.type(within(filaInc).getByLabelText(/motivo/i), "falta justificación clínica");
     await userEvent.click(within(filaInc).getByRole("button", { name: /devolver/i }));
+    expect(resolver).not.toHaveBeenCalled();
+    expect(within(filaInc).getByTestId("confirmacion")).toHaveTextContent(/falta justificación clínica/);
+    await userEvent.click(within(filaInc).getByRole("button", { name: /confirmar devolución/i }));
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("ORD-INC", { accion: "devolver", usuario: "aut.luis", motivo: "falta justificación clínica" }));
   });
 });

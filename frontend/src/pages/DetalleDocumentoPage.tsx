@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { colaRevision, confirmarEntrega, consultarDocumento, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
-import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, motivoLegible } from "../app/mensajes";
+import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, etiquetaTipo, motivoLegible, tituloHallazgos } from "../app/mensajes";
 import { usePared } from "../app/pared";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
 import { useRol } from "../app/RolContext";
@@ -54,7 +54,7 @@ export function DetalleDocumentoPage() {
   const navigate = useNavigate();
   const { rol, modoDiscreto, alternarModoDiscreto } = useRol();
   const [usuario] = useUsuario();
-  const { activo: pared } = usePared();
+  const { activo: pared, alternar: alternarPared } = usePared();
 
   const [detalle, setDetalle] = useState<DocumentoDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export function DetalleDocumentoPage() {
   const [motivo, setMotivo] = useState("");
   const [correccion, setCorreccion] = useState<Correccion | null>(null);
   const [confirmacion, setConfirmacion] = useState<Decision | null>(null);
-  const [cierre, setCierre] = useState<{ accion: AccionRevision; estado: string } | null>(null);
+  const [cierre, setCierre] = useState<{ accion: AccionRevision; estado: string; prioridad?: string; alerta?: boolean } | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [atajos, setAtajos] = useState(leerAtajos);
@@ -109,6 +109,10 @@ export function DetalleDocumentoPage() {
   const r = detalle?.resultado ?? null;
   const enRevision = detalle?.estado === "EN_REVISION_HUMANA";
   const transcribiendo = enRevision && r?.evaluacion.motivo_auditoria === "fallo_tecnico";
+  function irAFirma() {
+    const enfocar = () => document.getElementById("firmo-como")?.focus();
+    if (pared) { alternarPared(); setTimeout(enfocar, 0); } else enfocar();
+  }
   const posicionCola = useMemo(() => cola.findIndex((c) => c.documento_id === id), [cola, id]);
   const siguiente = posicionCola >= 0 ? cola[posicionCola + 1] : undefined;
   const firma = usuario.trim();
@@ -133,7 +137,7 @@ export function DetalleDocumentoPage() {
       setCorreccion(null);
       setMotivo("");
       if (accion === "corregir") setMensaje({ texto: `${PASADO[accion]}. Queda en ${etiquetaEstado(resp.estado)}.` });
-      else setCierre({ accion, estado: resp.estado });
+      else setCierre({ accion, estado: resp.estado, prioridad: resp.resultado?.clasificacion.nivel_prioridad, alerta: !!resp.resultado?.notificacion_generada });
       cargar();
     } catch (e) {
       setMensaje({ texto: textoDeError(e), error: true });
@@ -143,8 +147,11 @@ export function DetalleDocumentoPage() {
   }, [detalle, firma, enviando, motivo, rol.id, cargar]);
 
   const pedir = useCallback((decision: Decision) => {
-    if (!enRevision || transcribiendo || !firma || enviando) return;
-    if (decision === "rechazar" && !motivo.trim()) return;
+    if (!enRevision || enviando) return;
+    // Un atajo que no puede actuar lo dice, en vez de no hacer nada.
+    if (!firma) { setMensaje({ texto: "Para decidir, escribe tu usuario en «Firmo como».", error: true }); return; }
+    if (transcribiendo && decision === "aprobar") { setMensaje({ texto: "Este documento no tiene lectura que aprobar: completa la transcripción.", error: true }); return; }
+    if (decision === "rechazar" && !motivo.trim()) { setMensaje({ texto: "Rechazar exige escribir el motivo.", error: true }); return; }
     setConfirmacion(decision);
   }, [enRevision, transcribiendo, firma, enviando, motivo]);
 
@@ -197,6 +204,7 @@ export function DetalleDocumentoPage() {
   const plan = r ? (enRevision ? r.enrutamiento.destinos_tras_revision : [r.enrutamiento.destino_principal, ...r.enrutamiento.destinos_secundarios]) : [];
   const retenidas = r?.enrutamiento.entregas_retenidas ?? {};
   const docPaciente = r?.extraccion.paciente.documento;
+  const titulo = tituloHallazgos(r?.extraccion.hallazgos_criticos_detectados);
   const eventos = [
     ...(detalle.transiciones ?? []).map((t) => ({ fecha: t.fecha_hora, texto: `${etiquetaEstado(t.a_estado)} · ${t.actor}`, detalle: t.motivo, tipo: "estado" as const })),
     ...(alerta ? [{ fecha: alerta.emitida_en, texto: "Alerta crítica emitida", detalle: `${alerta.canal} → ${alerta.destinatario}`, tipo: "alerta" as const }] : []),
@@ -212,23 +220,21 @@ export function DetalleDocumentoPage() {
             {desdeCola && posicionCola >= 0 && <> · {posicionCola + 1} de {cola.length} en la cola</>}
           </p>
           <div className="titulo-doc">
-            <h1>{detalle.documento_id}</h1>
+            <h1 className={titulo ? "hallazgo" : "id"}>{titulo || detalle.documento_id}</h1>
             <TagPrioridad nivel={detalle.nivel_prioridad} />
             <TagEstado estado={detalle.estado} />
           </div>
           <p className="sub">
-            {r?.clasificacion.tipo ?? "Sin clasificar"} · {detalle.canal_origen?.replace(/_/g, " ")} · versión {detalle.version}
+            {titulo && <span className="id-doc"><code>{detalle.documento_id}</code> · </span>}
+            {etiquetaTipo(r?.clasificacion.tipo) || "Sin clasificar"} · {detalle.canal_origen?.replace(/_/g, " ")} · versión {detalle.version}
             {detalle.nombre_archivo && <> · {modoDiscreto ? <span className="muted">nombre de archivo oculto</span> : <span className="archivo">{detalle.nombre_archivo}</span>}</>}
-            {r && r.extraccion.hallazgos_criticos_detectados.length > 0 && (
-              <> · <span className="chips" style={{ display: "inline-flex" }}>{r.extraccion.hallazgos_criticos_detectados.map((h) => <span key={h} className="chip critico" title={h}>{etiquetaConcepto(h)}</span>)}</span></>
-            )}
           </p>
         </div>
         {alerta && plazoAlerta && (
           <div className={`alerta-doc ${alerta.estado_acuse === "acusado" ? "acusada" : plazoAlerta.vencido ? "escalada" : ""}`} data-testid="alerta-documento">
             <strong>{alerta.estado_acuse === "acusado" ? `Alerta acusada por ${alerta.acusado_por}` : plazoAlerta.vencido ? "Alerta crítica escalada" : "Alerta crítica sin acuse"}</strong>
             <span className="muted">{alerta.canal} → {alerta.destinatario}{alerta.estado_acuse !== "acusado" && <> · <span className={`plazo ${plazoAlerta.vencido ? "vencido" : plazoAlerta.apremia ? "apremia" : ""}`}>{plazoAlerta.texto}</span></>}</span>
-            {alerta.estado_acuse !== "acusado" && <AccionAcuse documentoId={detalle.documento_id} onAcusado={(resp) => { setMensaje({ texto: `Acuse registrado por ${resp.acusado_por}. Circuito cerrado.` }); cargar(); }} />}
+            {alerta.estado_acuse !== "acusado" && <AccionAcuse documentoId={detalle.documento_id} contexto={`${titulo || "alerta crítica"}, ${detalle.documento_id}`} onAcusado={(resp) => { setMensaje({ texto: `Acuse registrado por ${resp.acusado_por}. Circuito cerrado.` }); cargar(); }} />}
           </div>
         )}
       </header>
@@ -280,6 +286,7 @@ export function DetalleDocumentoPage() {
           </div>
           {transcribiendo ? (
             <Transcripcion key={`${detalle.documento_id}-${detalle.version}`} habilitado={!!firma} enviando={enviando} onCambio={setTranscripcionSucia}
+              prioridadActual={detalle.nivel_prioridad} discreto={modoDiscreto}
               onEnviar={(t) => void resolver("transcribir", { transcripcion: t })} />
           ) : !r ? <p className="muted">Sin resultado.</p> : (
             <>
@@ -342,7 +349,8 @@ export function DetalleDocumentoPage() {
 
           {cierre && (
             <div className="cierre-caso" data-testid="cierre-caso">
-              <p ref={tituloCierre} tabIndex={-1}><CircleCheckBig size={18} aria-hidden="true" /><strong>Caso cerrado: {PASADO[cierre.accion].toLowerCase()}.</strong> Queda en {etiquetaEstado(cierre.estado)}.</p>
+              <p ref={tituloCierre} tabIndex={-1}><CircleCheckBig size={18} aria-hidden="true" /><strong>Caso cerrado: {PASADO[cierre.accion].toLowerCase()}.</strong> Queda en {etiquetaEstado(cierre.estado)}.
+                {cierre.prioridad && cierre.accion === "transcribir" && <> Prioridad resultante: <strong>{cierre.prioridad}</strong>{cierre.alerta ? ", con alerta crítica activa." : ", sin alerta."}</>}</p>
               <div className="acciones">
                 {desdeCola && siguiente && <button type="button" ref={botonSiguiente} onClick={() => irA(1)}>Siguiente caso <ArrowRight size={16} aria-hidden="true" /><kbd>J</kbd></button>}
                 <Link to={desdeCola ? "/revision" : "/documentos"}>{desdeCola ? "Volver a la cola" : "Volver a Documentos"}</Link>
@@ -350,7 +358,7 @@ export function DetalleDocumentoPage() {
             </div>
           )}
 
-          <p className="muted firma" id="firma-decision">{firma ? <>Firmas como <strong>{firma}</strong> · {rol.nombre}</> : (pared ? <>Para decidir, sal de la vista de pared y escribe tu usuario en <strong>Firmo como</strong>.</> : <>Para decidir, escribe tu usuario en <strong>Firmo como</strong>, en la barra lateral.</>)}</p>
+          <p className="muted firma" id="firma-decision">{firma ? <>Firmas como <strong>{firma}</strong> · {rol.nombre}</> : <>{pared ? "Para decidir, sal de la vista de pared y escribe tu usuario en Firmo como." : "Para decidir, escribe tu usuario en Firmo como, en la barra lateral."} <button type="button" className="enlace" onClick={irAFirma}>Escribir mi usuario</button></>}</p>
 
           {enRevision && r && (
             <>
@@ -359,7 +367,7 @@ export function DetalleDocumentoPage() {
                 ? <p className="muted">La acción principal es completar la transcripción en el panel central. Si el documento no corresponde, recházalo con su motivo.</p>
                 : <p><span className="muted">Plan tras revisión:</span> {plan.map(etiquetaDestino).join(" + ") || "sin plan"}</p>}
               <label>
-                <span id="etiqueta-motivo">Motivo (obligatorio para rechazar o bajar la prioridad)</span>
+                <span id="etiqueta-motivo">{transcribiendo ? "Motivo (obligatorio para rechazar)" : "Motivo (obligatorio para rechazar o bajar la prioridad)"}</span>
                 <input value={motivo} onChange={(e) => setMotivo(e.target.value)} aria-labelledby="etiqueta-motivo" />
               </label>
               {correccion && !transcribiendo && (

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { colaRevision } from "../api";
-import { etiquetaMotivo } from "../app/mensajes";
+import { etiquetaMotivo, etiquetaTipo, tituloHallazgos } from "../app/mensajes";
 import { calcularPlazo } from "../app/plazos";
 import { AvisoSistemaDegradado, conPunto, horaCorta } from "../components/AvisoSistema";
 import { ChipPlazo, TagPrioridad } from "../components/Tags";
@@ -18,8 +18,13 @@ function Filas({ items }: { items: ItemCola[] }) {
     <>
       {items.map((item) => (
         <tr key={`${item.documento_id}-${item.version}`} data-testid="fila-cola" className={`fila ${item.nivel_prioridad === "Crítico" ? "critico" : item.nivel_prioridad === "Urgente" ? "urgente" : "rutina"}`}>
-          <td><Link to={`/documentos/${encodeURIComponent(item.documento_id)}?cola=1`} aria-label={`Revisar ${item.documento_id}`}><code>{item.documento_id}</code></Link></td>
-          <td>{item.tipo ?? <span className="muted">—</span>}</td>
+          <td>
+            <span className="principal">{tituloHallazgos(item.hallazgos) || etiquetaTipo(item.tipo) || "Sin clasificar"}</span>
+            <span className="secundaria">
+              <Link to={`/documentos/${encodeURIComponent(item.documento_id)}?cola=1`} aria-label={`Revisar ${item.documento_id}`}><code>{item.documento_id}</code></Link>
+              {(item.hallazgos?.length ?? 0) > 0 && item.tipo && <> · {etiquetaTipo(item.tipo)}</>}
+            </span>
+          </td>
           <td><TagPrioridad nivel={item.nivel_prioridad} /></td>
           <td>{etiquetaMotivo(item.motivo_auditoria)}{item.campos_dudosos.length > 0 && <span className="secundaria">Dudosos: {item.campos_dudosos.join(", ")}</span>}</td>
           <td><ChipPlazo plazo={calcularPlazo(item.creado_en, item.plazo_minutos)} /></td>
@@ -31,7 +36,7 @@ function Filas({ items }: { items: ItemCola[] }) {
 }
 
 function Cabecera() {
-  return <thead><tr><th>Documento</th><th>Tipo</th><th>Prioridad</th><th>Motivo</th><th>Plazo</th><th><span className="oculto-visual">Abrir</span></th></tr></thead>;
+  return <thead><tr><th>Caso</th><th>Prioridad</th><th>Motivo</th><th>Plazo</th><th><span className="oculto-visual">Abrir</span></th></tr></thead>;
 }
 
 /**
@@ -78,7 +83,7 @@ export function RevisionPage() {
               <Cabecera />
               <tbody>
                 <Filas items={principales} />
-                {cola && cola.length === 0 && <tr><td colSpan={6}><Vacio icono={ClipboardCheck} titulo="Cola vacía" texto="Nada espera revisión humana. Lo que el sistema no pueda decidir solo llegará aquí con su motivo." /></td></tr>}
+                {cola && cola.length === 0 && <tr><td colSpan={5}><Vacio icono={ClipboardCheck} titulo="Cola vacía" texto="Nada espera revisión humana. Lo que el sistema no pueda decidir solo llegará aquí con su motivo." /></td></tr>}
               </tbody>
             </table>
           </div>

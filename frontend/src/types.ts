@@ -160,6 +160,8 @@ export interface ItemCola {
   tipo: string | null;
   creado_en: string;
   plazo_minutos: number;
+  /** Conceptos críticos del pack (TEP_AGUDO…), para ver qué es cada caso sin abrirlo. */
+  hallazgos?: string[];
 }
 
 /** Respuesta de GET /alertas. Nunca lleva datos del paciente (RN-Q4). */

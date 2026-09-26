@@ -128,3 +128,24 @@ export const ETIQUETA_DESTINO: Record<string, string> = {
 export function etiquetaDestino(codigo: string): string {
   return ETIQUETA_DESTINO[codigo] ?? legible(codigo);
 }
+
+/** Tipos de documento con la mayúscula del español ("No clasificable", no "No Clasificable"). El valor del backend no cambia. */
+export const ETIQUETA_TIPO: Record<string, string> = {
+  "Receta Médica": "Receta médica",
+  "Informe de Imágenes": "Informe de imágenes",
+  "Informe de Laboratorio": "Informe de laboratorio",
+  "Orden de Procedimiento": "Orden de procedimiento",
+  "Epicrisis o Alta": "Epicrisis o alta",
+  "Certificado Médico": "Certificado médico",
+  "No Clasificable": "No clasificable",
+};
+
+export function etiquetaTipo(tipo: string | null | undefined): string {
+  if (!tipo) return "";
+  return ETIQUETA_TIPO[tipo] ?? tipo;
+}
+
+/** Hallazgos de un caso en una línea; un concepto vacío se nombra en vez de mostrarse como "sin concepto". */
+export function tituloHallazgos(conceptos: string[] | null | undefined): string {
+  return (conceptos ?? []).map(etiquetaConcepto).join(" · ");
+}

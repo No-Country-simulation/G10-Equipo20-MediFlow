@@ -1,5 +1,8 @@
 import { ClipboardPen, Eraser, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
+
+import { etiquetaTipo } from "../app/mensajes";
+import type { NivelPrioridad } from "../types";
 
 const TIPOS = ["Receta Médica", "Informe de Imágenes", "Informe de Laboratorio", "Orden de Procedimiento", "Epicrisis o Alta", "Certificado Médico", "No Clasificable"];
 const DOCUMENTOS_PACIENTE = ["CC", "TI", "RC", "CE", "PA", "PT", "CN", "CD", "SC", "DE", "MS", "AS"];
@@ -8,14 +11,14 @@ interface Medicamento {
   dci: string; dosis: string; via: string; frecuencia: string; duracion: string; cantidad_numeros: string; cantidad_letras: string;
 }
 const MEDICAMENTO_VACIO: Medicamento = { dci: "", dosis: "", via: "", frecuencia: "", duracion: "", cantidad_numeros: "", cantidad_letras: "" };
-const COLUMNAS_MEDICAMENTO: { clave: keyof Medicamento; etiqueta: string; ejemplo: string }[] = [
-  { clave: "dci", etiqueta: "DCI", ejemplo: "losartan" },
-  { clave: "dosis", etiqueta: "dosis", ejemplo: "50 mg" },
-  { clave: "via", etiqueta: "vía", ejemplo: "oral" },
-  { clave: "frecuencia", etiqueta: "frecuencia", ejemplo: "cada 24 h" },
-  { clave: "duracion", etiqueta: "duración", ejemplo: "30 días" },
-  { clave: "cantidad_numeros", etiqueta: "cantidad en números", ejemplo: "30" },
-  { clave: "cantidad_letras", etiqueta: "cantidad en letras", ejemplo: "treinta" },
+const COLUMNAS_MEDICAMENTO: { clave: keyof Medicamento; etiqueta: string; cabecera: string }[] = [
+  { clave: "dci", etiqueta: "DCI", cabecera: "DCI" },
+  { clave: "dosis", etiqueta: "dosis", cabecera: "Dosis" },
+  { clave: "via", etiqueta: "vía", cabecera: "Vía" },
+  { clave: "frecuencia", etiqueta: "frecuencia", cabecera: "Frecuencia" },
+  { clave: "duracion", etiqueta: "duración", cabecera: "Duración" },
+  { clave: "cantidad_numeros", etiqueta: "cantidad en números", cabecera: "Cantidad (n.º)" },
+  { clave: "cantidad_letras", etiqueta: "cantidad en letras", cabecera: "Cantidad (letras)" },
 ];
 const SIGNOS: { clave: "FR" | "SpO2" | "FC" | "PAS" | "Temp"; etiqueta: string; decimal?: boolean }[] = [
   { clave: "FR", etiqueta: "FR" }, { clave: "SpO2", etiqueta: "SpO2" }, { clave: "FC", etiqueta: "FC" }, { clave: "PAS", etiqueta: "PAS" }, { clave: "Temp", etiqueta: "Temperatura", decimal: true },
@@ -26,6 +29,20 @@ type Texto = Record<string, string>;
 const CAMPOS_INICIALES: Texto = { tipo: "", prioridad: "Rutina", paciente_nombre: "", paciente_edad: "", doc_tipo: "", doc_valor: "", fecha: "",
   prof_nombre: "", prof_registro: "", dx_texto: "", dx_cie10: "", proc_texto: "", proc_cups: "", justificacion: "" };
 const SIGNOS_INICIALES: Texto = { FR: "", SpO2: "", FC: "", PAS: "", Temp: "" };
+
+/**
+ * Campo con su ejemplo debajo, nunca dentro: un ejemplo dentro del campo se lee como un dato ya escrito.
+ * El ejemplo queda asociado al campo para el lector de pantalla.
+ */
+function Campo({ etiqueta, ejemplo, ...props }: { etiqueta: string; ejemplo?: string } & InputHTMLAttributes<HTMLInputElement>) {
+  const id = useId();
+  return (
+    <div className="campo-t">
+      <label>{etiqueta}<input {...props} aria-describedby={ejemplo ? `${id}-ej` : undefined} /></label>
+      {ejemplo && <span id={`${id}-ej`} className="pista">{ejemplo}</span>}
+    </div>
+  );
+}
 
 function limpio(v: string): string | undefined {
   const t = v.trim();
@@ -42,23 +59,28 @@ function compactar<T extends Record<string, unknown>>(o: T): Partial<T> {
  * La persona copia los datos desde el original; al guardar, las reglas se aplican igual que sobre
  * una lectura del LLM: la prioridad solo puede subir y un hallazgo crítico del texto se mantiene.
  */
-export function Transcripcion({ habilitado, enviando, onEnviar, onCambio }: {
+export function Transcripcion({ habilitado, enviando, onEnviar, onCambio, prioridadActual, discreto = false }: {
   habilitado: boolean;
   enviando: boolean;
   onEnviar: (transcripcion: Record<string, unknown>) => void;
   /** Avisa si hay datos escritos sin guardar, para no cambiar de documento con ellos (paciente equivocado). */
   onCambio?: (sucio: boolean) => void;
+  /** La prioridad arranca en la actual del documento: nunca se muestra Rutina en un caso ya Crítico. */
+  prioridadActual?: NivelPrioridad | null;
+  /** Modo discreto: lo que se escribe del paciente no se lee en una pantalla compartida. */
+  discreto?: boolean;
 }) {
-  const [c, setC] = useState<Texto>(CAMPOS_INICIALES);
+  const iniciales = useMemo<Texto>(() => ({ ...CAMPOS_INICIALES, prioridad: prioridadActual ?? "Rutina" }), [prioridadActual]);
+  const [c, setC] = useState<Texto>(iniciales);
   const [signos, setSignos] = useState<Texto>(SIGNOS_INICIALES);
   const [medicamentos, setMedicamentos] = useState<Medicamento[]>([{ ...MEDICAMENTO_VACIO }]);
   const [recetario, setRecetario] = useState(false);
-  const sucio = Object.entries(c).some(([k, v]) => v !== CAMPOS_INICIALES[k]) || Object.values(signos).some((v) => v.trim() !== "")
+  const sucio = Object.entries(c).some(([k, v]) => v !== iniciales[k]) || Object.values(signos).some((v) => v.trim() !== "")
     || medicamentos.some((m) => Object.values(m).some((v) => v.trim() !== "")) || recetario;
   useEffect(() => { onCambio?.(sucio); }, [sucio, onCambio]);
 
   function descartar() {
-    setC(CAMPOS_INICIALES);
+    setC(iniciales);
     setSignos(SIGNOS_INICIALES);
     setMedicamentos([{ ...MEDICAMENTO_VACIO }]);
     setRecetario(false);
@@ -116,24 +138,27 @@ export function Transcripcion({ habilitado, enviando, onEnviar, onCambio }: {
           <label>Tipo de documento
             <select required {...campo("tipo")}>
               <option value="">Elige el tipo…</option>
-              {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+              {TIPOS.map((t) => <option key={t} value={t}>{etiquetaTipo(t)}</option>)}
             </select>
           </label>
-          <label>Prioridad que indica el documento
-            <select {...campo("prioridad")}>
-              <option value="Rutina">Rutina</option>
-              <option value="Urgente">Urgente</option>
-              <option value="Crítico">Crítico</option>
-            </select>
-          </label>
-          <label>Fecha del documento<input {...campo("fecha")} placeholder="dd/mm/aaaa" inputMode="numeric" /></label>
+          <div className="campo-t">
+            <label>Prioridad que indica el documento
+              <select {...campo("prioridad")} aria-describedby="t-prioridad-ayuda">
+                <option value="Rutina">Rutina</option>
+                <option value="Urgente">Urgente</option>
+                <option value="Crítico">Crítico</option>
+              </select>
+            </label>
+            <span id="t-prioridad-ayuda" className="pista">{prioridadActual ? `Actual: ${prioridadActual}. Las reglas pueden subirla; desde aquí no se baja.` : "Las reglas pueden subirla; desde aquí no se baja."}</span>
+          </div>
+          <Campo etiqueta="Fecha del documento" ejemplo="Formato dd/mm/aaaa" {...campo("fecha")} inputMode="numeric" />
         </div>
       </fieldset>
 
       <fieldset>
         <legend>Paciente</legend>
         <div className="formulario">
-          <label>Nombre del paciente<input {...campo("paciente_nombre")} autoComplete="off" /></label>
+          <label>Nombre del paciente<input {...campo("paciente_nombre")} autoComplete="off" className={discreto ? "enmascarado" : undefined} /></label>
           <label>Edad<input {...campo("paciente_edad")} inputMode="numeric" /></label>
           <label>Tipo de documento del paciente
             <select {...campo("doc_tipo")}>
@@ -141,7 +166,7 @@ export function Transcripcion({ habilitado, enviando, onEnviar, onCambio }: {
               {DOCUMENTOS_PACIENTE.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
-          <label>Número de documento del paciente<input {...campo("doc_valor")} inputMode="numeric" autoComplete="off" /></label>
+          <label>Número de documento del paciente<input {...campo("doc_valor")} inputMode="numeric" autoComplete="off" className={discreto ? "enmascarado" : undefined} /></label>
         </div>
       </fieldset>
 
@@ -149,14 +174,15 @@ export function Transcripcion({ habilitado, enviando, onEnviar, onCambio }: {
         <legend>Profesional y diagnóstico</legend>
         <div className="formulario">
           <label>Nombre del profesional<input {...campo("prof_nombre")} autoComplete="off" /></label>
-          <label>Registro del profesional<input {...campo("prof_registro")} placeholder="RM 45678" /></label>
+          <Campo etiqueta="Registro del profesional" ejemplo="Ej.: RM 45678" {...campo("prof_registro")} />
           <label>Diagnóstico principal<input {...campo("dx_texto")} /></label>
-          <label>Código CIE-10<input {...campo("dx_cie10")} placeholder="I10" /></label>
+          <Campo etiqueta="Código CIE-10" ejemplo="Ej.: I10" {...campo("dx_cie10")} />
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Signos vitales <span className="muted">(si el documento los trae; NEWS2 lo calcula el sistema)</span></legend>
+        <legend>Signos vitales</legend>
+        <p className="pista" style={{ marginTop: 0 }}>Solo si el documento los trae. El NEWS2 lo calcula el sistema.</p>
         <div className="formulario signos">
           {SIGNOS.map(({ clave, etiqueta }) => (
             <label key={clave}>{etiqueta}<input value={signos[clave]} onChange={(e) => setSignos({ ...signos, [clave]: e.target.value })} inputMode="decimal" /></label>
@@ -167,10 +193,13 @@ export function Transcripcion({ habilitado, enviando, onEnviar, onCambio }: {
       {esReceta && (
         <fieldset>
           <legend>Medicamentos</legend>
+          <div className="fila-medicamento cabecera" data-testid="cabecera-medicamentos" aria-hidden="true">
+            {COLUMNAS_MEDICAMENTO.map(({ clave, cabecera }) => <span key={clave}>{cabecera}</span>)}
+          </div>
           {medicamentos.map((m, i) => (
             <div key={i} className="fila-medicamento">
-              {COLUMNAS_MEDICAMENTO.map(({ clave, etiqueta, ejemplo }) => (
-                <input key={clave} aria-label={`Medicamento ${i + 1}: ${etiqueta}`} placeholder={`${etiqueta} (${ejemplo})`} value={m[clave]}
+              {COLUMNAS_MEDICAMENTO.map(({ clave, etiqueta }) => (
+                <input key={clave} aria-label={`Medicamento ${i + 1}: ${etiqueta}`} value={m[clave]}
                   onChange={(e) => setMedicamentos(medicamentos.map((x, j) => (j === i ? { ...x, [clave]: e.target.value } : x)))} />
               ))}
               {medicamentos.length > 1 && (

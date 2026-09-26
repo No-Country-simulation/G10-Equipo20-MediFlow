@@ -35,6 +35,7 @@ export function MetricasPage() {
   }, [dias]);
 
   const acuse = m?.acuse_criticos;
+  const degradado = (m?.revision_por_motivo.fallo_tecnico?.porcentaje ?? 0) >= 0.5;
   const fn = m?.falsos_negativos_criticos;
 
   return (
@@ -58,9 +59,9 @@ export function MetricasPage() {
         </AvisoSistemaDegradado>
       )}
       <div className="kpis">
-        <div className="tarjeta kpi" data-testid="kpi-automatizacion"><span className="n">{pct(m?.tasa_automatizacion)}</span><span className="muted">tasa de automatización · {m?.procesados ?? "—"} procesados</span></div>
+        <div className="tarjeta kpi" data-testid="kpi-automatizacion"><span className={`n ${degradado ? "no-representativo" : ""}`}>{pct(m?.tasa_automatizacion)}</span><span className="muted">tasa de automatización · {m?.procesados ?? "—"} procesados{degradado && " · no representativo"}</span></div>
         <div className="tarjeta kpi" data-testid="kpi-acuse"><span className={`n ${acuse && acuse.pendientes > 0 ? "critico" : ""}`}>{acuse?.minutos_promedio == null ? "sin acuses" : `${num(acuse.minutos_promedio)} min`}</span><span className="muted">hasta el acuse en críticos · {acuse?.dentro_de_plazo ?? 0} de {acuse?.acusadas ?? 0} dentro de {acuse?.plazo_min ?? 15} min · {acuse?.pendientes ?? 0} pendientes</span></div>
-        <div className="tarjeta kpi" data-testid="kpi-falsos-negativos"><span className={`n ${fn && fn.n > 0 ? "critico" : ""}`}>{fn?.n ?? "—"}</span><span className="muted">falsos negativos críticos · {pct(fn?.tasa)} de {fn?.criticos_totales ?? 0} críticos</span></div>
+        <div className="tarjeta kpi" data-testid="kpi-falsos-negativos"><span className={`n ${fn && fn.n > 0 ? "critico" : degradado ? "no-representativo" : ""}`}>{fn?.n ?? "—"}</span><span className="muted">falsos negativos críticos · {pct(fn?.tasa)} de {fn?.criticos_totales ?? 0} críticos</span></div>
         <div className="tarjeta kpi" data-testid="kpi-tokens"><span className="n">{num((m?.tokens.entrada ?? 0) + (m?.tokens.salida ?? 0), 0)}</span><span className="muted">tokens · {num(m?.tokens.entrada, 0)} entrada / {num(m?.tokens.salida, 0)} salida</span></div>
         <div className="tarjeta kpi"><span className="n">{m?.documentos ?? "—"}</span><span className="muted">documentos en el periodo</span></div>
       </div>

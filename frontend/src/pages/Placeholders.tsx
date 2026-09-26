@@ -13,6 +13,9 @@ import type { AlertaListada } from "../types";
 
 /** Cada cuánto se vuelve a pedir la lista. Una alerta crítica nueva no puede esperar a que alguien recargue. */
 const REFRESCO_MS = 15_000;
+/** En la vista de pared caben unas 8 filas a la vista; el resto se anuncia, nunca se esconde en silencio. */
+const FILAS_PARED = 8;
+const SIN_CONCEPTO = "Hallazgo sin identificar";
 
 function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
   return (
@@ -49,6 +52,8 @@ export function AlertasPage() {
   const [fallo, setFallo] = useState<Date | null>(null);
   const [nuevas, setNuevas] = useState<Set<string>>(() => new Set());
   const conocidas = useRef<Set<string> | null>(null);
+  const [verTodas, setVerTodas] = useState(false);
+  const resultado = useRef<HTMLParagraphElement>(null);
 
   const cargar = useCallback(() => listarAlertas()
     .then((lista) => {
@@ -81,6 +86,13 @@ export function AlertasPage() {
   const pendientes = ordenadas.filter((x) => x.a.estado_acuse === "pendiente").length;
   const escaladas = ordenadas.filter((x) => x.a.estado_acuse === "pendiente" && x.plazo.vencido).length;
   const masAntigua = ordenadas.find((x) => x.a.estado_acuse === "pendiente");
+  const todasEscaladas = pendientes > 0 && escaladas === pendientes;
+  const visibles = pared && !verTodas ? ordenadas.slice(0, FILAS_PARED) : ordenadas;
+  const ocultas = ordenadas.length - visibles.length;
+  const concepto = (a: AlertaListada) => (a.concepto ? etiquetaConcepto(a.concepto) : SIN_CONCEPTO);
+
+  // Tras un acuse la fila cambia y su botón desaparece: el foco pasa al resultado, no se pierde en la página.
+  useEffect(() => { if (mensaje) resultado.current?.focus(); }, [mensaje]);
 
   // La cuenta en la pestaña: se ve aunque la pantalla muestre otra cosa.
   useEffect(() => {
@@ -97,7 +109,8 @@ export function AlertasPage() {
           <span className="cuenta">{pendientes}</span>
           <div>
             <strong>{pendientes === 0 ? "Ninguna alerta sin acuse" : `${pendientes} sin acuse`}</strong>
-            {masAntigua && <span>la más antigua: {etiquetaConcepto(masAntigua.a.concepto) || "sin concepto"}, {masAntigua.plazo.texto}</span>}
+            {masAntigua && <span>la más antigua: {concepto(masAntigua.a)}, {masAntigua.plazo.texto}</span>}
+            {ocultas > 0 && <span className="mas-abajo">+{ocultas} más abajo</span>}
           </div>
         </section>
       )}
@@ -106,8 +119,10 @@ export function AlertasPage() {
           <RefreshCw size={14} aria-hidden="true" />
           {actualizado ? <>Actualizado a las {hora(actualizado)} · se actualiza sola cada {REFRESCO_MS / 1000} s</> : "Cargando alertas…"}
         </p>
-        {escaladas > 0 && (
-          <p className="nota-escalada"><ChevronsUp size={16} aria-hidden="true" /><strong>{escaladas === 1 ? "1 alerta escalada" : `${escaladas} alertas escaladas`}</strong> al siguiente rol por falta de acuse en plazo.</p>
+        {todasEscaladas ? (
+          <p className="nota-escalada"><ChevronsUp size={16} aria-hidden="true" /><strong>{pendientes === 1 ? "La alerta pendiente está escalada" : `Las ${pendientes} alertas pendientes están escaladas`}</strong> al siguiente nivel de la cadena de guardia por falta de acuse en plazo.</p>
+        ) : escaladas > 0 && (
+          <p className="nota-escalada"><ChevronsUp size={16} aria-hidden="true" /><strong>{escaladas === 1 ? "1 alerta escalada" : `${escaladas} alertas escaladas`}</strong> al siguiente nivel de la cadena de guardia por falta de acuse en plazo.</p>
         )}
       </div>
       {fallo && (
@@ -115,32 +130,33 @@ export function AlertasPage() {
           No se pudo actualizar a las {hora(fallo)}. La lista puede estar desactualizada{actualizado ? ` desde las ${hora(actualizado)}` : ""}; se reintenta sola cada {REFRESCO_MS / 1000} s.
         </p>
       )}
-      <div role="status" aria-live="polite">{mensaje && <p className="estado-carga ok-estado"><CheckCircle2 size={16} aria-hidden="true" />{mensaje}</p>}</div>
+      <div role="status" aria-live="polite">{mensaje && <p className="estado-carga ok-estado" ref={resultado} tabIndex={-1}><CheckCircle2 size={16} aria-hidden="true" />{mensaje}</p>}</div>
       <section className="tarjeta" style={{ padding: 0 }}>
         <div className="scroll">
           <table className="tabla-densa tabla-alertas">
             <thead><tr><th>{pared ? "Hallazgo" : "Documento"}</th><th>{pared ? "Documento" : "Hallazgo"}</th><th>Emitida</th><th>Plazo</th><th>Estado</th><th><span className="oculto-visual">Acción</span></th></tr></thead>
             <tbody>
-              {ordenadas.map(({ a, plazo }) => {
+              {visibles.map(({ a, plazo }) => {
                 const pendiente = a.estado_acuse === "pendiente";
                 const esNueva = pendiente && nuevas.has(clave(a));
                 return (
                   <tr key={clave(a)} className={`fila ${pendiente ? "critico" : "rutina"}${esNueva ? " nueva" : ""}`} data-testid="fila-alerta">
-                    {pared && <td className="hallazgo">{a.concepto ? etiquetaConcepto(a.concepto) : <span className="muted">Sin concepto</span>}{esNueva && <span className="tag nueva">Nueva</span>}</td>}
+                    {pared && <td className="hallazgo">{a.concepto ? concepto(a) : <span className="muted">{SIN_CONCEPTO}</span>}{esNueva && <span className="tag nueva">Nueva</span>}</td>}
                     <td>
                       <Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}><code>{a.documento_id}</code></Link>
                       {!pared && esNueva && <span className="tag nueva">Nueva</span>}
                       <span className="secundaria">{a.canal} → {a.destinatario}</span>
                     </td>
-                    {!pared && <td>{a.concepto ? etiquetaConcepto(a.concepto) : <span className="muted">Sin concepto</span>}</td>}
+                    {!pared && <td>{a.concepto ? concepto(a) : <span className="muted">{SIN_CONCEPTO}</span>}</td>}
                     <td>{emitida(a.emitida_en, ahora)}</td>
                     <td>{pendiente ? <ChipPlazo plazo={plazo} /> : <span className="muted">—</span>}</td>
                     <td>
                       {!pendiente ? <span className="tag exito"><CheckCircle2 size={13} aria-hidden="true" />Acusada · {a.acusado_por}</span>
+                        : todasEscaladas ? <span className="oculto-visual">Estado: escalada</span>
                         : plazo.vencido ? <span className="tag critico fuerte"><ChevronsUp size={13} aria-hidden="true" />Escalada</span>
                         : <span className="tag critico">Pendiente</span>}
                     </td>
-                    <td>{pendiente && <AccionAcuse documentoId={a.documento_id} onAcusado={(r) => { setMensaje(`Acuse de ${a.documento_id} registrado por ${r.acusado_por}. Circuito cerrado.`); cargar(); }} />}</td>
+                    <td>{pendiente && <AccionAcuse documentoId={a.documento_id} contexto={`${concepto(a)}, ${a.documento_id}`} onAcusado={(r) => { setMensaje(`Acuse de ${a.documento_id} registrado por ${r.acusado_por}. Circuito cerrado.`); cargar(); }} />}</td>
                   </tr>
                 );
               })}
@@ -148,6 +164,11 @@ export function AlertasPage() {
             </tbody>
           </table>
         </div>
+        {ocultas > 0 && (
+          <div className="mas-alertas">
+            <button type="button" className="secundario" onClick={() => setVerTodas(true)}>Mostrar las {ocultas} alertas más</button>
+          </div>
+        )}
       </section>
     </>
   );

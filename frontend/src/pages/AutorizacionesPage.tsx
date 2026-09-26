@@ -5,6 +5,7 @@ import { bandejaAutorizaciones, resolverAutorizacion } from "../api";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { alTeclearPestanas } from "../app/pestanas";
 import { useUsuario } from "../app/usuario";
+import { FranjaConfirmacion } from "../components/FranjaConfirmacion";
 import { TagPrioridad } from "../components/Tags";
 import type { BandejaAutorizaciones, OrdenPorAutorizar } from "../types";
 
@@ -27,11 +28,14 @@ export function AutorizacionesPage() {
   const cargar = () => bandejaAutorizaciones().then(setBandeja).catch(() => setError("No hay conexión con la API."));
   useEffect(() => { cargar(); }, []);
 
+  const [porConfirmar, setPorConfirmar] = useState<{ id: string; accion: "aprobar" | "devolver" } | null>(null);
+
   async function resolver(orden: OrdenPorAutorizar, accion: "aprobar" | "devolver") {
+    setPorConfirmar(null);
     setMensaje(null);
     try {
       const r = await resolverAutorizacion(orden.documento_id, { accion, usuario: usuario.trim(), motivo: (motivos[orden.documento_id] ?? "").trim() });
-      setMensaje({ texto: `${orden.documento_id}: ${r.autorizacion.estado} por ${r.autorizacion.usuario} · estado ${r.estado}` });
+      setMensaje({ texto: `${orden.documento_id}: ${r.autorizacion.estado === "aprobada" ? "aprobada" : "devuelta al solicitante"} por ${r.autorizacion.usuario}.` });
       cargar();
     } catch (e) {
       setMensaje({ texto: textoDeError(e), error: true });
@@ -81,9 +85,17 @@ export function AutorizacionesPage() {
                           <input value={motivo} placeholder="Motivo (obligatorio para devolver)" onChange={(e) => setMotivos({ ...motivos, [o.documento_id]: e.target.value })} />
                         </label>
                         <div className="acciones" style={{ marginTop: 6 }}>
-                          <button type="button" disabled={!yo} onClick={() => resolver(o, "aprobar")}>Aprobar</button>
-                          <button type="button" className="secundario" disabled={!yo || !motivo.trim()} onClick={() => resolver(o, "devolver")}>Devolver al solicitante</button>
+                          <button type="button" disabled={!yo || porConfirmar?.id === o.documento_id} onClick={() => setPorConfirmar({ id: o.documento_id, accion: "aprobar" })} aria-label={`Aprobar ${o.documento_id}`}>Aprobar</button>
+                          <button type="button" className="secundario" disabled={!yo || !motivo.trim() || porConfirmar?.id === o.documento_id} onClick={() => setPorConfirmar({ id: o.documento_id, accion: "devolver" })} aria-label={`Devolver al solicitante ${o.documento_id}`}>Devolver al solicitante</button>
                         </div>
+                        {porConfirmar?.id === o.documento_id && (
+                          <FranjaConfirmacion peligro={porConfirmar.accion === "devolver"} confirmar={porConfirmar.accion === "aprobar" ? "Confirmar aprobación" : "Confirmar devolución"}
+                            onConfirmar={() => resolver(o, porConfirmar.accion)} onCancelar={() => setPorConfirmar(null)}>
+                            {porConfirmar.accion === "aprobar"
+                              ? <>¿Aprobar <strong>{o.documento_id}</strong> ({o.procedimientos.join(", ") || "sin procedimiento"})? Se informa la autorización a la EPS.</>
+                              : <>¿Devolver <strong>{o.documento_id}</strong> al solicitante? Motivo: «{motivo.trim()}».</>}
+                          </FranjaConfirmacion>
+                        )}
                       </td>
                     </tr>
                   );

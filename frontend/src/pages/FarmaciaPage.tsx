@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { colaFarmacia, verificarReceta } from "../api";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { useUsuario } from "../app/usuario";
+import { FranjaConfirmacion } from "../components/FranjaConfirmacion";
 import { TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
 import type { RecetaPorVerificar } from "../types";
@@ -19,11 +20,14 @@ export function FarmaciaPage() {
   const cargar = () => colaFarmacia().then(setRecetas).catch(() => setError("No hay conexión con la API."));
   useEffect(() => { cargar(); }, []);
 
+  const [porConfirmar, setPorConfirmar] = useState<string | null>(null);
+
   async function verificar(documentoId: string) {
+    setPorConfirmar(null);
     setMensaje(null);
     try {
       const r = await verificarReceta(documentoId, usuario.trim());
-      setMensaje({ texto: r.completa ? `${documentoId} verificada (${r.verificaciones.length} de ${r.requeridas}) · estado ${r.estado}` : `${documentoId}: primera verificación registrada; falta la segunda por otra persona` });
+      setMensaje({ texto: r.completa ? `${documentoId} verificada (${r.verificaciones.length} de ${r.requeridas}). Queda ${r.estado === "ENTREGADO" ? "entregada" : "en curso"}.` : `${documentoId}: primera verificación registrada; falta la segunda por otra persona` });
       cargar();
     } catch (e) {
       setMensaje({ texto: textoDeError(e), error: true });
@@ -74,8 +78,14 @@ export function FarmaciaPage() {
                       {r.verificaciones.length > 0 && <span className="secundaria">{r.verificaciones.map((v) => v.usuario).join(", ")}</span>}
                     </td>
                     <td>
-                      <button type="button" disabled={!yo || yaFirme} onClick={() => verificar(r.documento_id)}>{siguiente}</button>
-                      {yaFirme && <span className="secundaria">Requiere otra persona: la primera verificación la hizo usted (RN-J6).</span>}
+                      {porConfirmar === r.documento_id ? (
+                        <FranjaConfirmacion confirmar="Confirmar verificación" onConfirmar={() => verificar(r.documento_id)} onCancelar={() => setPorConfirmar(null)}>
+                          ¿Registrar la {hechas === 0 ? "primera" : "segunda"} verificación de <strong>{r.documento_id}</strong> ({r.medicamentos.map((m) => `${m.dci} ${m.dosis ?? ""}`.trim()).join(", ")}) como <strong>{yo}</strong>?
+                        </FranjaConfirmacion>
+                      ) : (
+                        <button type="button" disabled={!yo || yaFirme} onClick={() => setPorConfirmar(r.documento_id)} aria-label={`${siguiente}: ${r.documento_id}`}>{siguiente}</button>
+                      )}
+                      {yaFirme && <span className="secundaria">Requiere otra persona: la primera verificación la hiciste tú.</span>}
                     </td>
                   </tr>
                 );

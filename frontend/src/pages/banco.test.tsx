@@ -133,7 +133,7 @@ describe("transcripción cuando el motor no leyó el documento", () => {
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({
       accion: "transcribir",
       transcripcion: expect.objectContaining({
-        clasificacion: expect.objectContaining({ tipo: "Receta Médica", nivel_prioridad_propuesto: "Rutina" }),
+        clasificacion: expect.objectContaining({ tipo: "Receta Médica", nivel_prioridad_propuesto: "Crítico" }),  // arranca en la prioridad actual
         extraccion: expect.objectContaining({
           fecha_documento: "03/04/2026",
           paciente: expect.objectContaining({ documento: expect.objectContaining({ valor: "41234567" }) }),
@@ -160,7 +160,7 @@ describe("la transcripción nunca pasa de un paciente a otro", () => {
     await userEvent.click(within(panel).getByRole("button", { name: /descartar transcripción/i }));
     fireEvent.keyDown(document.body, { key: "j" });
     await waitFor(() => expect(consultar).toHaveBeenLastCalledWith("DOC-DESPUES"));
-    await waitFor(() => expect(screen.getByText("DOC-DESPUES", { selector: "h1" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("DOC-DESPUES", { selector: ".id-doc code" })).toBeInTheDocument());
     expect(within(screen.getByTestId("transcripcion")).getByLabelText(/nombre del paciente/i)).toHaveValue("");
   });
 });
