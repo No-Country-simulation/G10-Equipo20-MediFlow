@@ -1,3 +1,4 @@
+import { urlOriginal, urlVistaPrevia } from "../../api";
 import type { DocumentoDetalle } from "../../types";
 import { HistorialDecisiones } from "../HistorialDecisiones";
 import { PrioridadBadge } from "../PrioridadBadge";
@@ -21,6 +22,7 @@ export function CockpitScreen({ detalle, onContinuar }: Props) {
   const { clasificacion: c, extraccion: e, evaluacion: ev, enrutamiento: en } = r;
   const sv = e.signos_vitales;
   const retenidas = Object.entries(en.entregas_retenidas);
+  const esArchivo = detalle.formato === "pdf" || detalle.formato === "png" || detalle.formato === "jpeg";
 
   return (
     <section className="pantalla">
@@ -104,6 +106,22 @@ export function CockpitScreen({ detalle, onContinuar }: Props) {
           <p className="muted">Pack {r.pack_pais} · reglas v{r.version_reglas} · respaldo {r.status_backup}</p>
         </div>
       </div>
+
+      {esArchivo && (
+        <div className="tarjeta original">
+          <h3>Documento original</h3>
+          <p>
+            <a href={urlOriginal(detalle.documento_id)} target="_blank" rel="noreferrer">Ver original</a>
+            {detalle.nombre_archivo && <span className="muted"> · {detalle.nombre_archivo}</span>}
+            {detalle.num_paginas && detalle.num_paginas > 1 && <span className="muted"> · {detalle.num_paginas} páginas</span>}
+          </p>
+          {detalle.formato === "pdf" ? (
+            <img className="vista-previa" src={urlVistaPrevia(detalle.documento_id, 1)} alt="Página 1 del original" />
+          ) : (
+            <img className="vista-previa" src={urlOriginal(detalle.documento_id)} alt="Imagen original" />
+          )}
+        </div>
+      )}
 
       <h3>Historial de decisiones (RN-G2)</h3>
       <HistorialDecisiones historial={r.historial_decisiones} />

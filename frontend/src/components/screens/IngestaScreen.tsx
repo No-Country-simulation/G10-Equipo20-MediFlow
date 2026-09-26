@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { enviarDocumento, ErrorApi } from "../../api";
+import { enviarArchivo, enviarDocumento, ErrorApi } from "../../api";
 import { CASOS } from "../../data/casos";
 import type { CanalOrigen, Cobertura, DocumentoDetalle } from "../../types";
 
@@ -17,10 +17,11 @@ export function IngestaScreen({ onEnviado }: Props) {
   const [canal, setCanal] = useState<CanalOrigen>("Consulta_Ambulatoria");
   const [cobertura, setCobertura] = useState<Cobertura | "">("");
   const [texto, setTexto] = useState("");
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const listo = documentoId.trim() !== "" && texto.trim() !== "" && !enviando;
+  const listo = documentoId.trim() !== "" && (archivo !== null || texto.trim() !== "") && !enviando;
 
   function cargarCaso(id: string) {
     const caso = CASOS.find((c) => c.id === id);
@@ -29,6 +30,7 @@ export function IngestaScreen({ onEnviado }: Props) {
     setCanal(caso.canal_origen);
     setCobertura(caso.cobertura_paciente ?? "");
     setTexto(caso.texto);
+    setArchivo(null);
     setError(null);
   }
 
@@ -36,13 +38,15 @@ export function IngestaScreen({ onEnviado }: Props) {
     setEnviando(true);
     setError(null);
     try {
-      const detalle = await enviarDocumento({
-        documento_id: documentoId.trim(),
-        canal_origen: canal,
-        cobertura_paciente: cobertura || null,
-        tipo_contenido: "texto",
-        contenido_texto: texto,
-      });
+      const detalle = archivo
+        ? await enviarArchivo(archivo, { documento_id: documentoId.trim(), canal_origen: canal, cobertura_paciente: cobertura || null })
+        : await enviarDocumento({
+            documento_id: documentoId.trim(),
+            canal_origen: canal,
+            cobertura_paciente: cobertura || null,
+            tipo_contenido: "texto",
+            contenido_texto: texto,
+          });
       if (detalle.codigo_error) {
         setError(`Documento rechazado: ${detalle.codigo_error}`);
         return;
@@ -89,8 +93,23 @@ export function IngestaScreen({ onEnviado }: Props) {
       </div>
 
       <label>
+        Archivo (PDF, PNG o JPG). Si se adjunta, se envía en lugar del texto.
+        <input
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+          onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
+        />
+      </label>
+      {archivo && (
+        <p className="muted">
+          Adjunto: <strong>{archivo.name}</strong> ({Math.round(archivo.size / 1024)} KB). Las páginas con texto se seudonimizan; las escaneadas van como imagen (RN-M2).
+          <button type="button" className="secundario" onClick={() => setArchivo(null)}> Quitar</button>
+        </p>
+      )}
+
+      <label>
         Texto del documento
-        <textarea rows={14} value={texto} onChange={(e) => setTexto(e.target.value)} />
+        <textarea rows={14} value={texto} onChange={(e) => setTexto(e.target.value)} disabled={archivo !== null} />
       </label>
 
       {error && <p className="error" role="alert">{error}</p>}

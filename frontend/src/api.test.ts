@@ -45,3 +45,32 @@ describe("cliente de la API", () => {
     expect(fetchMock).toHaveBeenLastCalledWith("/api/documentos/DOC-1/entregar", expect.objectContaining({ method: "POST" }));
   });
 });
+
+describe("archivos, listado y original (mejora de la rama bryan-segovia)", () => {
+  it("envía el archivo como multipart con sus campos", async () => {
+    const { enviarArchivo } = await import("./api");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValue(respuesta(detalleCaso1()));
+    const archivo = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "informe.pdf", { type: "application/pdf" });
+    await enviarArchivo(archivo, { documento_id: "DOC-1", canal_origen: "Externo", cobertura_paciente: "contributivo" });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/documentos/archivo");
+    const form = (init as RequestInit).body as FormData;
+    expect(form.get("documento_id")).toBe("DOC-1");
+    expect(form.get("canal_origen")).toBe("Externo");
+    expect(form.get("cobertura_paciente")).toBe("contributivo");
+    expect((form.get("archivo") as File).name).toBe("informe.pdf");
+  });
+
+  it("construye las URLs del original y la vista previa", async () => {
+    const { urlOriginal, urlVistaPrevia } = await import("./api");
+    expect(urlOriginal("DOC 1")).toBe("/api/documentos/DOC%201/original");
+    expect(urlVistaPrevia("DOC-1", 2)).toBe("/api/documentos/DOC-1/vista_previa?pagina=2");
+  });
+
+  it("lista documentos con filtros", async () => {
+    const { listarDocumentos } = await import("./api");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValue(respuesta({ items: [], total: 0, limit: 20, offset: 0 }));
+    await listarDocumentos({ estado: "EN_REVISION_HUMANA", q: "DOC" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/documentos?estado=EN_REVISION_HUMANA&q=DOC");
+  });
+});

@@ -127,6 +127,11 @@ export interface DocumentoDetalle {
   version: number;
   estado: EstadoDocumento;
   nivel_prioridad: NivelPrioridad | null;
+  tipo_contenido?: "texto" | "pdf" | "imagen";
+  formato?: "txt" | "pdf" | "png" | "jpeg" | string | null;
+  nombre_archivo?: string | null;
+  num_paginas?: number;
+  paginas?: { pagina: number; tipo: "texto" | "imagen"; ruta?: string | null }[];
   status_backup: string;
   ruta_storage: string | null;
   posible_duplicado_de: string | null;
@@ -150,6 +155,35 @@ export interface ItemCola {
   tipo: string | null;
   creado_en: string;
   plazo_minutos: number;
+}
+
+export interface ItemListado {
+  documento_id: string;
+  version: number;
+  estado: EstadoDocumento;
+  nivel_prioridad: NivelPrioridad | null;
+  tipo_contenido: string;
+  formato: string | null;
+  nombre_archivo: string | null;
+  canal_origen: string;
+  creado_en: string | null;
+  tipo: string | null;
+  motivo_auditoria: string | null;
+  codigo_error: string | null;
+}
+
+export interface Listado {
+  items: ItemListado[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DatosArchivo {
+  documento_id: string;
+  canal_origen: CanalOrigen;
+  cobertura_paciente?: Cobertura | null;
+  pais_origen?: string;
 }
 
 export type AccionRevision = "aprobar" | "corregir" | "rechazar";

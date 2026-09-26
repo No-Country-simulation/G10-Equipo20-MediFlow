@@ -131,3 +131,27 @@ describe("EntregaScreen", () => {
     expect(await screen.findByText(/acuse_alerta/)).toBeInTheDocument();
   });
 });
+
+describe("IngestaScreen con archivo (PDF, PNG, JPG)", () => {
+  it("envía el archivo seleccionado por multipart en vez del texto", async () => {
+    const enviarArchivo = vi.spyOn(api, "enviarArchivo").mockResolvedValue(detalleCaso1());
+    const onEnviado = vi.fn();
+    render(<IngestaScreen onEnviado={onEnviado} />);
+    await userEvent.type(screen.getByLabelText(/documento_id/i), "DOC-PDF-1");
+    const archivo = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "informe.pdf", { type: "application/pdf" });
+    await userEvent.upload(screen.getByLabelText(/archivo/i), archivo);
+    expect(screen.getByText(/informe\.pdf/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /enviar al agente/i }));
+    await waitFor(() => expect(enviarArchivo).toHaveBeenCalled());
+    expect(enviarArchivo.mock.calls[0][1]).toMatchObject({ documento_id: "DOC-PDF-1" });
+    expect(onEnviado).toHaveBeenCalled();
+  });
+});
+
+describe("CockpitScreen con original", () => {
+  it("muestra el enlace al original y la vista previa de la primera página de un PDF", () => {
+    render(<CockpitScreen detalle={detalleCaso1({ formato: "pdf", num_paginas: 2, nombre_archivo: "informe.pdf" })} onContinuar={() => {}} />);
+    expect(screen.getByRole("link", { name: /ver original/i })).toHaveAttribute("href", "/api/documentos/DOC-CLIN-2026-8942/original");
+    expect(screen.getByRole("img", { name: /página 1/i })).toHaveAttribute("src", "/api/documentos/DOC-CLIN-2026-8942/vista_previa?pagina=1");
+  });
+});

@@ -1,8 +1,10 @@
 /** Cliente de la API REST de MediFlow. Todas las rutas pasan por /api (proxy de Vite o nginx). */
 import type {
+  DatosArchivo,
   DocumentoDetalle,
   DocumentoRequest,
   ItemCola,
+  Listado,
   ResolucionRequest,
   RespuestaEntrega,
   ResultadoTriaje,
@@ -58,4 +60,38 @@ export function acusarAlerta(documentoId: string, usuario: string): Promise<{ es
 
 export function confirmarEntrega(documentoId: string, destino: string): Promise<RespuestaEntrega> {
   return llamar(`/documentos/${encodeURIComponent(documentoId)}/entregar`, { method: "POST", body: JSON.stringify({ destino }) });
+}
+
+/** Carga multipart de PDF, PNG o JPG. El backend valida el contenido real del archivo (RN-A1). */
+export async function enviarArchivo(archivo: File, datos: DatosArchivo): Promise<DocumentoDetalle> {
+  const form = new FormData();
+  form.append("archivo", archivo, archivo.name);
+  form.append("documento_id", datos.documento_id);
+  form.append("canal_origen", datos.canal_origen);
+  if (datos.cobertura_paciente) form.append("cobertura_paciente", datos.cobertura_paciente);
+  if (datos.pais_origen) form.append("pais_origen", datos.pais_origen);
+  const respuesta = await fetch(`${BASE_URL}/documentos/archivo`, { method: "POST", body: form });
+  const cuerpo = await respuesta.json().catch(() => null);
+  if (!respuesta.ok && respuesta.status !== 400) {
+    const detalle = (cuerpo && cuerpo.detail) || respuesta.statusText;
+    throw new ErrorApi(respuesta.status, typeof detalle === "string" ? detalle : JSON.stringify(detalle), cuerpo);
+  }
+  return cuerpo as DocumentoDetalle;
+}
+
+export function listarDocumentos(filtros: { estado?: string; nivel?: string; q?: string; limit?: number; offset?: number } = {}): Promise<Listado> {
+  const params = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(filtros)) {
+    if (valor !== undefined && valor !== "" && valor !== null) params.set(clave, String(valor));
+  }
+  const consulta = params.toString();
+  return llamar<Listado>(`/documentos${consulta ? `?${consulta}` : ""}`);
+}
+
+export function urlOriginal(documentoId: string): string {
+  return `${BASE_URL}/documentos/${encodeURIComponent(documentoId)}/original`;
+}
+
+export function urlVistaPrevia(documentoId: string, pagina = 1): string {
+  return `${BASE_URL}/documentos/${encodeURIComponent(documentoId)}/vista_previa?pagina=${pagina}`;
 }
