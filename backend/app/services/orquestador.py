@@ -129,7 +129,8 @@ class Orquestador:
         doc = self._doc(estado)
         texto = doc.texto_seudonimizado or ""
         detecciones = detectar_en_texto(texto, self.pack)
-        es_imagen = any(p.get("tipo") == "imagen" for p in doc.paginas_json or []) or doc.tipo_contenido != "texto"
+        # RN-P4: solo lo que el sistema no pudo leer (páginas escaneadas) va con prioridad máxima; un PDF con texto se evalúa por su texto.
+        es_imagen = any(p.get("tipo") == "imagen" for p in doc.paginas_json or [])
         nivel = N.CRITICO if (detecciones or es_imagen) else N.RUTINA
         historial = [DecisionRegistrada(regla="RN-P2", evidencia=estado.get("error") or "fallo", decision="revision_humana:fallo_tecnico")]
         for d in detecciones:
