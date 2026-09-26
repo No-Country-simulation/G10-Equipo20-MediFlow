@@ -134,13 +134,29 @@ def test_LLM_caido_sin_hallazgos_va_a_revision_sin_alerta_RN_P2(repo, storage):
 
 
 def test_imagen_con_LLM_caido_va_a_revision_con_prioridad_maxima_RN_P4(repo, storage):
+    import base64
+    from pathlib import Path
+
+    png = (Path(__file__).resolve().parents[2] / "samples" / "archivos" / "cardio_scan.png").read_bytes()
     cliente = ClienteFalso(respuestas=[ErrorTransitorioLLM("caído")] * 2)
     doc = ingresar(repo, storage, DocumentoRequest(documento_id="DOC-IMG", canal_origen="Externo", tipo_contenido="imagen",
-                                                   archivo_base64="aGVsbG8=", nombre_archivo="foto.png"))
+                                                   archivo_base64=base64.b64encode(png).decode(), nombre_archivo="cardio_scan.png"))
     r = orquestador(repo, storage, cliente).procesar(doc)
     assert doc.estado == E.EN_REVISION_HUMANA
     assert r.clasificacion.nivel_prioridad == "Crítico"
     assert r.evaluacion.motivo_auditoria is M.FALLO_TECNICO
+
+
+def test_pdf_escaneado_manda_sus_paginas_como_imagenes_al_LLM_RN_M2(repo, storage):
+    from pathlib import Path
+
+    pdf = (Path(__file__).resolve().parents[2] / "samples" / "archivos" / "cardio_mixed.pdf").read_bytes()
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1()])
+    doc = ServicioIngesta(repo, storage).recibir_archivo("cardio_mixed.pdf", pdf, documento_id="DOC-MIX", canal_origen="Externo").documento
+    orquestador(repo, storage, cliente).procesar(doc)
+    llamada = cliente.llamadas[0]
+    assert "ECOCARDIOGRAMA" in llamada.texto_usuario
+    assert len(llamada.imagenes) == 1 and llamada.imagenes[0][1] == "image/png"
 
 
 def test_respuesta_fuera_de_esquema_es_fallo_tecnico_RN_P3(repo, storage):

@@ -89,3 +89,86 @@ def test_el_mapa_de_reidentificacion_nunca_sale_por_la_api_RN_M1(client, llm_fal
     r = client.get("/documentos/DOC-CLIN-2026-8942")
     assert "mapa_reidentificacion" not in r.json()
     assert "texto_seudonimizado" not in r.json()
+
+
+# --- Archivos reales, listado, original y vista previa (mejora de la rama bryan-segovia) ------
+
+
+from pathlib import Path as _Path
+
+MUESTRAS = _Path(__file__).resolve().parents[2] / "samples" / "archivos"
+
+
+def test_post_documentos_archivo_acepta_multipart(client, llm_falso):
+    from tests.test_llm import propuesta_caso_1
+
+    llm_falso.respuestas.append(propuesta_caso_1())
+    r = client.post("/documentos/archivo",
+                    data={"documento_id": "DOC-UP-1", "canal_origen": "Consulta_Ambulatoria", "cobertura_paciente": "contributivo"},
+                    files={"archivo": ("cardio_digital.pdf", (MUESTRAS / "cardio_digital.pdf").read_bytes(), "application/pdf")})
+    assert r.status_code == 200, r.text
+    assert r.json()["documento_id"] == "DOC-UP-1"
+    assert r.json()["formato"] == "pdf"
+    assert "ECOCARDIOGRAMA" in llm_falso.llamadas[-1].texto_usuario  # texto embebido, ruta de texto
+
+
+def test_post_documentos_archivo_escaneado_manda_la_imagen_al_LLM_RN_M2(client, llm_falso):
+    from tests.test_llm import propuesta_caso_1
+
+    llm_falso.respuestas.append(propuesta_caso_1())
+    r = client.post("/documentos/archivo", data={"documento_id": "DOC-UP-2", "canal_origen": "Externo"},
+                    files={"archivo": ("cardio_scan.pdf", (MUESTRAS / "cardio_scan.pdf").read_bytes(), "application/pdf")})
+    assert r.status_code == 200, r.text
+    assert len(llm_falso.llamadas[-1].imagenes) == 1
+    assert llm_falso.llamadas[-1].imagenes[0][1] == "image/png"
+
+
+def test_post_documentos_archivo_rechazado_es_400_con_codigo(client):
+    r = client.post("/documentos/archivo", data={"documento_id": "DOC-UP-3", "canal_origen": "Externo"},
+                    files={"archivo": ("informe.docx", b"PK\x03\x04 no", "application/octet-stream")})
+    assert r.status_code == 400
+    assert r.json()["codigo_error"] == "formato_no_soportado"
+
+
+def test_get_documentos_lista_paginada_con_filtros(client, llm_falso):
+    from app.services.llm import ErrorTransitorioLLM
+    from tests.test_llm import propuesta_caso_1
+
+    llm_falso.respuestas.append(propuesta_caso_1())
+    client.post("/documentos", json={**CUERPO, "documento_id": "DOC-L-1"})
+    llm_falso.respuestas.extend([ErrorTransitorioLLM("x")] * 3)
+    client.post("/documentos", json={**CUERPO, "documento_id": "DOC-L-2", "contenido_texto": "Control de rutina. Fecha: 03/04/2026."})
+    todos = client.get("/documentos").json()
+    assert todos["total"] == 2 and [d["documento_id"] for d in todos["items"]] == ["DOC-L-2", "DOC-L-1"]
+    revision = client.get("/documentos", params={"estado": "EN_REVISION_HUMANA"}).json()
+    assert [d["documento_id"] for d in revision["items"]] == ["DOC-L-2"]
+    buscados = client.get("/documentos", params={"q": "L-1", "limit": 1}).json()
+    assert buscados["total"] == 1 and buscados["items"][0]["nivel_prioridad"] == "Crítico"
+    assert "resultado" not in buscados["items"][0]
+
+
+def test_get_original_y_vista_previa(client, llm_falso):
+    from tests.test_llm import propuesta_caso_1
+
+    llm_falso.respuestas.append(propuesta_caso_1())
+    client.post("/documentos/archivo", data={"documento_id": "DOC-UP-4", "canal_origen": "Externo"},
+                files={"archivo": ("cardio_mixed.pdf", (MUESTRAS / "cardio_mixed.pdf").read_bytes(), "application/pdf")})
+    original = client.get("/documentos/DOC-UP-4/original")
+    assert original.status_code == 200
+    assert original.headers["content-type"] == "application/pdf"
+    assert original.content.startswith(b"%PDF")
+    previa = client.get("/documentos/DOC-UP-4/vista_previa", params={"pagina": 2})
+    assert previa.status_code == 200
+    assert previa.headers["content-type"] == "image/png"
+    assert previa.headers["x-paginas"] == "2"
+    assert client.get("/documentos/DOC-UP-4/vista_previa", params={"pagina": 3}).status_code == 404
+
+
+def test_original_de_documento_de_texto_se_sirve_como_texto(client, llm_falso):
+    from tests.test_llm import propuesta_caso_1
+
+    llm_falso.respuestas.append(propuesta_caso_1())
+    client.post("/documentos", json=CUERPO)
+    r = client.get("/documentos/DOC-CLIN-2026-8942/original")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert client.get("/documentos/DOC-CLIN-2026-8942/vista_previa").status_code == 415

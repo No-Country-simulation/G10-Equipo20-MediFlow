@@ -64,18 +64,29 @@ def test_pais_origen_faltante_usa_CO_RN_A3_caso_11(servicio):
     assert r.documento.pais_origen == "CO"
 
 
-def test_pdf_en_base64_se_guarda_con_su_extension(servicio, storage):
-    contenido = b"%PDF-1.4 sintetico"
+def test_pdf_en_base64_se_guarda_con_su_extension(servicio_archivos, storage):
+    from pathlib import Path
+
+    contenido = (Path(__file__).resolve().parents[2] / "samples" / "archivos" / "cardio_digital.pdf").read_bytes()
     req = DocumentoRequest(
         documento_id="DOC-PDF-1",
         canal_origen="Consulta_Ambulatoria",
         tipo_contenido="pdf",
         archivo_base64=base64.b64encode(contenido).decode(),
     )
-    r = servicio.recibir(req)
+    r = servicio_archivos.recibir(req)
     assert r.documento.estado == E.VALIDADO
     assert r.documento.ruta_storage == "co/recibidos/DOC-PDF-1.pdf"
     assert storage.leer(r.documento.ruta_storage) == contenido
+    assert "ECOCARDIOGRAMA" in r.documento.texto_seudonimizado
+
+
+def test_pdf_falso_en_base64_se_rechaza_como_corrupto_RN_A1(servicio):
+    req = DocumentoRequest(documento_id="DOC-PDF-X", canal_origen="Externo", tipo_contenido="pdf",
+                           archivo_base64=base64.b64encode(b"%PDF-1.4 sintetico").decode())
+    r = servicio.recibir(req)
+    assert r.documento.estado == E.RECHAZADO
+    assert r.codigo_error == "pdf_corrupto"
 
 
 # --- Rechazos: solo desde RECIBIDO, siempre explícitos ------------------------
@@ -192,3 +203,62 @@ def test_documento_rechazado_no_se_seudonimiza(servicio):
     r = servicio.recibir(request_texto(texto="x" * 1_001))
     assert r.documento.texto_seudonimizado is None
     assert r.documento.mapa_reidentificacion is None
+
+
+# --- Ingesta de archivos reales: PDF, PNG, JPG (mejora de la rama bryan-segovia) ----------
+
+
+from pathlib import Path as _Path
+
+MUESTRAS = _Path(__file__).resolve().parents[2] / "samples" / "archivos"
+
+
+@pytest.fixture
+def servicio_archivos(session, storage):
+    return ServicioIngesta(RepositorioDocumentos(session), storage, tamano_maximo_bytes=2_000_000)
+
+
+def test_pdf_digital_entra_por_la_ruta_de_texto_seudonimizada_RN_M1(servicio_archivos, storage):
+    r = servicio_archivos.recibir_archivo("cardio_digital.pdf", (MUESTRAS / "cardio_digital.pdf").read_bytes(),
+                                          documento_id="DOC-PDF-DIGITAL", canal_origen="Consulta_Ambulatoria")
+    doc = r.documento
+    assert doc.estado == E.VALIDADO
+    assert doc.tipo_contenido == "pdf"
+    assert doc.formato == "pdf"
+    assert doc.ruta_storage == "co/recibidos/DOC-PDF-DIGITAL.pdf"
+    assert "ECOCARDIOGRAMA" in doc.texto_seudonimizado
+    assert doc.paginas_json == [{"pagina": 1, "tipo": "texto"}]
+
+
+def test_pdf_escaneado_guarda_la_pagina_como_imagen_RN_M2(servicio_archivos, storage):
+    r = servicio_archivos.recibir_archivo("cardio_scan.pdf", (MUESTRAS / "cardio_scan.pdf").read_bytes(),
+                                          documento_id="DOC-PDF-SCAN", canal_origen="Externo")
+    doc = r.documento
+    assert doc.estado == E.VALIDADO
+    assert doc.texto_seudonimizado == ""
+    assert doc.paginas_json == [{"pagina": 1, "tipo": "imagen", "ruta": "co/recibidos/DOC-PDF-SCAN_pag1.png"}]
+    assert storage.leer("co/recibidos/DOC-PDF-SCAN_pag1.png").startswith(b"\x89PNG")
+
+
+def test_imagen_jpg_es_una_pagina_de_imagen(servicio_archivos, storage):
+    r = servicio_archivos.recibir_archivo("cardio_scan.jpg", (MUESTRAS / "cardio_scan.jpg").read_bytes(),
+                                          documento_id="DOC-JPG", canal_origen="Externo")
+    doc = r.documento
+    assert doc.tipo_contenido == "imagen"
+    assert doc.formato == "jpeg"
+    assert doc.ruta_storage == "co/recibidos/DOC-JPG.jpg"
+    assert doc.paginas_json == [{"pagina": 1, "tipo": "imagen", "ruta": "co/recibidos/DOC-JPG.jpg"}]
+
+
+def test_archivo_con_extension_falsa_se_rechaza_con_codigo_RN_A1(servicio_archivos):
+    r = servicio_archivos.recibir_archivo("foto.png", (MUESTRAS / "cardio_digital.pdf").read_bytes(),
+                                          documento_id="DOC-FALSO", canal_origen="Externo")
+    assert r.documento.estado == E.RECHAZADO
+    assert r.codigo_error == "extension_no_coincide"
+
+
+def test_archivo_duplicado_exacto_devuelve_el_previo_RN_O1(servicio_archivos):
+    datos = (MUESTRAS / "cardio_digital.pdf").read_bytes()
+    a = servicio_archivos.recibir_archivo("cardio_digital.pdf", datos, documento_id="DOC-DUP", canal_origen="Externo")
+    b = servicio_archivos.recibir_archivo("cardio_digital.pdf", datos, documento_id="DOC-DUP", canal_origen="Externo")
+    assert b.duplicado_exacto is True and b.documento.id == a.documento.id

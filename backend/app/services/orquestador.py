@@ -129,7 +129,7 @@ class Orquestador:
         doc = self._doc(estado)
         texto = doc.texto_seudonimizado or ""
         detecciones = detectar_en_texto(texto, self.pack)
-        es_imagen = doc.tipo_contenido != "texto"
+        es_imagen = any(p.get("tipo") == "imagen" for p in doc.paginas_json or []) or doc.tipo_contenido != "texto"
         nivel = N.CRITICO if (detecciones or es_imagen) else N.RUTINA
         historial = [DecisionRegistrada(regla="RN-P2", evidencia=estado.get("error") or "fallo", decision="revision_humana:fallo_tecnico")]
         for d in detecciones:
@@ -292,18 +292,23 @@ class Orquestador:
         return f"_v{doc.version}" if doc.version > 1 else ""
 
     def _entrada_llm(self, doc: Documento) -> EntradaLLM:
-        if doc.tipo_contenido == "texto":
-            return EntradaLLM(documento_id=doc.documento_id, texto=doc.texto_seudonimizado or "", canal_origen=doc.canal_origen,
-                              pais=doc.pais_origen, cobertura=doc.cobertura_paciente)
-        # RN-M2: la ruta de imagen envía el original (excepción declarada). Se lee del respaldo (RN-P1).
-        if not doc.ruta_storage:
-            raise FileNotFoundError("original no respaldado; no se puede enviar la imagen al LLM")
+        """Texto seudonimizado (RN-M1) más las páginas escaneadas como imágenes (RN-M2), leídas del respaldo (RN-P1)."""
         import base64  # noqa: PLC0415
 
-        extension = doc.ruta_storage.rsplit(".", 1)[-1].lower()
-        contenido = base64.b64encode(self.storage.leer(doc.ruta_storage)).decode()
-        return EntradaLLM(documento_id=doc.documento_id, texto=None, canal_origen=doc.canal_origen, pais=doc.pais_origen,
-                          cobertura=doc.cobertura_paciente, imagen_base64=contenido, mime=_MIME_POR_EXTENSION.get(extension, "image/png"))
+        imagenes: list[tuple[str, str]] = []
+        for pagina in doc.paginas_json or []:
+            if pagina.get("tipo") != "imagen":
+                continue
+            ruta = pagina.get("ruta")
+            if not ruta:
+                raise FileNotFoundError(f"página {pagina.get('pagina')} sin respaldo; no se puede enviar al LLM")
+            extension = ruta.rsplit(".", 1)[-1].lower()
+            imagenes.append((base64.b64encode(self.storage.leer(ruta)).decode(), _MIME_POR_EXTENSION.get(extension, "image/png")))
+        texto = doc.texto_seudonimizado or ""
+        if not texto.strip() and not imagenes:
+            raise FileNotFoundError("documento sin texto ni páginas legibles")
+        return EntradaLLM(documento_id=doc.documento_id, texto=texto, canal_origen=doc.canal_origen, pais=doc.pais_origen,
+                          cobertura=doc.cobertura_paciente, imagenes=imagenes)
 
     def _contexto_evaluacion(self, doc: Documento) -> ContextoEvaluacion:
         return ContextoEvaluacion(canal_origen=doc.canal_origen, pais=doc.pais_origen, cobertura_request=doc.cobertura_paciente,

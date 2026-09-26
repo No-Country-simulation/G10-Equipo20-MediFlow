@@ -24,6 +24,9 @@ class Documento(Base):
     pais_origen: Mapped[str] = mapped_column(String(2))
     tipo_contenido: Mapped[str] = mapped_column(String(16))
     nombre_archivo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    formato: Mapped[str | None] = mapped_column(String(8), nullable=True)  # txt | pdf | png | jpeg (validado por contenido)
+    num_paginas: Mapped[int] = mapped_column(Integer, default=1)
+    paginas_json: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{pagina, tipo: texto|imagen, ruta?}]
     cobertura_paciente: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tamano_bytes: Mapped[int] = mapped_column(Integer, default=0)
     status_backup: Mapped[str] = mapped_column(String(16), default="pendiente")  # RN-G3

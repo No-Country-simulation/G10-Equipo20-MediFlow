@@ -55,6 +55,25 @@ class RepositorioDocumentos:
         self.session.flush()
         return transicion
 
+    def listar(self, *, estado: str | None = None, nivel: str | None = None, q: str = "", limit: int = 20, offset: int = 0) -> tuple[list[Documento], int]:
+        """Última versión de cada documento, más reciente primero, con filtros y paginación."""
+        ultima = (
+            select(Documento.documento_id, func.max(Documento.version).label("version"))
+            .group_by(Documento.documento_id)
+            .subquery()
+        )
+        consulta = select(Documento).join(ultima, (Documento.documento_id == ultima.c.documento_id) & (Documento.version == ultima.c.version))
+        if estado:
+            consulta = consulta.where(Documento.estado == estado)
+        if nivel:
+            consulta = consulta.where(Documento.nivel_prioridad == nivel)
+        if q.strip():
+            patron = f"%{q.strip()}%"
+            consulta = consulta.where(Documento.documento_id.ilike(patron) | Documento.nombre_archivo.ilike(patron))
+        total = self.session.scalar(select(func.count()).select_from(consulta.subquery())) or 0
+        filas = self.session.scalars(consulta.order_by(Documento.creado_en.desc(), Documento.id.desc()).limit(limit).offset(offset))
+        return list(filas), total
+
     def version_previa(self, documento: Documento) -> Documento | None:
         """RN-O2: la versión anterior del mismo documento_id."""
         consulta = (
