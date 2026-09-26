@@ -41,6 +41,8 @@ class Documento(Base):
     propuesta_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     nivel_prioridad: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     entregas_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # destino -> confirmado
+    verificaciones_json: Mapped[list | None] = mapped_column(JSON, nullable=True)  # RN-J6: [{orden, usuario, fecha_hora}]
+    autorizacion_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # RN-E5/RN-E9: {estado, usuario, motivo, fecha_hora}
     # RN-R5, RN-T3: modelo, versión del prompt y costo en tokens por documento.
     modelo_llm: Mapped[str | None] = mapped_column(String(64), nullable=True)
     version_prompt: Mapped[str | None] = mapped_column(String(32), nullable=True)

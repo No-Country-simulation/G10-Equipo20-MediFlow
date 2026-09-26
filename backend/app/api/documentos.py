@@ -131,6 +131,8 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
         # RN-M1: lo único que viajó al LLM. Sin mapa: nunca se expone.
         "texto_enviado_llm": doc.texto_seudonimizado,
         "entregas": doc.entregas_json or {},
+        "verificaciones": doc.verificaciones_json or [],
+        "autorizacion": doc.autorizacion_json,
         "alerta": _alerta(doc),
         "correcciones": [
             {"campo": c.campo, "extraido": c.extraido, "corregido": c.corregido, "usuario": c.usuario} for c in doc.correcciones

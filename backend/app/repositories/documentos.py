@@ -74,6 +74,17 @@ class RepositorioDocumentos:
         filas = self.session.scalars(consulta.order_by(Documento.creado_en.desc(), Documento.id.desc()).limit(limit).offset(offset))
         return list(filas), total
 
+    def ultimas_versiones(self, *, estado: str | None = None) -> list[Documento]:
+        documentos, _ = self.listar(estado=estado, limit=5000)
+        return documentos
+
+    def entregados_desde(self, desde: datetime) -> int:
+        consulta = (
+            select(func.count(func.distinct(TransicionEstado.documento_pk)))
+            .where(TransicionEstado.a_estado == EstadoDocumento.ENTREGADO, TransicionEstado.fecha_hora >= desde)
+        )
+        return self.session.scalar(consulta) or 0
+
     def version_previa(self, documento: Documento) -> Documento | None:
         """RN-O2: la versión anterior del mismo documento_id."""
         consulta = (

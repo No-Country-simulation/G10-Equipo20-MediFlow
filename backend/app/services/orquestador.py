@@ -6,6 +6,7 @@ repositorio, que valida el ciclo de vida (RN-I). Toda decisión queda en el hist
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import get_settings
@@ -268,6 +269,86 @@ class Orquestador:
         self.repo.guardar()
         return {"documento_id": doc.documento_id, "estado": doc.estado, "entregas": entregas,
                 "retenidas": resultado.enrutamiento.entregas_retenidas, "pendientes": pendientes}
+
+    # --- Farmacia (RN-E6, RN-J6, RN-CO9) ---------------------------------------------------
+
+    @staticmethod
+    def plan_de(resultado: ResultadoTriaje) -> list[str]:
+        return [resultado.enrutamiento.destino_principal.value, *(d.value for d in resultado.enrutamiento.destinos_secundarios)]
+
+    @staticmethod
+    def verificaciones_requeridas(resultado: ResultadoTriaje) -> int:
+        exige_doble = any(m.alto_riesgo or m.control_especial for m in resultado.extraccion.medicamentos)
+        return 2 if exige_doble else 1
+
+    def es_receta_por_verificar(self, doc: Documento) -> bool:
+        if doc.estado != E.ENRUTADO or not doc.resultado_json:
+            return False
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        if resultado.clasificacion.tipo is not T.RECETA or D.FARMACIA_HOSPITALARIA.value not in self.plan_de(resultado):
+            return False
+        return not (doc.entregas_json or {}).get(D.FARMACIA_HOSPITALARIA.value)
+
+    def verificar_farmacia(self, doc: Documento, usuario: str) -> dict[str, Any]:
+        if not usuario.strip():
+            raise ErrorDeRevision(422, "RN-K5: la verificación exige un usuario identificado")
+        if not self.es_receta_por_verificar(doc):
+            raise ErrorDeRevision(409, "solo se verifican recetas enrutadas a Farmacia y aún no verificadas")
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        requeridas = self.verificaciones_requeridas(resultado)
+        verificaciones = list(doc.verificaciones_json or [])
+        if any(v["usuario"] == usuario.strip() for v in verificaciones):
+            raise ErrorDeRevision(409, "RN-J6: la segunda verificación requiere otra persona")
+        verificaciones.append({"orden": len(verificaciones) + 1, "usuario": usuario.strip(), "fecha_hora": datetime.now(timezone.utc).isoformat()})
+        doc.verificaciones_json = verificaciones
+        completa = len(verificaciones) >= requeridas
+        resultado.historial_decisiones.append(DecisionRegistrada(
+            regla="RN-J6" if requeridas == 2 else "RN-E2",
+            evidencia=f"verificación {len(verificaciones)}/{requeridas} por {usuario.strip()}",
+            decision="farmacia_verificada" if completa else "pendiente_segunda_verificacion",
+        ))
+        if completa:
+            entregas = dict(doc.entregas_json or {})
+            entregas[D.FARMACIA_HOSPITALARIA.value] = True
+            doc.entregas_json = entregas
+        doc.resultado_json = resultado.model_dump(mode="json")
+        pendientes = self._intentar_cierre(doc) if completa else []
+        self.repo.guardar()
+        return {"documento_id": doc.documento_id, "verificaciones": [{"orden": v["orden"], "usuario": v["usuario"]} for v in verificaciones],
+                "requeridas": requeridas, "completa": completa, "estado": doc.estado, "pendientes": pendientes}
+
+    # --- Autorizaciones (RN-E5, RN-E9, RN-CO13) ---------------------------------------------
+
+    def es_orden_por_autorizar(self, doc: Documento) -> bool:
+        if doc.estado != E.ENRUTADO or not doc.resultado_json or doc.autorizacion_json:
+            return False
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        return resultado.clasificacion.tipo is T.ORDEN_PROCEDIMIENTO and D.AUDITORIA_AUTORIZACIONES.value in self.plan_de(resultado)
+
+    def resolver_autorizacion(self, doc: Documento, *, accion: str, usuario: str, motivo: str) -> dict[str, Any]:
+        if not usuario.strip():
+            raise ErrorDeRevision(422, "RN-K5: la acción exige un usuario identificado")
+        if accion not in ("aprobar", "devolver"):
+            raise ErrorDeRevision(422, f"acción desconocida: {accion}")
+        if accion == "devolver" and not motivo.strip():
+            raise ErrorDeRevision(422, "RN-E5: devolver al solicitante exige motivo")
+        if not self.es_orden_por_autorizar(doc):
+            raise ErrorDeRevision(409, "solo se resuelven órdenes enrutadas a Auditoría y aún no resueltas")
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        estado = "aprobada" if accion == "aprobar" else "devuelta"
+        doc.autorizacion_json = {"estado": estado, "usuario": usuario.strip(), "motivo": motivo.strip(), "fecha_hora": datetime.now(timezone.utc).isoformat()}
+        resultado.historial_decisiones.append(DecisionRegistrada(
+            regla="RN-E9" if accion == "aprobar" else "RN-E5",
+            evidencia=f"{usuario.strip()}: {motivo.strip() or 'sin observaciones'}",
+            decision="autorizacion_aprobada" if accion == "aprobar" else "devuelta_al_solicitante",
+        ))
+        entregas = dict(doc.entregas_json or {})
+        entregas[D.AUDITORIA_AUTORIZACIONES.value] = True
+        doc.entregas_json = entregas
+        doc.resultado_json = resultado.model_dump(mode="json")
+        pendientes = self._intentar_cierre(doc)
+        self.repo.guardar()
+        return {"documento_id": doc.documento_id, "autorizacion": doc.autorizacion_json, "estado": doc.estado, "pendientes": pendientes}
 
     def _intentar_cierre(self, doc: Documento) -> list[str]:
         """ENRUTADO -> ENTREGADO cuando los destinos no retenidos confirmaron y, si es crítico, hay acuse (RN-J7)."""
