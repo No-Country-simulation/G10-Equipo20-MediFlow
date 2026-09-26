@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
-import { acusarAlerta, consultarDocumento, ErrorApi, listarAlertas } from "../api";
+import { acusarAlerta, ErrorApi, listarAlertas } from "../api";
 import { calcularPlazo } from "../app/plazos";
-import { CockpitScreen } from "../components/screens/CockpitScreen";
-import { ProcesamientoScreen } from "../components/screens/ProcesamientoScreen";
-import { RevisionHumanaScreen } from "../components/screens/RevisionHumanaScreen";
-import { EntregaScreen } from "../components/screens/EntregaScreen";
-import type { AlertaListada, DocumentoDetalle } from "../types";
+import { useUsuario } from "../app/usuario";
+import type { AlertaListada } from "../types";
 
 function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
   return (
@@ -31,50 +28,9 @@ function Pendiente({ titulo, sub, fase }: { titulo: string; sub: string; fase: s
   );
 }
 
-/** Detalle provisional (fase A): reutiliza el cockpit hasta que llegue el banco de trabajo de tres paneles (fase B). */
-export function DetalleDocumentoPage() {
-  const { id = "" } = useParams();
-  const [detalle, setDetalle] = useState<DocumentoDetalle | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pestana, setPestana] = useState<"cockpit" | "procesamiento" | "entrega">("cockpit");
-
-  useEffect(() => {
-    consultarDocumento(id).then(setDetalle).catch((e) => setError(e instanceof ErrorApi ? e.detalle : "No hay conexión con la API."));
-  }, [id]);
-
-  return (
-    <>
-      <header className="encabezado">
-        <div>
-          <p className="muted"><Link to="/documentos">Documentos</Link> / <code>{id}</code></p>
-          <h1>Detalle del documento</h1>
-        </div>
-        <div className="acciones">
-          <button type="button" className={pestana === "cockpit" ? "" : "secundario"} onClick={() => setPestana("cockpit")}>Cockpit</button>
-          <button type="button" className={pestana === "procesamiento" ? "" : "secundario"} onClick={() => setPestana("procesamiento")}>Ciclo de vida</button>
-          <button type="button" className={pestana === "entrega" ? "" : "secundario"} onClick={() => setPestana("entrega")}>Entregas</button>
-        </div>
-      </header>
-      {error && <p className="error">{error}</p>}
-      {detalle && pestana === "cockpit" && <CockpitScreen detalle={detalle} onContinuar={() => setPestana("entrega")} />}
-      {detalle && pestana === "procesamiento" && <ProcesamientoScreen detalle={detalle} onContinuar={() => setPestana("cockpit")} />}
-      {detalle && pestana === "entrega" && <EntregaScreen detalle={detalle} onReiniciar={() => setPestana("cockpit")} />}
-    </>
-  );
-}
-
-export function RevisionPage() {
-  return (
-    <>
-      <Encabezado titulo="Cola de revisión" sub="Ordenada por prioridad clínica y antigüedad (RN-J1). Plazos: Crítico 15 min, Urgente 2 h, Rutina 24 h hábiles (RN-J2)." />
-      <RevisionHumanaScreen documentoInicial={null} onResuelto={() => window.location.assign("/revision")} />
-    </>
-  );
-}
-
 export function AlertasPage() {
   const [alertas, setAlertas] = useState<AlertaListada[]>([]);
-  const [usuario, setUsuario] = useState("");
+  const [usuario, setUsuario] = useUsuario();
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   const cargar = () => listarAlertas().then(setAlertas).catch(() => setAlertas([]));
@@ -109,7 +65,7 @@ export function AlertasPage() {
                 const plazo = calcularPlazo(a.emitida_en, a.plazo_minutos);
                 return (
                   <tr key={`${a.documento_id}-${a.version}`} className="fila critico" data-testid="fila-alerta">
-                    <td><Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}><code>{a.documento_id}</code></Link><span className="secundaria">{a.canal} → {a.destinatario}</span></td>
+                    <td><Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}><code>{a.documento_id}</code></Link><span className="secundaria">{a.canal} → {a.destinatario} · <Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}>Abrir ›</Link></span></td>
                     <td>{a.concepto ?? "—"}</td>
                     <td>{new Date(a.emitida_en).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</td>
                     <td>{a.estado_acuse === "pendiente" ? <span className={`plazo ${plazo.vencido ? "vencido" : plazo.apremia ? "apremia" : ""}`}>{plazo.texto}</span> : <span className="muted">—</span>}</td>

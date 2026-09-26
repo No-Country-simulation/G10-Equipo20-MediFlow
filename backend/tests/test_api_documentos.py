@@ -172,3 +172,31 @@ def test_original_de_documento_de_texto_se_sirve_como_texto(client, llm_falso):
     r = client.get("/documentos/DOC-CLIN-2026-8942/original")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
     assert client.get("/documentos/DOC-CLIN-2026-8942/vista_previa").status_code == 415
+
+
+# --- Banco de trabajo (fase B): confianza por campo y rastro de lo que salió al LLM ------------------
+
+
+def test_get_documento_expone_confianzas_y_texto_tokenizado_sin_datos_del_paciente_RN_C3_RN_M1(client, llm_falso):
+    from tests.test_llm import propuesta_caso_1
+
+    p = propuesta_caso_1()
+    p["confianzas"]["diagnostico_codigo"] = 0.6
+    llm_falso.respuestas.append(p)
+    client.post("/documentos", json=CUERPO)
+    d = client.get("/documentos/DOC-CLIN-2026-8942").json()
+    assert d["confianzas"] == {"identidad_paciente": 0.96, "medicamento_dosis": None, "diagnostico_codigo": 0.6, "profesional": 0.9}
+    assert d["umbrales"]["diagnostico_codigo"] == 0.90 and d["umbrales"]["medicamento_dosis"] == 0.95
+    assert "[PACIENTE_1]" in d["texto_enviado_llm"]
+    assert "Mendes" not in d["texto_enviado_llm"]
+    assert "mapa_reidentificacion" not in d
+
+
+def test_get_documento_sin_propuesta_devuelve_confianzas_vacias(client, llm_falso):
+    from app.services.llm import ErrorTransitorioLLM
+
+    llm_falso.respuestas.extend([ErrorTransitorioLLM("x")] * 3)
+    client.post("/documentos", json=CUERPO)
+    d = client.get("/documentos/DOC-CLIN-2026-8942").json()
+    assert d["confianzas"] == {}
+    assert "[PACIENTE_1]" in d["texto_enviado_llm"]

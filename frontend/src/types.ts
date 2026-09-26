@@ -132,6 +132,9 @@ export interface DocumentoDetalle {
   nombre_archivo?: string | null;
   num_paginas?: number;
   paginas?: { pagina: number; tipo: "texto" | "imagen"; ruta?: string | null }[];
+  confianzas?: Partial<Record<"identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional", number | null>>;
+  umbrales?: Partial<Record<"clasificacion" | "identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional" | "resto", number>>;
+  texto_enviado_llm?: string | null;
   status_backup: string;
   ruta_storage: string | null;
   posible_duplicado_de: string | null;

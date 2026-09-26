@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_llm, get_session, get_storage
 from app.core.config import get_settings
 from app.models.documento import Documento
+from app.packs.loader import cargar_umbrales
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import CanalOrigen, CoberturaPaciente, DocumentoRequest
 from app.services.archivos import MIME, ArchivoInvalido, contar_paginas, renderizar_pagina
@@ -124,6 +125,11 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
         **_resumen(doc),
         "pais_origen": doc.pais_origen,
         "paginas": doc.paginas_json or [],
+        # RN-C3: confianza por campo que dio el LLM, junto con los umbrales vigentes de la sección 7.
+        "confianzas": (doc.propuesta_json or {}).get("confianzas", {}),
+        "umbrales": cargar_umbrales().confianza.model_dump(),
+        # RN-M1: lo único que viajó al LLM. Sin mapa: nunca se expone.
+        "texto_enviado_llm": doc.texto_seudonimizado,
         "entregas": doc.entregas_json or {},
         "alerta": _alerta(doc),
         "correcciones": [
