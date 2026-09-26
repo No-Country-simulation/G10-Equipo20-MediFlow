@@ -2,7 +2,7 @@
  * Uso clínico: firma en el momento del acuse, estados que no se invierten,
  * aviso de sistema degradado y lenguaje clínico en lugar de códigos del sistema.
  */
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -102,7 +102,7 @@ describe("estados que no se invierten y menos alarma de fondo", () => {
     expect(document.querySelector(".banner-alertas")).toBeNull();  // la página ya es la lista: el banner no se repite
   });
 
-  it("cuando muchos casos comparten el fallo técnico se explica una vez y se agrupan", async () => {
+  it("cuando muchos casos comparten el fallo técnico se explica una vez, pero ningún crítico queda plegado", async () => {
     vi.spyOn(api, "colaRevision").mockResolvedValue([
       itemCola("DOC-DUDA", "campo_dudoso", "Urgente"),
       itemCola("FT-1", "fallo_tecnico", "Crítico"), itemCola("FT-2", "fallo_tecnico"), itemCola("FT-3", "fallo_tecnico"), itemCola("FT-4", "fallo_tecnico"),
@@ -110,12 +110,66 @@ describe("estados que no se invierten y menos alarma de fondo", () => {
     render(<AppRouter rutaInicial="/revision" rolInicial="auditor_clinico" />);
     const aviso = await screen.findByTestId("sistema-degradado");
     expect(aviso).toHaveTextContent(/motor de extracción/i);
-    expect(aviso).toHaveTextContent("4");
+    expect(aviso).toHaveTextContent(/4 documentos/);
+    expect(aviso).toHaveTextContent(/desde las \d{1,2}:\d{2}/);
+    expect(aviso).toHaveClass("urgente");  // una caída no se pinta con el verde de la calma
+    // el crítico por fallo técnico sale a la tabla principal; lo plegado es solo lo no crítico
+    const visibles = screen.getAllByTestId("fila-cola").filter((f) => !f.closest("details"));
+    expect(visibles.map((f) => within(f).getByRole("link", { name: /revisar/i }).textContent)).toEqual(["DOC-DUDA", "FT-1"]);
     const grupo = screen.getByTestId("grupo-fallo-tecnico");
-    expect(grupo).toHaveTextContent(/4 documentos/);
-    expect(grupo).toHaveTextContent(/1 crítico/);
-    // lo que sí necesita criterio humano queda arriba y visible
-    expect(screen.getAllByTestId("fila-cola")[0]).toHaveTextContent("DOC-DUDA");
+    expect(grupo).toHaveTextContent(/3 documentos/);
+    expect(grupo).not.toHaveAttribute("open");
+  });
+
+  it("si todo es fallo técnico y no hay críticos, el grupo se muestra abierto", async () => {
+    vi.spyOn(api, "colaRevision").mockResolvedValue([itemCola("FT-1", "fallo_tecnico"), itemCola("FT-2", "fallo_tecnico"), itemCola("FT-3", "fallo_tecnico")] as never);
+    render(<AppRouter rutaInicial="/revision" rolInicial="auditor_clinico" />);
+    expect(await screen.findByTestId("grupo-fallo-tecnico")).toHaveAttribute("open");
+  });
+
+  it("Métricas avisa que el motor está caído y que los indicadores no son representativos", async () => {
+    vi.spyOn(api, "obtenerMetricas").mockResolvedValue({
+      periodo_dias: 30, calculado_en: new Date().toISOString(), documentos: 51, procesados: 51, por_estado: { EN_REVISION_HUMANA: 51 }, por_prioridad: { "Crítico": 16, Rutina: 35 },
+      tasa_automatizacion: 0, revision_por_motivo: { fallo_tecnico: { n: 51, porcentaje: 1 } }, tiempo_por_etapa_s: {},
+      acuse_criticos: { emitidas: 16, acusadas: 0, pendientes: 16, minutos_promedio: null, dentro_de_plazo: 0, plazo_min: 15 },
+      limite_correccion_campo: 0.1, correccion_por_campo: [], avisos: [], falsos_negativos_criticos: { n: 0, documentos: [], criticos_totales: 16, tasa: 0 },
+      versiones: {}, tokens: { entrada: 0, salida: 0 },
+    } as never);
+    render(<AppRouter rutaInicial="/metricas" rolInicial="gestor" />);
+    const aviso = await screen.findByTestId("sistema-degradado");
+    expect(aviso).toHaveTextContent(/100 %/);
+    expect(aviso).toHaveTextContent(/no son representativos/i);
+  });
+});
+
+describe("alertas en vivo (pantalla de urgencias)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("la lista se refresca sola, dice cuándo se actualizó y marca las alertas nuevas", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const listar = vi.spyOn(api, "listarAlertas").mockResolvedValueOnce(ALERTAS as never).mockResolvedValue([
+      { ...ALERTAS[0], documento_id: "DOC-NUEVA", concepto: "DISECCION_AORTICA", emitida_en: hace(1) }, ...ALERTAS,
+    ] as never);
+    render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
+    await screen.findAllByTestId("fila-alerta");
+    expect(screen.getByTestId("actualizado")).toHaveTextContent(/actualizado/i);
+    expect(screen.queryByText("DOC-NUEVA")).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    const nueva = (await screen.findByText("DOC-NUEVA")).closest("tr")!;
+    expect(nueva).toHaveTextContent(/nueva/i);
+    expect(nueva).toHaveTextContent("Disección aórtica");
+    expect(listar.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(document.title).toMatch(/^\(3\)/);
+  });
+
+  it("si una actualización falla, conserva la lista y avisa que puede estar desactualizada", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(api, "listarAlertas").mockResolvedValueOnce(ALERTAS as never).mockRejectedValue(new Error("sin red"));
+    render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
+    await screen.findAllByTestId("fila-alerta");
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/desactualizada/i);
+    expect(screen.getAllByTestId("fila-alerta")).toHaveLength(3);
   });
 });
 

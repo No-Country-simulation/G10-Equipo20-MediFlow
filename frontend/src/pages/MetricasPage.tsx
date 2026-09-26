@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { obtenerMetricas } from "../api";
 import { etiquetaEstado, etiquetaMotivo } from "../app/mensajes";
+import { AvisoSistemaDegradado } from "../components/AvisoSistema";
 import type { Metricas } from "../types";
 import { etiquetaUmbral } from "./ConfiguracionPage";
 
@@ -51,6 +52,11 @@ export function MetricasPage() {
       </header>
       {error && <p className="error">{error}</p>}
 
+      {m && (m.revision_por_motivo.fallo_tecnico?.porcentaje ?? 0) >= 0.5 && (
+        <AvisoSistemaDegradado titulo="El motor de extracción no está respondiendo.">
+          <p>{pct(m.revision_por_motivo.fallo_tecnico.porcentaje)} de los documentos del periodo pasó a revisión manual por fallo técnico. La tasa de automatización y los falsos negativos no son representativos hasta que el motor vuelva.</p>
+        </AvisoSistemaDegradado>
+      )}
       <div className="kpis">
         <div className="tarjeta kpi" data-testid="kpi-automatizacion"><span className="n">{pct(m?.tasa_automatizacion)}</span><span className="muted">tasa de automatización · {m?.procesados ?? "—"} procesados</span></div>
         <div className="tarjeta kpi" data-testid="kpi-acuse"><span className={`n ${acuse && acuse.pendientes > 0 ? "critico" : ""}`}>{acuse?.minutos_promedio == null ? "sin acuses" : `${num(acuse.minutos_promedio)} min`}</span><span className="muted">hasta el acuse en críticos · {acuse?.dentro_de_plazo ?? 0} de {acuse?.acusadas ?? 0} dentro de {acuse?.plazo_min ?? 15} min · {acuse?.pendientes ?? 0} pendientes</span></div>

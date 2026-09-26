@@ -1,10 +1,11 @@
-import { ClipboardCheck, ServerCrash } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { colaRevision } from "../api";
 import { etiquetaMotivo } from "../app/mensajes";
 import { calcularPlazo } from "../app/plazos";
+import { AvisoSistemaDegradado, conPunto, horaCorta } from "../components/AvisoSistema";
 import { ChipPlazo, TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
 import type { ItemCola } from "../types";
@@ -35,8 +36,8 @@ function Cabecera() {
 
 /**
  * Cola de revisión humana: el backend ya la entrega ordenada por prioridad y antigüedad (RN-J1).
- * Cuando muchos casos comparten el fallo técnico, se explica la causa una vez y se agrupan, para que
- * lo que sí necesita criterio clínico no quede enterrado bajo filas rojas iguales.
+ * Cuando muchos casos comparten el fallo técnico, se explica la causa una vez y se agrupan los no críticos,
+ * para que lo que necesita criterio clínico no quede enterrado. Un Crítico nunca se pliega.
  */
 export function RevisionPage() {
   const [cola, setCola] = useState<ItemCola[] | null>(null);
@@ -46,10 +47,13 @@ export function RevisionPage() {
     colaRevision().then(setCola).catch(() => setError("No hay conexión con la API. La cola se mostrará cuando vuelva."));
   }, []);
 
-  const porFallo = (cola ?? []).filter((c) => c.motivo_auditoria === "fallo_tecnico");
+  const esFallo = (c: ItemCola) => c.motivo_auditoria === "fallo_tecnico";
+  const porFallo = (cola ?? []).filter(esFallo);
   const degradado = porFallo.length >= UMBRAL_SISTEMA_DEGRADADO;
-  const principales = degradado ? (cola ?? []).filter((c) => c.motivo_auditoria !== "fallo_tecnico") : cola ?? [];
-  const criticosFallo = porFallo.filter((c) => c.nivel_prioridad === "Crítico").length;
+  const plegables = degradado ? porFallo.filter((c) => c.nivel_prioridad !== "Crítico") : [];
+  const principales = degradado ? (cola ?? []).filter((c) => !esFallo(c) || c.nivel_prioridad === "Crítico") : cola ?? [];
+  const criticosFallo = porFallo.length - plegables.length;
+  const desde = porFallo.reduce<string | null>((min, c) => (min === null || c.creado_en < min ? c.creado_en : min), null);
 
   return (
     <>
@@ -62,13 +66,9 @@ export function RevisionPage() {
       {error && <p className="error">{error}</p>}
 
       {degradado && (
-        <section className="aviso-sistema" data-testid="sistema-degradado">
-          <ServerCrash size={22} aria-hidden="true" />
-          <div>
-            <strong>El motor de extracción no está respondiendo.</strong>
-            <p>{porFallo.length} documentos pasaron a revisión manual por esa sola causa. La detección de hallazgos críticos por texto sigue activa y sus alertas salen igual. Cuando el motor vuelva, se pueden reprocesar.</p>
-          </div>
-        </section>
+        <AvisoSistemaDegradado titulo={conPunto(`El motor de extracción no está respondiendo${desde ? ` desde las ${horaCorta(desde)}` : ""}`)}>
+          <p>{porFallo.length} documentos pasaron a revisión manual por esa sola causa.{criticosFallo > 0 && ` ${criticosFallo === 1 ? "El crítico queda" : `Los ${criticosFallo} críticos quedan`} arriba, en la cola.`} La detección de hallazgos críticos por texto sigue activa y sus alertas salen igual.</p>
+        </AvisoSistemaDegradado>
       )}
 
       {(principales.length > 0 || !degradado) && (
@@ -85,16 +85,16 @@ export function RevisionPage() {
         </section>
       )}
 
-      {degradado && (
-        <details className="tarjeta grupo" data-testid="grupo-fallo-tecnico">
+      {plegables.length > 0 && (
+        <details className="tarjeta grupo" data-testid="grupo-fallo-tecnico" open={principales.length === 0}>
           <summary>
-            <strong>{porFallo.length} documentos por fallo técnico</strong>
-            <span className="muted"> · {criticosFallo === 1 ? "1 crítico" : `${criticosFallo} críticos`} · revisión manual del documento completo</span>
+            <strong>{plegables.length} documentos por fallo técnico</strong>
+            <span className="muted"> · sin críticos · revisión manual del documento completo</span>
           </summary>
           <div className="scroll">
             <table className="tabla-densa">
               <Cabecera />
-              <tbody><Filas items={porFallo} /></tbody>
+              <tbody><Filas items={plegables} /></tbody>
             </table>
           </div>
         </details>

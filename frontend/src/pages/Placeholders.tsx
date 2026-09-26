@@ -1,5 +1,5 @@
-import { CheckCircle2, ChevronsUp } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, ChevronsUp, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { listarAlertas } from "../api";
@@ -9,6 +9,9 @@ import { AccionAcuse } from "../components/AccionAcuse";
 import { ChipPlazo } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
 import type { AlertaListada } from "../types";
+
+/** Cada cuánto se vuelve a pedir la lista. Una alerta crítica nueva no puede esperar a que alguien recargue. */
+const REFRESCO_MS = 15_000;
 
 function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
   return (
@@ -21,21 +24,44 @@ function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
   );
 }
 
+const clave = (a: AlertaListada) => `${a.documento_id}-${a.version}`;
+const hora = (d: Date) => d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
 /**
- * Alertas críticas (RN-J7, RN-Q5). Las pendientes van de la más vencida a la más reciente;
- * las acusadas quedan al final como registro. Una alerta escalada se marca más fuerte, nunca más suave.
+ * Alertas críticas (RN-J7, RN-Q5). Es la pantalla inicial del jefe de urgencias: se actualiza sola, dice cuándo
+ * se actualizó, avisa si quedó desactualizada y marca lo que llegó mientras estaba abierta. Las pendientes van
+ * de la más vencida a la más reciente; una alerta escalada se marca más fuerte, nunca más suave.
  */
 export function AlertasPage() {
   const [alertas, setAlertas] = useState<AlertaListada[]>([]);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ahora, setAhora] = useState(() => new Date());
+  const [actualizado, setActualizado] = useState<Date | null>(null);
+  const [fallo, setFallo] = useState<Date | null>(null);
+  const [nuevas, setNuevas] = useState<Set<string>>(() => new Set());
+  const conocidas = useRef<Set<string> | null>(null);
 
-  const cargar = () => listarAlertas().then(setAlertas).catch(() => setAlertas([]));
+  const cargar = useCallback(() => listarAlertas()
+    .then((lista) => {
+      const ids = new Set(lista.map(clave));
+      const previas = conocidas.current;
+      if (previas) {
+        const llegadas = [...ids].filter((id) => !previas.has(id));
+        if (llegadas.length) setNuevas((actuales) => new Set([...actuales, ...llegadas]));
+      }
+      conocidas.current = ids;
+      setAlertas(lista);
+      setActualizado(new Date());
+      setFallo(null);
+    })
+    .catch(() => setFallo(new Date())), []);
+
   useEffect(() => {
     cargar();
-    const reloj = setInterval(() => setAhora(new Date()), 15_000);
-    return () => clearInterval(reloj);
-  }, []);
+    const refresco = setInterval(cargar, REFRESCO_MS);
+    const reloj = setInterval(() => setAhora(new Date()), REFRESCO_MS);
+    return () => { clearInterval(refresco); clearInterval(reloj); };
+  }, [cargar]);
 
   const ordenadas = useMemo(() => {
     const conPlazo = alertas.map((a) => ({ a, plazo: calcularPlazo(a.emitida_en, a.plazo_minutos, ahora) }));
@@ -43,15 +69,34 @@ export function AlertasPage() {
     const acusadas = conPlazo.filter((x) => x.a.estado_acuse !== "pendiente");
     return [...pendientes, ...acusadas];
   }, [alertas, ahora]);
+  const pendientes = ordenadas.filter((x) => x.a.estado_acuse === "pendiente").length;
   const escaladas = ordenadas.filter((x) => x.a.estado_acuse === "pendiente" && x.plazo.vencido).length;
+
+  // La cuenta en la pestaña: se ve aunque la pantalla muestre otra cosa.
+  useEffect(() => {
+    const anterior = document.title;
+    document.title = pendientes > 0 ? `(${pendientes}) Alertas críticas · MediFlow` : "Alertas críticas · MediFlow";
+    return () => { document.title = anterior; };
+  }, [pendientes]);
 
   return (
     <>
       <Encabezado titulo="Alertas críticas" sub="La alerta persiste hasta que una persona identificada da el acuse. Nunca lleva datos del paciente. Las más vencidas van primero." />
-      <div role="status" aria-live="polite">{mensaje && <p className="estado-carga ok-estado"><CheckCircle2 size={16} aria-hidden="true" />{mensaje}</p>}</div>
-      {escaladas > 0 && (
-        <p className="nota-escalada"><ChevronsUp size={16} aria-hidden="true" /><strong>{escaladas === 1 ? "1 alerta escalada" : `${escaladas} alertas escaladas`}</strong> al siguiente rol por falta de acuse en plazo.</p>
+      <div className="barra-estado">
+        <p className="muted" data-testid="actualizado">
+          <RefreshCw size={14} aria-hidden="true" />
+          {actualizado ? <>Actualizado a las {hora(actualizado)} · se actualiza sola cada {REFRESCO_MS / 1000} s</> : "Cargando alertas…"}
+        </p>
+        {escaladas > 0 && (
+          <p className="nota-escalada"><ChevronsUp size={16} aria-hidden="true" /><strong>{escaladas === 1 ? "1 alerta escalada" : `${escaladas} alertas escaladas`}</strong> al siguiente rol por falta de acuse en plazo.</p>
+        )}
+      </div>
+      {fallo && (
+        <p className="estado-carga error" role="alert">
+          No se pudo actualizar a las {hora(fallo)}. La lista puede estar desactualizada{actualizado ? ` desde las ${hora(actualizado)}` : ""}; se reintenta sola cada {REFRESCO_MS / 1000} s.
+        </p>
       )}
+      <div role="status" aria-live="polite">{mensaje && <p className="estado-carga ok-estado"><CheckCircle2 size={16} aria-hidden="true" />{mensaje}</p>}</div>
       <section className="tarjeta" style={{ padding: 0 }}>
         <div className="scroll">
           <table className="tabla-densa">
@@ -59,9 +104,14 @@ export function AlertasPage() {
             <tbody>
               {ordenadas.map(({ a, plazo }) => {
                 const pendiente = a.estado_acuse === "pendiente";
+                const esNueva = pendiente && nuevas.has(clave(a));
                 return (
-                  <tr key={`${a.documento_id}-${a.version}`} className={`fila ${pendiente ? "critico" : "rutina"}`} data-testid="fila-alerta">
-                    <td><Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}><code>{a.documento_id}</code></Link><span className="secundaria">{a.canal} → {a.destinatario}</span></td>
+                  <tr key={clave(a)} className={`fila ${pendiente ? "critico" : "rutina"}${esNueva ? " nueva" : ""}`} data-testid="fila-alerta">
+                    <td>
+                      <Link to={`/documentos/${encodeURIComponent(a.documento_id)}`}><code>{a.documento_id}</code></Link>
+                      {esNueva && <span className="tag nueva">Nueva</span>}
+                      <span className="secundaria">{a.canal} → {a.destinatario}</span>
+                    </td>
                     <td>{a.concepto ? etiquetaConcepto(a.concepto) : <span className="muted">Sin concepto</span>}</td>
                     <td>{new Date(a.emitida_en).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</td>
                     <td>{pendiente ? <ChipPlazo plazo={plazo} /> : <span className="muted">—</span>}</td>
@@ -74,7 +124,7 @@ export function AlertasPage() {
                   </tr>
                 );
               })}
-              {alertas.length === 0 && <tr><td colSpan={6}><Vacio icono={CheckCircle2} titulo="No hay alertas críticas" texto="Cuando un documento resulte Crítico aparecerá aquí hasta que alguien dé el acuse." /></td></tr>}
+              {alertas.length === 0 && !fallo && <tr><td colSpan={6}><Vacio icono={CheckCircle2} titulo="No hay alertas críticas" texto="Cuando un documento resulte Crítico aparecerá aquí hasta que alguien dé el acuse." /></td></tr>}
             </tbody>
           </table>
         </div>
