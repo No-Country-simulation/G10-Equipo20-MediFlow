@@ -103,6 +103,7 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     const news2 = screen.getByTestId("no-configurable");
     expect(news2).toHaveTextContent(/no configurable/i);
     expect(within(news2).queryByRole("spinbutton")).toBeNull();
+    await userEvent.click(screen.getByRole("tab", { name: /listas ampliables/i }));
     expect(screen.getByTestId("lista-alto_riesgo")).toHaveTextContent("apixaban");
   });
 
@@ -134,6 +135,7 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
   it("lista las propuestas pendientes con sus aprobaciones y permite aprobar (RN-L5)", async () => {
     const aprobar = vi.spyOn(api, "aprobarConfiguracion").mockResolvedValue({ ...CONFIGURACION.propuestas[0], estado: "vigente" } as never);
     render(<AppRouter rutaInicial="/configuracion" rolInicial="gestor" />);
+    await userEvent.click(await screen.findByRole("tab", { name: /versiones/i }));
     const propuesta = await screen.findByTestId("propuesta-7");
     expect(propuesta).toHaveTextContent("1 de 2");
     expect(propuesta).toHaveTextContent(/toca seguridad/i);

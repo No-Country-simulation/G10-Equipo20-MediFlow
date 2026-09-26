@@ -78,7 +78,7 @@ export function MetricasPage() {
             <thead><tr><th>Motivo</th><th>Documentos</th><th>% de procesados</th></tr></thead>
             <tbody>
               {Object.entries(m?.revision_por_motivo ?? {}).map(([motivo, v]) => (
-                <tr key={motivo}><td>{legible(motivo)}</td><td className="num">{v.n}</td><td className="num">{pct(v.porcentaje)}</td></tr>
+                <tr key={motivo}><td>{legible(motivo)}<span className="barra"><i style={{ width: `${Math.round(v.porcentaje * 100)}%` }} /></span></td><td className="num">{v.n}</td><td className="num">{pct(v.porcentaje)}</td></tr>
               ))}
               {m && Object.keys(m.revision_por_motivo).length === 0 && <tr><td colSpan={3} className="muted">Nada fue a revisión humana en el periodo.</td></tr>}
             </tbody>

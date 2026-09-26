@@ -1,8 +1,9 @@
-import { FlaskConical, GitBranchPlus } from "lucide-react";
+import { FlaskConical, GitBranchPlus, History, ListPlus, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { aprobarConfiguracion, ErrorApi, obtenerConfiguracion, proponerConfiguracion, rechazarConfiguracion, simularConfiguracion } from "../api";
 import { useUsuario } from "../app/usuario";
+import { Vacio } from "../components/Vacio";
 import type { Ampliaciones, CambiosConfiguracion, Configuracion, Simulacion, VersionConfiguracion } from "../types";
 
 interface DefUmbral {
@@ -37,12 +38,19 @@ const NEWS2: Record<string, string> = {
   total_critico: "NEWS2 total crítico (≥)", edad_minima: "Edad mínima para NEWS2",
 };
 
+type Pestana = "umbrales" | "listas" | "versiones";
+
 export function etiquetaUmbral(clave: string): string {
   return UMBRALES.find((u) => u.clave === clave)?.etiqueta ?? clave;
 }
 
+/** Números con la coma decimal del país, igual que los muestra el navegador en los campos numéricos. */
+function num(v: number): string {
+  return v.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+}
+
 function resumenCambios(c: Partial<CambiosConfiguracion>): string[] {
-  const salida = Object.entries(c.umbrales ?? {}).map(([k, v]) => `${etiquetaUmbral(k)} → ${v}`);
+  const salida = Object.entries(c.umbrales ?? {}).map(([k, v]) => `${etiquetaUmbral(k)} → ${num(v)}`);
   const a = c.ampliaciones;
   if (a?.alto_riesgo?.length) salida.push(`+ alto riesgo: ${a.alto_riesgo.join(", ")}`);
   if (a?.control_especial?.length) salida.push(`+ control especial: ${a.control_especial.join(", ")}`);
@@ -54,9 +62,14 @@ function separar(texto: string): string[] {
   return texto.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
+function fecha(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—";
+}
+
 /** Configuración del gestor (RN-L1 a RN-L6). Quien configura no revisa (RN-K2). */
 export function ConfiguracionPage() {
   const [cfg, setCfg] = useState<Configuracion | null>(null);
+  const [pestana, setPestana] = useState<Pestana>("umbrales");
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [altoRiesgo, setAltoRiesgo] = useState("");
   const [controlEspecial, setControlEspecial] = useState("");
@@ -94,8 +107,8 @@ export function ConfiguracionPage() {
     return { umbrales, ampliaciones };
   }, [textos, cfg, altoRiesgo, controlEspecial, hallazgo]);
 
-  const hayCambios = Object.keys(cambios.umbrales).length > 0 || cambios.ampliaciones.alto_riesgo.length > 0
-    || cambios.ampliaciones.control_especial.length > 0 || cambios.ampliaciones.hallazgos_criticos.length > 0;
+  const nCambios = Object.keys(cambios.umbrales).length + cambios.ampliaciones.alto_riesgo.length
+    + cambios.ampliaciones.control_especial.length + cambios.ampliaciones.hallazgos_criticos.length;
   const fueraDeRango = Object.entries(cambios.umbrales).filter(([k, v]) => {
     const r = cfg?.rangos[k];
     return r && (v < r.min || v > r.max || (r.solo_a_la_baja && v > r.base));
@@ -103,8 +116,8 @@ export function ConfiguracionPage() {
   const yo = usuario.trim();
   const actor = { usuario: yo, rol: "gestor" };
 
-  function informar(e: unknown, fallback: string) {
-    setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : fallback);
+  function informar(e: unknown) {
+    setMensaje(e instanceof ErrorApi ? `${e.status}: ${e.detalle}` : "No hay conexión con la API.");
   }
 
   async function simular() {
@@ -113,7 +126,7 @@ export function ConfiguracionPage() {
     try {
       setSimulacion(await simularConfiguracion(cambios, undefined));
     } catch (e) {
-      informar(e, "No hay conexión con la API.");
+      informar(e);
     } finally {
       setSimulando(false);
     }
@@ -129,9 +142,10 @@ export function ConfiguracionPage() {
       setControlEspecial("");
       setHallazgo({ concepto: "", sinonimos: "", cie10: "" });
       setSimulacion(null);
+      setPestana("versiones");
       cargar();
     } catch (e) {
-      informar(e, "No hay conexión con la API.");
+      informar(e);
     }
   }
 
@@ -143,7 +157,7 @@ export function ConfiguracionPage() {
       setMensaje(r.estado === "vigente" ? `Versión ${r.numero} vigente desde ahora. No es retroactiva.` : `Aprobación registrada: ${r.aprobaciones?.length ?? 0} de ${r.aprobaciones_requeridas}.`);
       cargar();
     } catch (e) {
-      informar(e, "No hay conexión con la API.");
+      informar(e);
     }
   }
 
@@ -155,11 +169,12 @@ export function ConfiguracionPage() {
       setMensaje(`Propuesta #${v.id} rechazada.`);
       cargar();
     } catch (e) {
-      informar(e, "No hay conexión con la API.");
+      informar(e);
     }
   }
 
   const grupos: DefUmbral["grupo"][] = ["Confianza", "Consistencia", "Tiempos"];
+  const pendientes = cfg?.propuestas.length ?? 0;
 
   return (
     <>
@@ -171,122 +186,155 @@ export function ConfiguracionPage() {
             Antes de activarla, la simulación muestra qué habría cambiado sobre los últimos {cfg?.calidad.simulacion_ultimos ?? 50} documentos.
           </p>
         </div>
+        <p className="muted" style={{ margin: 0 }}>
+          Vigente: <strong>{cfg?.vigente.numero === 0 ? "valores iniciales" : `versión ${cfg?.vigente.numero}`}</strong>
+          {cfg && cfg.vigente.numero !== 0 && <> · {cfg.vigente.autor} · {fecha(cfg.vigente.vigente_desde)}</>}
+        </p>
       </header>
       {mensaje && <p className="estado-carga" role="status">{mensaje}</p>}
 
-      <div className="dos-columnas">
-        <section className="tarjeta">
-          <h2>Umbrales configurables</h2>
-          <p className="muted">Versión vigente: {cfg?.vigente.numero === 0 ? "valores iniciales de la sección 7" : `#${cfg?.vigente.numero} por ${cfg?.vigente.autor}`}. Fondo verde: lo que cambiaste.</p>
-          <table className="umbrales">
-            <thead><tr><th>Umbral</th><th>Rango</th><th>Nuevo valor</th></tr></thead>
-            <tbody>
-              {grupos.map((grupo) => (
-                <FragmentoGrupo key={grupo} grupo={grupo} cfg={cfg} textos={textos} setTextos={setTextos} cambios={cambios} />
-              ))}
-            </tbody>
-          </table>
-          {fueraDeRango.length > 0 && <p className="error">Fuera de rango: {fueraDeRango.map(etiquetaUmbral).join(", ")}</p>}
-        </section>
+      <div className="pestanas" role="tablist" aria-label="Secciones de configuración">
+        <button type="button" role="tab" aria-selected={pestana === "umbrales"} className={pestana === "umbrales" ? "" : "secundario"} onClick={() => setPestana("umbrales")}><SlidersHorizontal size={16} aria-hidden="true" />Umbrales</button>
+        <button type="button" role="tab" aria-selected={pestana === "listas"} className={pestana === "listas" ? "" : "secundario"} onClick={() => setPestana("listas")}><ListPlus size={16} aria-hidden="true" />Listas ampliables</button>
+        <button type="button" role="tab" aria-selected={pestana === "versiones"} className={pestana === "versiones" ? "" : "secundario"} onClick={() => setPestana("versiones")}><History size={16} aria-hidden="true" />Versiones{pendientes > 0 && <span className="contador-pestana">{pendientes}</span>}</button>
+      </div>
 
-        <div>
-          <section className="tarjeta" data-testid="no-configurable">
-            <h2>No configurable</h2>
-            <p className="muted">Umbrales NEWS2 de guía clínica, seudonimización y separación de funciones. Se muestran, no se editan.</p>
+      {pestana === "umbrales" && (
+        <div className="dos-columnas">
+          <section className="tarjeta">
+            <h2>Umbrales configurables</h2>
+            <p className="muted">Fondo verde: lo que cambiaste en esta sesión. Cada fila cita la regla que usa el umbral.</p>
             <table className="umbrales">
+              <thead><tr><th>Umbral</th><th>Rango</th><th>Nuevo valor</th></tr></thead>
               <tbody>
-                {Object.entries(cfg?.no_configurable.news2 ?? {}).map(([k, v]) => (
-                  <tr key={k}><td>{NEWS2[k] ?? k}</td><td className="num"><strong>{v}</strong></td></tr>
+                {grupos.map((grupo) => (
+                  <FragmentoGrupo key={grupo} grupo={grupo} cfg={cfg} textos={textos} setTextos={setTextos} cambios={cambios} />
                 ))}
               </tbody>
             </table>
+            {fueraDeRango.length > 0 && <p className="error">Fuera de rango: {fueraDeRango.map(etiquetaUmbral).join(", ")}</p>}
           </section>
 
-          <section className="tarjeta" style={{ marginTop: 12 }}>
-            <h2>Listas solo ampliables</h2>
-            <p className="muted">Se puede agregar, nunca quitar los de base. Separa con comas.</p>
+          <div>
+            <section className="tarjeta" data-testid="no-configurable">
+              <h2>No configurable</h2>
+              <p className="muted">Umbrales NEWS2 de guía clínica, seudonimización y separación de funciones. Se muestran, no se editan.</p>
+              <table className="umbrales">
+                <tbody>
+                  {Object.entries(cfg?.no_configurable.news2 ?? {}).map(([k, v]) => (
+                    <tr key={k}><td>{NEWS2[k] ?? k}</td><td className="num"><strong>{v}</strong></td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+            <section className="tarjeta" style={{ marginTop: 12 }}>
+              <h2>Cómo se activa un cambio</h2>
+              <ol className="pasos-config">
+                <li><strong>Ajusta</strong> los valores dentro de su rango. Lo que baja una confianza o alarga un plazo toca seguridad.</li>
+                <li><strong>Simula</strong> sobre los últimos documentos: verás cuántos cambiarían de decisión y cuáles.</li>
+                <li><strong>Propón</strong> la versión con su motivo. Una aprobación la activa; si toca seguridad, dos personas distintas.</li>
+              </ol>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {pestana === "listas" && (
+        <section className="tarjeta">
+          <h2>Listas solo ampliables</h2>
+          <p className="muted">Se puede agregar, nunca quitar los de base. Los nuevos quedan en verde. Separa con comas.</p>
+          <div className="dos-columnas">
             <ListaAmpliable testid="lista-alto_riesgo" titulo="Medicamentos de alto riesgo" base={cfg?.listas.alto_riesgo.base ?? []} ampliadas={cfg?.listas.alto_riesgo.ampliadas ?? []} valor={altoRiesgo} onChange={setAltoRiesgo} />
             <ListaAmpliable testid="lista-control_especial" titulo="Control especial" base={cfg?.listas.control_especial.base ?? []} ampliadas={cfg?.listas.control_especial.ampliadas ?? []} valor={controlEspecial} onChange={setControlEspecial} />
-            <div data-testid="lista-hallazgos_criticos">
-              <h3 style={{ margin: "10px 0 4px" }}>Hallazgos críticos</h3>
-              <div className="chips-lectura">
-                {(cfg?.listas.hallazgos_criticos.base ?? []).map((x) => <span key={x} className="chip">{x}</span>)}
-                {(cfg?.listas.hallazgos_criticos.ampliados ?? []).map((x) => <span key={x} className="chip nuevo">{x}</span>)}
-              </div>
-              <div className="formulario">
-                <label>Concepto nuevo<input value={hallazgo.concepto} onChange={(e) => setHallazgo({ ...hallazgo, concepto: e.target.value })} placeholder="TAPONAMIENTO_CARDIACO" /></label>
-                <label>Sinónimos<input value={hallazgo.sinonimos} onChange={(e) => setHallazgo({ ...hallazgo, sinonimos: e.target.value })} placeholder="taponamiento cardiaco" /></label>
-                <label>CIE-10<input value={hallazgo.cie10} onChange={(e) => setHallazgo({ ...hallazgo, cie10: e.target.value })} placeholder="I31.9" /></label>
-              </div>
+          </div>
+          <div data-testid="lista-hallazgos_criticos" style={{ marginTop: 14 }}>
+            <h3>Hallazgos críticos</h3>
+            <div className="chips-lectura">
+              {(cfg?.listas.hallazgos_criticos.base ?? []).map((x) => <span key={x} className="chip">{x}</span>)}
+              {(cfg?.listas.hallazgos_criticos.ampliados ?? []).map((x) => <span key={x} className="chip nuevo">{x}</span>)}
+            </div>
+            <div className="formulario">
+              <label>Concepto nuevo<input value={hallazgo.concepto} onChange={(e) => setHallazgo({ ...hallazgo, concepto: e.target.value })} placeholder="TAPONAMIENTO_CARDIACO" /></label>
+              <label>Sinónimos<input value={hallazgo.sinonimos} onChange={(e) => setHallazgo({ ...hallazgo, sinonimos: e.target.value })} placeholder="taponamiento cardiaco" /></label>
+              <label>CIE-10<input value={hallazgo.cie10} onChange={(e) => setHallazgo({ ...hallazgo, cie10: e.target.value })} placeholder="I31.9" /></label>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {pestana === "versiones" && (
+        <>
+          <section className="tarjeta">
+            <h2>Propuestas pendientes</h2>
+            {cfg && cfg.propuestas.length === 0 && <Vacio icono={GitBranchPlus} titulo="No hay propuestas por aprobar" texto="Cuando alguien proponga una versión aparecerá aquí con su simulación y sus aprobaciones." />}
+            {cfg?.propuestas.map((v) => (
+              <article key={v.id ?? 0} className="panel" data-testid={`propuesta-${v.id}`} style={{ marginTop: 8 }}>
+                <div className="panel-cabecera">
+                  <div><strong>Propuesta #{v.id}</strong> <span className="muted">· {v.autor} · {fecha(v.creado_en)}</span></div>
+                  {v.toca_seguridad && <span className="tag urgente">Toca seguridad · dos aprobadores</span>}
+                </div>
+                <p style={{ margin: "4px 0 8px" }}>{v.motivo}</p>
+                <ul className="accesos">{resumenCambios(v.cambios).map((c) => <li key={c}>{c}</li>)}</ul>
+                {v.simulacion && (
+                  <p className="muted">Simulación: {v.simulacion.cambian} de {v.simulacion.documentos_evaluados} documentos cambiarían
+                    ({v.simulacion.mas_a_revision} más a revisión, {v.simulacion.mas_automaticos} más automáticos); {v.simulacion.sin_propuesta} sin propuesta del LLM.</p>
+                )}
+                <p><strong>{v.aprobaciones?.length ?? 0} de {v.aprobaciones_requeridas} aprobaciones</strong>{(v.aprobaciones?.length ?? 0) > 0 && <span className="muted"> · {v.aprobaciones?.map((a) => a.usuario).join(", ")}</span>}</p>
+                <div className="acciones" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <button type="button" disabled={!yo} onClick={() => aprobar(v)}>Aprobar</button>
+                  <label style={{ flex: 1, minWidth: 200 }}>
+                    <span className="oculto-visual">Motivo del rechazo de la propuesta {v.id}</span>
+                    <input value={motivosRechazo[v.id ?? 0] ?? ""} placeholder="Motivo del rechazo" onChange={(e) => setMotivosRechazo({ ...motivosRechazo, [v.id ?? 0]: e.target.value })} />
+                  </label>
+                  <button type="button" className="secundario" disabled={!yo} onClick={() => rechazar(v)}>Rechazar</button>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <section className="tarjeta" style={{ marginTop: 12, padding: 0 }} data-testid="historial">
+            <div style={{ padding: "12px 14px 0" }}><h2>Historial de versiones</h2></div>
+            <div className="scroll">
+              <table className="tabla-densa">
+                <thead><tr><th>Versión</th><th>Autor</th><th>Cambios</th><th>Vigencia</th><th>Estado</th></tr></thead>
+                <tbody>
+                  {cfg?.historial.map((v) => (
+                    <tr key={v.id ?? 0} className="fila rutina">
+                      <td>{v.numero != null ? `#${v.numero}` : "—"}<span className="secundaria">{v.motivo}</span></td>
+                      <td>{v.autor}<span className="secundaria">{v.aprobaciones?.map((a) => a.usuario).join(", ")}</span></td>
+                      <td>{resumenCambios(v.cambios).join(" · ") || "—"}</td>
+                      <td>{fecha(v.vigente_desde)}{v.vigente_hasta ? ` → ${fecha(v.vigente_hasta)}` : ""}</td>
+                      <td><span className={`tag ${v.estado === "vigente" ? "exito" : v.estado === "rechazada" ? "critico" : "rutina"}`}>{v.estado}</span></td>
+                    </tr>
+                  ))}
+                  {cfg && cfg.historial.length === 0 && <tr><td colSpan={5}><Vacio icono={History} titulo="Sin versiones todavía" texto="Rigen los valores iniciales de la sección 7 del documento de reglas." /></td></tr>}
+                </tbody>
+              </table>
             </div>
           </section>
-        </div>
-      </div>
+        </>
+      )}
 
-      <section className="tarjeta" style={{ marginTop: 12 }}>
-        <h2>Simular y proponer</h2>
-        <div className="acciones" style={{ alignItems: "end", flexWrap: "wrap", gap: 10 }}>
-          <button type="button" className="secundario" disabled={!hayCambios || fueraDeRango.length > 0 || simulando} onClick={simular}>
-            <FlaskConical size={16} aria-hidden="true" />{simulando ? "Simulando…" : "Simular sobre los últimos documentos"}
-          </button>
-          <label style={{ flex: 1, minWidth: 260 }}>
-            Motivo de la versión
-            <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="cero errores de dosis pasan solos (sección 8)" />
-          </label>
-          <button type="button" disabled={!hayCambios || fueraDeRango.length > 0 || !yo || !motivo.trim()} onClick={proponer}><GitBranchPlus size={16} aria-hidden="true" />Proponer versión</button>
-        </div>
-        {hayCambios && <p className="muted" style={{ marginTop: 8 }}>Cambios: {resumenCambios(cambios).join(" · ")}</p>}
-        {simulacion && <ResultadoSimulacion s={simulacion} />}
-      </section>
-
-      <section className="tarjeta" style={{ marginTop: 12 }}>
-        <h2>Propuestas pendientes</h2>
-        {cfg && cfg.propuestas.length === 0 && <p className="muted">No hay propuestas por aprobar.</p>}
-        {cfg?.propuestas.map((v) => (
-          <article key={v.id ?? 0} className="panel" data-testid={`propuesta-${v.id}`} style={{ marginTop: 8 }}>
-            <div className="panel-cabecera">
-              <strong>Propuesta #{v.id}</strong> · {v.autor} · {v.creado_en ? new Date(v.creado_en).toLocaleString("es-CO") : ""}
-              {v.toca_seguridad && <span className="tag urgente" style={{ marginLeft: 8 }}>Toca seguridad · dos aprobadores</span>}
-            </div>
-            <p style={{ margin: "6px 0" }}>{v.motivo}</p>
-            <ul className="accesos">{resumenCambios(v.cambios).map((c) => <li key={c}>{c}</li>)}</ul>
-            {v.simulacion && (
-              <p className="muted">Simulación: {v.simulacion.cambian} de {v.simulacion.documentos_evaluados} documentos cambiarían
-                ({v.simulacion.mas_a_revision} más a revisión, {v.simulacion.mas_automaticos} más automáticos); {v.simulacion.sin_propuesta} sin propuesta del LLM.</p>
-            )}
-            <p><strong>{v.aprobaciones?.length ?? 0} de {v.aprobaciones_requeridas} aprobaciones</strong>{(v.aprobaciones?.length ?? 0) > 0 && <span className="muted"> · {v.aprobaciones?.map((a) => a.usuario).join(", ")}</span>}</p>
-            <div className="acciones" style={{ gap: 8, flexWrap: "wrap" }}>
-              <button type="button" disabled={!yo} onClick={() => aprobar(v)}>Aprobar</button>
-              <label>
-                <span className="oculto-visual">Motivo del rechazo de la propuesta {v.id}</span>
-                <input value={motivosRechazo[v.id ?? 0] ?? ""} placeholder="Motivo del rechazo" onChange={(e) => setMotivosRechazo({ ...motivosRechazo, [v.id ?? 0]: e.target.value })} />
-              </label>
-              <button type="button" className="secundario" disabled={!yo} onClick={() => rechazar(v)}>Rechazar</button>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <section className="tarjeta" style={{ marginTop: 12, padding: 0 }} data-testid="historial">
-        <div style={{ padding: "12px 14px 0" }}><h2>Historial de versiones</h2></div>
-        <div className="scroll">
-          <table className="tabla-densa">
-            <thead><tr><th>Versión</th><th>Autor</th><th>Cambios</th><th>Vigencia</th><th>Estado</th></tr></thead>
-            <tbody>
-              {cfg?.historial.map((v) => (
-                <tr key={v.id ?? 0} className="fila rutina">
-                  <td>{v.numero != null ? `#${v.numero}` : "—"}<span className="secundaria">{v.motivo}</span></td>
-                  <td>{v.autor}<span className="secundaria">{v.aprobaciones?.map((a) => a.usuario).join(", ")}</span></td>
-                  <td>{resumenCambios(v.cambios).join(" · ") || "—"}</td>
-                  <td>{v.vigente_desde ? new Date(v.vigente_desde).toLocaleString("es-CO") : "—"}{v.vigente_hasta ? ` → ${new Date(v.vigente_hasta).toLocaleString("es-CO")}` : ""}</td>
-                  <td><span className={`tag ${v.estado === "vigente" ? "exito" : v.estado === "rechazada" ? "critico" : "rutina"}`}>{v.estado}</span></td>
-                </tr>
-              ))}
-              {cfg && cfg.historial.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 20 }}>Sin versiones todavía: rigen los valores iniciales de la sección 7.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {pestana !== "versiones" && (
+        <>
+          {simulacion && <section className="tarjeta" style={{ marginTop: 12 }}><ResultadoSimulacion s={simulacion} /></section>}
+          <div className="barra-acciones" data-testid="barra-proponer">
+            <span className="resumen-cambios">
+              {nCambios === 0 ? <span className="muted">Sin cambios. Ajusta un umbral o amplía una lista.</span> : <><strong>{nCambios} {nCambios === 1 ? "cambio" : "cambios"}</strong> <span className="muted">· {resumenCambios(cambios).join(" · ")}</span></>}
+            </span>
+            <button type="button" className="secundario" disabled={nCambios === 0 || fueraDeRango.length > 0 || simulando} onClick={simular}>
+              <FlaskConical size={16} aria-hidden="true" />{simulando ? "Simulando…" : "Simular"}
+            </button>
+            <label className="motivo">
+              <span className="oculto-visual">Motivo de la versión</span>
+              <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo de la versión (obligatorio)" />
+            </label>
+            <button type="button" disabled={nCambios === 0 || fueraDeRango.length > 0 || !yo || !motivo.trim()} onClick={proponer} title={!yo ? "Escribe tu usuario en la barra lateral" : undefined}>
+              <GitBranchPlus size={16} aria-hidden="true" />Proponer versión
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -299,14 +347,14 @@ function FragmentoGrupo({ grupo, cfg, textos, setTextos, cambios }: {
   if (filas.length === 0) return null;
   return (
     <>
-      <tr><th colSpan={3} style={{ background: "var(--superficie-2)" }}>{grupo}</th></tr>
+      <tr><th colSpan={3} className="grupo">{grupo}</th></tr>
       {filas.map((u) => {
         const r = cfg!.rangos[u.clave];
         const id = `umbral-${u.clave.replace(/\./g, "-")}`;
         return (
           <tr key={u.clave} className={u.clave in cambios.umbrales ? "cambiado" : ""}>
-            <td><label htmlFor={id}>{u.etiqueta}</label><span className="secundaria">{u.regla}{r.efectivo !== r.base ? ` · base ${r.base}` : ""}</span></td>
-            <td className="rango">{r.min} – {r.max} {u.unidad}{r.solo_a_la_baja ? " · solo a la baja" : ""}</td>
+            <td><label htmlFor={id}>{u.etiqueta}</label><span className="secundaria">{u.regla}{r.efectivo !== r.base ? ` · base ${num(r.base)}` : ""}</span></td>
+            <td className="rango">{num(r.min)} – {num(r.max)} {u.unidad}{r.solo_a_la_baja ? " · solo a la baja" : ""}</td>
             <td className="num">
               <input id={id} type="number" step={u.paso} min={r.min} max={r.max} value={textos[u.clave] ?? ""} onChange={(e) => setTextos({ ...textos, [u.clave]: e.target.value })} />
             </td>
@@ -320,7 +368,7 @@ function FragmentoGrupo({ grupo, cfg, textos, setTextos, cambios }: {
 function ListaAmpliable({ testid, titulo, base, ampliadas, valor, onChange }: { testid: string; titulo: string; base: string[]; ampliadas: string[]; valor: string; onChange: (v: string) => void }) {
   return (
     <div data-testid={testid}>
-      <h3 style={{ margin: "10px 0 4px" }}>{titulo}</h3>
+      <h3>{titulo} <span className="muted">· {base.length + ampliadas.length}</span></h3>
       <div className="chips-lectura">
         {base.map((x) => <span key={x} className="chip">{x}</span>)}
         {ampliadas.map((x) => <span key={x} className="chip nuevo">{x}</span>)}
@@ -335,7 +383,8 @@ function ListaAmpliable({ testid, titulo, base, ampliadas, valor, onChange }: { 
 
 function ResultadoSimulacion({ s }: { s: Simulacion }) {
   return (
-    <div data-testid="simulacion" style={{ marginTop: 10 }}>
+    <div data-testid="simulacion">
+      <h2>Simulación</h2>
       <p>
         <strong>{s.cambian} de {s.documentos_evaluados}</strong> documentos evaluados cambiarían de decisión
         ({s.mas_a_revision} más a revisión humana, {s.mas_automaticos} más automáticos). {s.sin_propuesta} no se pueden simular porque no tienen propuesta del LLM.

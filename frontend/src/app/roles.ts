@@ -42,7 +42,7 @@ export const ROLES: Rol[] = [
   {
     id: "auditor_clinico",
     nombre: "Auditor clínico",
-    descripcion: "Resuelve la cola de revisión humana; puede bajar prioridad con justificación (RN-J5).",
+    descripcion: "Resuelve la cola de revisión humana; puede bajar una prioridad con justificación escrita.",
     rutaInicial: "/revision",
     navegacion: [INICIO, DOCUMENTOS, REVISION, ALERTAS, ENTREGAS],
     veDocumentos: true,
@@ -51,7 +51,7 @@ export const ROLES: Rol[] = [
   {
     id: "quimico_farmaceutico",
     nombre: "Químico farmacéutico",
-    descripcion: "Verifica recetas; doble verificación de alto riesgo y control especial (RN-J6).",
+    descripcion: "Verifica recetas; las de alto riesgo y control especial llevan doble verificación.",
     rutaInicial: "/farmacia",
     navegacion: [INICIO, FARMACIA, DOCUMENTOS],
     veDocumentos: true,
@@ -60,7 +60,7 @@ export const ROLES: Rol[] = [
   {
     id: "auditor_autorizaciones",
     nombre: "Auditor de autorizaciones",
-    descripcion: "Aprueba o devuelve órdenes ambulatorias con su justificación mínima (RN-E5).",
+    descripcion: "Aprueba o devuelve órdenes ambulatorias con su documentación mínima.",
     rutaInicial: "/autorizaciones",
     navegacion: [INICIO, AUTORIZACIONES, DOCUMENTOS],
     veDocumentos: true,
@@ -69,7 +69,7 @@ export const ROLES: Rol[] = [
   {
     id: "jefe_urgencias",
     nombre: "Jefe de urgencias",
-    descripcion: "Da acuse a las alertas críticas y las reasigna (RN-J7, RN-Q5).",
+    descripcion: "Da acuse a las alertas críticas y las reasigna.",
     rutaInicial: "/alertas",
     navegacion: [INICIO, ALERTAS, DOCUMENTOS],
     veDocumentos: true,
@@ -78,7 +78,7 @@ export const ROLES: Rol[] = [
   {
     id: "gestor",
     nombre: "Gestor de la clínica",
-    descripcion: "Configuración dentro de límites y métricas. No revisa documentos (RN-K2).",
+    descripcion: "Configuración dentro de límites y métricas. No revisa documentos.",
     rutaInicial: "/metricas",
     navegacion: [INICIO, METRICAS, CONFIGURACION],
     veDocumentos: false,
@@ -87,7 +87,7 @@ export const ROLES: Rol[] = [
   {
     id: "administrador",
     nombre: "Administrador del sistema",
-    descripcion: "Usuarios y pack de país. Nada clínico (RN-K2).",
+    descripcion: "Usuarios y pack de país. Nada clínico.",
     rutaInicial: "/administracion",
     navegacion: [INICIO, ADMINISTRACION],
     veDocumentos: false,

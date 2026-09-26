@@ -1,3 +1,4 @@
+import { FlaskConical, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 
@@ -121,11 +122,14 @@ export function DocumentosPage() {
           <h1>Documentos</h1>
           <p className="sub">Carga, consulta y estado del procesamiento. Las listas no muestran datos del paciente.</p>
         </div>
-        <div className="casos" aria-label="Casos sintéticos">
-          {CASOS.map((c) => (
-            <button key={c.id} type="button" className="secundario" title={c.descripcion} onClick={() => cargarCaso(c.id)}>{c.nombre}</button>
-          ))}
-        </div>
+        <details className="menu">
+          <summary><FlaskConical size={16} aria-hidden="true" />Cargar un caso de ejemplo</summary>
+          <ul role="menu" aria-label="Casos sintéticos">
+            {CASOS.map((c) => (
+              <li key={c.id}><button type="button" role="menuitem" className="enlace" title={c.descripcion} onClick={() => cargarCaso(c.id)}>{c.nombre}<span className="secundaria">{c.descripcion}</span></button></li>
+            ))}
+          </ul>
+        </details>
       </header>
 
       <section className="carga" aria-labelledby="titulo-carga">
@@ -186,7 +190,7 @@ export function DocumentosPage() {
             </label>
           </div>
           <div className="acciones" style={{ marginTop: 12 }}>
-            <button type="button" disabled={!listo} onClick={cargar}>{enviando ? "Procesando…" : "Cargar documento"}</button>
+            <button type="button" disabled={!listo} onClick={cargar}><Upload size={16} aria-hidden="true" />{enviando ? "Procesando…" : "Cargar documento"}</button>
           </div>
           {errorCarga && <div className="estado-carga error" role="alert">{errorCarga}</div>}
           {ultimo && (
