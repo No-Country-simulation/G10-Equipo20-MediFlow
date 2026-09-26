@@ -147,7 +147,7 @@ export function DocumentosPage() {
           ) : (
             <>
               <span className="titulo" id="titulo-carga">Arrastra un PDF, PNG o JPG</span>
-              <span className="muted">o elígelo desde tu equipo · hasta 10 MB · se valida el contenido, no la extensión (RN-A1)</span>
+              <span className="muted">o elígelo desde tu equipo · hasta 10 MB · se valida el contenido, no la extensión</span>
               <label className="secundario" style={{ alignItems: "center" }}>
                 <span className="oculto-visual">Elegir archivo</span>
                 <input ref={inputArchivo} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"

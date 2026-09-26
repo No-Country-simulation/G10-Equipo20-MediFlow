@@ -140,3 +140,17 @@ describe("página Documentos", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/la extensión no coincide con el contenido/i);
   });
 });
+
+describe("menú compacto (pantallas angostas)", () => {
+  it("el botón de menú despliega la navegación y navegar la cierra", async () => {
+    render(<AppRouter rutaInicial="/inicio" rolInicial="auditor_clinico" />);
+    const boton = await screen.findByRole("button", { name: /abrir menú/i });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(boton);
+    expect(screen.getByRole("button", { name: /cerrar menú/i })).toHaveAttribute("aria-expanded", "true");
+    expect(document.querySelector(".lateral")).toHaveClass("abierta");
+    await userEvent.click(within(screen.getByRole("navigation", { name: /principal/i })).getByRole("link", { name: /documentos/i }));
+    await waitFor(() => expect(document.querySelector(".lateral")).not.toHaveClass("abierta"));
+    expect(screen.getByRole("button", { name: /abrir menú/i })).toBeInTheDocument();
+  });
+});

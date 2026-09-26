@@ -119,11 +119,43 @@ button.enlace { background: none; border: none; color: var(--primario-tinta); pa
 .encabezado h1 { font-size: 1.6rem; letter-spacing: -0.01em; }
 .encabezado .sub { max-width: 78ch; }
 .encabezado .sub { color: var(--muted); }
+.hamburguesa { display: none; }
 @media (max-width: 880px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
-  .lateral { position: static; height: auto; }
-  .lateral nav { flex-direction: row; flex-wrap: wrap; }
+  /* Barra superior compacta: logo + botón de menú. El menú se despliega bajo la barra. */
+  .lateral { position: sticky; top: 0; height: auto; padding: 8px 12px; gap: 0; z-index: 20; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+  .lateral .logo { border-bottom: none; padding: 2px 0; align-items: center; }
+  .lateral .logo img { width: 34px; height: 34px; }
+  .lateral .logo small { display: none; }
+  .hamburguesa { display: inline-flex; margin-left: auto; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); min-height: 40px; min-width: 40px; padding: 6px; position: relative; }
+  .hamburguesa .contador { position: absolute; top: -6px; right: -6px; background: #F97066; color: #2b0805; border-radius: 999px; padding: 0 6px; font-size: 0.72rem; font-family: "Sora", sans-serif; }
+  .lateral nav, .lateral .demo, .lateral .usuario { display: none; }
+  .lateral.abierta nav, .lateral.abierta .demo, .lateral.abierta .usuario { display: flex; }
+  .lateral.abierta nav { flex-direction: column; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); flex: none; }
+  .lateral.abierta nav a { padding: 12px 10px; font-size: 1rem; }
+  .lateral.abierta .usuario { display: grid; margin-top: 8px; }
   .contenido { padding: 0 16px 32px; }
+  .encabezado { padding: 16px 0 10px; }
+  .encabezado h1 { font-size: 1.35rem; }
+  .banner-alertas { margin-top: 12px; }
+}
+@media (max-width: 720px) {
+  /* Las colas se leen como tarjetas: sin cabecera, identificador arriba y el resto en dos columnas. */
+  .tabla-densa thead { display: none; }
+  .tabla-densa tr.fila { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 10px 12px; border-bottom: 1px solid var(--borde); }
+  .tabla-densa tr.fila td { display: block; height: auto; padding: 0; border-bottom: none; }
+  .tabla-densa tr.fila td:first-child { grid-column: 1 / -1; }
+  .tabla-densa tr.fila td:last-child { grid-column: 1 / -1; padding-top: 4px; }
+  .tabla-densa tr.fila:hover td { background: transparent; }
+  .tabla-densa tr.fila button { width: 100%; }
+  .contadores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .contador .n { font-size: 1.45rem; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pendientes li { grid-template-columns: 20px minmax(0, 1fr); }
+  .pendientes li .tag, .pendientes li .plazo { grid-column: 2; justify-self: start; }
+  .barra-acciones { position: static; }
+  .menu ul { left: 0; right: auto; min-width: min(320px, 90vw); }
+  .banco { gap: 10px; }
 }
 
 /* --- Banner de alertas ------------------------------------------------------ */

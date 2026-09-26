@@ -1,4 +1,4 @@
-import { BarChart3, BellRing, ClipboardCheck, FileCheck2, FileText, Home, Pill, Send, SlidersHorizontal, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, BellRing, ClipboardCheck, FileCheck2, FileText, Home, Menu, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -29,6 +29,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [contadores, setContadores] = useState({ revision: 0, alertas: 0 });
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   useEffect(() => {
     if (!rol.veDocumentos) return;
@@ -45,6 +46,9 @@ export function AppShell() {
     };
   }, [location.pathname, rol.veDocumentos]);
 
+  // En pantallas angostas el menú se cierra al navegar.
+  useEffect(() => { setMenuAbierto(false); }, [location.pathname]);
+
   function alCambiarRol(id: RolId) {
     cambiarRol(id);
     const destino = ROLES.find((r) => r.id === id)?.rutaInicial ?? "/documentos";
@@ -52,18 +56,23 @@ export function AppShell() {
   }
 
   const permitido = rolPuedeVer(rol, location.pathname);
+  const pendientes = contadores.revision + contadores.alertas;
 
   return (
     <div className="shell">
-      <aside className="lateral">
+      <aside className={`lateral ${menuAbierto ? "abierta" : ""}`}>
         <div className="logo">
           <img src="/logo.jpg" alt="MediFlow" />
           <div>
             <strong>Medi<span>Flow</span></strong>
             <small>Pack Colombia · Sede demo</small>
           </div>
+          <button type="button" className="hamburguesa" aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={menuAbierto} aria-controls="menu-principal" onClick={() => setMenuAbierto((v) => !v)}>
+            {menuAbierto ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+            {!menuAbierto && rol.veDocumentos && pendientes > 0 && <span className="contador critico">{pendientes}</span>}
+          </button>
         </div>
-        <nav aria-label="Principal">
+        <nav id="menu-principal" aria-label="Principal">
           {rol.navegacion.map((item) => {
             const Icono = ICONOS[item.ruta];
             return (
