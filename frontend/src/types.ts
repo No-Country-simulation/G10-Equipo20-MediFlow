@@ -157,6 +157,23 @@ export interface ItemCola {
   plazo_minutos: number;
 }
 
+/** Respuesta de GET /alertas. Nunca lleva datos del paciente (RN-Q4). */
+export interface AlertaListada {
+  documento_id: string;
+  version: number;
+  nivel: NivelPrioridad;
+  canal: string;
+  destinatario: string;
+  mensaje: string;
+  concepto: string | null;
+  emitida_en: string;
+  plazo_minutos: number;
+  estado_acuse: "pendiente" | "acusado" | "escalado";
+  acusado_por: string | null;
+  acusado_en: string | null;
+  estado_documento: EstadoDocumento;
+}
+
 export interface ItemListado {
   documento_id: string;
   version: number;
@@ -170,6 +187,7 @@ export interface ItemListado {
   tipo: string | null;
   motivo_auditoria: string | null;
   codigo_error: string | null;
+  num_paginas?: number;
 }
 
 export interface Listado {

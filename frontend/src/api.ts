@@ -1,5 +1,6 @@
 /** Cliente de la API REST de MediFlow. Todas las rutas pasan por /api (proxy de Vite o nginx). */
 import type {
+  AlertaListada,
   DatosArchivo,
   DocumentoDetalle,
   DocumentoRequest,
@@ -94,4 +95,9 @@ export function urlOriginal(documentoId: string): string {
 
 export function urlVistaPrevia(documentoId: string, pagina = 1): string {
   return `${BASE_URL}/documentos/${encodeURIComponent(documentoId)}/vista_previa?pagina=${pagina}`;
+}
+
+export function listarAlertas(filtros: { estado_acuse?: string } = {}): Promise<AlertaListada[]> {
+  const consulta = filtros.estado_acuse ? `?estado_acuse=${encodeURIComponent(filtros.estado_acuse)}` : "";
+  return llamar<AlertaListada[]>(`/alertas${consulta}`);
 }
