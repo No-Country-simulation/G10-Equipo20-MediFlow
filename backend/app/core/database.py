@@ -25,10 +25,11 @@ def get_engine() -> Engine:
 
 
 def crear_tablas() -> None:
-    # Importa los modelos para que queden registrados en Base.metadata.
-    import app.models  # noqa: F401
+    """Solo para SQLite (suite unitaria). En PostgreSQL el esquema lo gestionan las migraciones Alembic."""
+    import app.models  # noqa: F401 - registra los modelos en Base.metadata
 
-    Base.metadata.create_all(get_engine())
+    if get_settings().database_url.startswith("sqlite"):
+        Base.metadata.create_all(get_engine())
 
 
 def abrir_sesion() -> Iterator[Session]:
