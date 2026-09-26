@@ -21,8 +21,12 @@ class Settings(BaseSettings):
     oci_namespace: str = ""
     oci_bucket: str = ""
     oci_region: str = ""
-    # LLM externo (RN-M10). La clave nunca se versiona.
+    # LLM externo (RN-M10). La clave nunca se versiona. Proveedor por defecto: OpenAI (decisión 2 del docx).
+    llm_proveedor: str = "openai"  # openai | gemini
     openai_api_key: str = ""
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    max_paginas_pdf: int = 20  # RN-O5
     openai_model: str = "gpt-4.1-mini"
     openai_timeout_s: float = 60.0
     llm_max_intentos: int = 3  # RN-P2

@@ -178,12 +178,36 @@ def test_reintentos_agotados_es_fallo_RN_P2(entrada):
     assert len(cliente.llamadas) == 3
 
 
-def test_imagen_va_como_parte_de_imagen_RN_M2():
-    entrada = EntradaLLM(documento_id="DOC-IMG", texto=None, imagen_base64="aGVsbG8=", mime="image/png", canal_origen="Externo", pais="CO")
+def test_imagenes_van_como_partes_de_imagen_en_orden_RN_M2():
+    entrada = EntradaLLM(documento_id="DOC-IMG", texto="", imagenes=[("aGVsbG8=", "image/png"), ("bW9u", "image/jpeg")], canal_origen="Externo", pais="CO")
     cliente = ClienteFalso(respuestas=[propuesta_caso_1()])
     ServicioExtraccion(cliente).procesar(entrada)
-    assert cliente.llamadas[0].imagen_base64 == "aGVsbG8="
-    assert cliente.llamadas[0].mime == "image/png"
+    assert cliente.llamadas[0].imagenes == [("aGVsbG8=", "image/png"), ("bW9u", "image/jpeg")]
+    assert "imagen" in cliente.llamadas[0].texto_usuario.lower()
+
+
+def test_texto_e_imagenes_juntos_para_un_pdf_mixto():
+    entrada = EntradaLLM(documento_id="DOC-MIX", texto="Página 1 con texto.", imagenes=[("aGVsbG8=", "image/png")], canal_origen="Externo", pais="CO")
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1()])
+    ServicioExtraccion(cliente).procesar(entrada)
+    assert "Página 1 con texto." in cliente.llamadas[0].texto_usuario
+    assert len(cliente.llamadas[0].imagenes) == 1
+
+
+def test_cliente_gemini_se_construye_sin_llamar_a_la_red():
+    from app.services.llm import ClienteGemini
+
+    c = ClienteGemini(api_key="clave-prueba", modelo="gemini-prueba")
+    assert c.modelo == "gemini-prueba"
+
+
+@pytest.mark.integracion
+@pytest.mark.skipif(not os.environ.get("GEMINI_API_KEY"), reason="sin GEMINI_API_KEY")
+def test_gemini_devuelve_una_propuesta_valida(entrada):
+    from app.services.llm import ClienteGemini
+
+    r = ServicioExtraccion(ClienteGemini()).procesar(entrada)
+    assert "TEP_AGUDO" in r.propuesta.extraccion.hallazgos_criticos_detectados
 
 
 # --- Integración real (requiere OPENAI_API_KEY; no bloquea la suite, RN-U4) ------------

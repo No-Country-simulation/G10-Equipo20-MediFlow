@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import abrir_sesion
-from app.services.llm import ClienteLLM, ClienteOpenAI, ErrorTransitorioLLM, LlamadaLLM, RespuestaLLM
+from app.services.llm import ClienteGemini, ClienteLLM, ClienteOpenAI, ErrorTransitorioLLM, LlamadaLLM, RespuestaLLM
 from app.services.storage import Storage, StorageLocal, StorageOCI
 
 
@@ -32,6 +32,8 @@ class ClienteNoConfigurado:
 @lru_cache
 def get_llm() -> ClienteLLM:
     settings = get_settings()
-    if settings.openai_api_key:
+    if settings.llm_proveedor == "gemini" and settings.gemini_api_key:
+        return ClienteGemini()
+    if settings.llm_proveedor == "openai" and settings.openai_api_key:
         return ClienteOpenAI()
     return ClienteNoConfigurado()

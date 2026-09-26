@@ -61,8 +61,7 @@ class EntradaLLM:
     canal_origen: str
     pais: str
     cobertura: str | None = None
-    imagen_base64: str | None = None
-    mime: str | None = None
+    imagenes: list[tuple[str, str]] = field(default_factory=list)  # (base64, mime) por página escaneada (RN-M2)
 
 
 @dataclass
@@ -70,8 +69,7 @@ class LlamadaLLM:
     system: str
     texto_usuario: str
     esquema: dict[str, Any]
-    imagen_base64: str | None = None
-    mime: str | None = None
+    imagenes: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -154,10 +152,8 @@ class ClienteOpenAI:
 
     def completar_estructurado(self, llamada: LlamadaLLM) -> RespuestaLLM:
         contenido_usuario: list[dict[str, Any]] = [{"type": "text", "text": llamada.texto_usuario}]
-        if llamada.imagen_base64:
-            contenido_usuario.append(
-                {"type": "image_url", "image_url": {"url": f"data:{llamada.mime or 'image/png'};base64,{llamada.imagen_base64}"}}
-            )
+        for base64_imagen, mime in llamada.imagenes:
+            contenido_usuario.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64_imagen}"}})
         try:
             respuesta = self._cliente.chat.completions.create(
                 model=self.modelo,
@@ -188,6 +184,64 @@ class ClienteOpenAI:
         )
 
 
+class ClienteGemini:
+    """Alternativa a OpenAI detrás del mismo contrato. La decisión 2 del docx sigue siendo OpenAI;
+    este cliente existe para que el equipo pueda correr el pipeline con la clave que tenga."""
+
+    def __init__(self, api_key: str | None = None, modelo: str | None = None, timeout_s: float | None = None):
+        from google import genai  # noqa: PLC0415
+        from google.genai import types  # noqa: PLC0415
+
+        settings = get_settings()
+        self._genai, self._types = genai, types
+        self._api_key = api_key or settings.gemini_api_key
+        self.modelo = modelo or settings.gemini_model
+        self._timeout_ms = int((timeout_s or settings.openai_timeout_s) * 1000)
+
+    def completar_estructurado(self, llamada: LlamadaLLM) -> RespuestaLLM:
+        import base64  # noqa: PLC0415
+
+        from google.genai import errors  # noqa: PLC0415
+
+        if not self._api_key:
+            raise ErrorTransitorioLLM("GEMINI_API_KEY no configurada")
+        partes: list[Any] = [llamada.texto_usuario]
+        for base64_imagen, mime in llamada.imagenes:
+            partes.append(self._types.Part.from_bytes(data=base64.b64decode(base64_imagen), mime_type=mime))
+        try:
+            with self._genai.Client(api_key=self._api_key, http_options=self._types.HttpOptions(timeout=self._timeout_ms)) as cliente:
+                respuesta = cliente.models.generate_content(
+                    model=self.modelo,
+                    contents=partes,
+                    config=self._types.GenerateContentConfig(
+                        system_instruction=llamada.system,
+                        temperature=0,
+                        response_mime_type="application/json",
+                        response_json_schema=llamada.esquema["schema"],
+                    ),
+                )
+        except errors.APIError as error:
+            codigo = getattr(error, "code", None)
+            if codigo in (429, 500, 502, 503, 504):
+                raise ErrorTransitorioLLM(f"gemini {codigo}") from error
+            raise RespuestaFueraDeEsquema(f"gemini {codigo}") from error
+        except (TimeoutError, OSError) as error:
+            raise ErrorTransitorioLLM(str(error)) from error
+        if not respuesta.text:
+            raise RespuestaFueraDeEsquema("el modelo no devolvió contenido")
+        try:
+            contenido = json.loads(respuesta.text)
+        except json.JSONDecodeError as error:
+            raise RespuestaFueraDeEsquema("la respuesta no es JSON") from error
+        uso = getattr(respuesta, "usage_metadata", None)
+        return RespuestaLLM(
+            contenido,
+            self.modelo,
+            tokens_entrada=getattr(uso, "prompt_token_count", 0) or 0,
+            tokens_salida=getattr(uso, "candidates_token_count", 0) or 0,
+        )
+
+
 # --- Servicio ----------------------------------------------------------------------
 
 
@@ -200,10 +254,15 @@ def _mensaje_usuario(entrada: EntradaLLM) -> str:
         f"cobertura_paciente: {entrada.cobertura or 'no_informada'}",
         "",
     ]
-    if entrada.texto is not None:
+    if entrada.texto:
         lineas += ["### TEXTO CLÍNICO (seudonimizado; los tokens [TIPO_n] se copian tal cual) ###", entrada.texto]
-    else:
-        lineas += ["### DOCUMENTO ###", "El documento es la imagen adjunta. Léela completa antes de responder."]
+    if entrada.imagenes:
+        cuantas = len(entrada.imagenes)
+        plural = "es" if cuantas != 1 else ""
+        lineas += ["", f"### PÁGINAS ESCANEADAS ({cuantas} imagen{plural} adjunta{'s' if cuantas != 1 else ''}) ###",
+                   "Lee cada imagen completa antes de responder; el texto de arriba y las imágenes son el mismo documento."]
+    if not entrada.texto and not entrada.imagenes:
+        lineas += ["### DOCUMENTO ###", "Sin contenido legible."]
     return "\n".join(lineas)
 
 
@@ -229,8 +288,7 @@ class ServicioExtraccion:
             system=self.prompt.texto,
             texto_usuario=_mensaje_usuario(entrada),
             esquema=self._esquema,
-            imagen_base64=entrada.imagen_base64,
-            mime=entrada.mime,
+            imagenes=list(entrada.imagenes),
         )
         ultimo_error: Exception | None = None
         for intento in range(1, self.max_intentos + 1):
