@@ -1,5 +1,5 @@
-import { ClipboardPen, Plus, Trash2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { ClipboardPen, Eraser, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
 
 const TIPOS = ["Receta Médica", "Informe de Imágenes", "Informe de Laboratorio", "Orden de Procedimiento", "Epicrisis o Alta", "Certificado Médico", "No Clasificable"];
 const DOCUMENTOS_PACIENTE = ["CC", "TI", "RC", "CE", "PA", "PT", "CN", "CD", "SC", "DE", "MS", "AS"];
@@ -23,6 +23,10 @@ const SIGNOS: { clave: "FR" | "SpO2" | "FC" | "PAS" | "Temp"; etiqueta: string; 
 
 type Texto = Record<string, string>;
 
+const CAMPOS_INICIALES: Texto = { tipo: "", prioridad: "Rutina", paciente_nombre: "", paciente_edad: "", doc_tipo: "", doc_valor: "", fecha: "",
+  prof_nombre: "", prof_registro: "", dx_texto: "", dx_cie10: "", proc_texto: "", proc_cups: "", justificacion: "" };
+const SIGNOS_INICIALES: Texto = { FR: "", SpO2: "", FC: "", PAS: "", Temp: "" };
+
 function limpio(v: string): string | undefined {
   const t = v.trim();
   return t ? t : undefined;
@@ -38,16 +42,27 @@ function compactar<T extends Record<string, unknown>>(o: T): Partial<T> {
  * La persona copia los datos desde el original; al guardar, las reglas se aplican igual que sobre
  * una lectura del LLM: la prioridad solo puede subir y un hallazgo crítico del texto se mantiene.
  */
-export function Transcripcion({ habilitado, enviando, onEnviar }: {
+export function Transcripcion({ habilitado, enviando, onEnviar, onCambio }: {
   habilitado: boolean;
   enviando: boolean;
   onEnviar: (transcripcion: Record<string, unknown>) => void;
+  /** Avisa si hay datos escritos sin guardar, para no cambiar de documento con ellos (paciente equivocado). */
+  onCambio?: (sucio: boolean) => void;
 }) {
-  const [c, setC] = useState<Texto>({ tipo: "", prioridad: "Rutina", paciente_nombre: "", paciente_edad: "", doc_tipo: "", doc_valor: "", fecha: "",
-    prof_nombre: "", prof_registro: "", dx_texto: "", dx_cie10: "", proc_texto: "", proc_cups: "", justificacion: "" });
-  const [signos, setSignos] = useState<Texto>({ FR: "", SpO2: "", FC: "", PAS: "", Temp: "" });
+  const [c, setC] = useState<Texto>(CAMPOS_INICIALES);
+  const [signos, setSignos] = useState<Texto>(SIGNOS_INICIALES);
   const [medicamentos, setMedicamentos] = useState<Medicamento[]>([{ ...MEDICAMENTO_VACIO }]);
   const [recetario, setRecetario] = useState(false);
+  const sucio = Object.entries(c).some(([k, v]) => v !== CAMPOS_INICIALES[k]) || Object.values(signos).some((v) => v.trim() !== "")
+    || medicamentos.some((m) => Object.values(m).some((v) => v.trim() !== "")) || recetario;
+  useEffect(() => { onCambio?.(sucio); }, [sucio, onCambio]);
+
+  function descartar() {
+    setC(CAMPOS_INICIALES);
+    setSignos(SIGNOS_INICIALES);
+    setMedicamentos([{ ...MEDICAMENTO_VACIO }]);
+    setRecetario(false);
+  }
   const campo = (clave: string) => ({ value: c[clave], onChange: (e: { target: { value: string } }) => setC({ ...c, [clave]: e.target.value }) });
 
   const esReceta = c.tipo === "Receta Médica";
@@ -183,6 +198,7 @@ export function Transcripcion({ habilitado, enviando, onEnviar }: {
 
       <div className="acciones">
         <button type="submit" disabled={!c.tipo || !habilitado || enviando}><ClipboardPen size={16} aria-hidden="true" />{enviando ? "Aplicando reglas…" : "Guardar transcripción y aplicar reglas"}</button>
+        {sucio && <button type="button" className="secundario" onClick={descartar}><Eraser size={16} aria-hidden="true" />Descartar transcripción</button>}
         {!c.tipo && <span className="muted">Elige el tipo de documento para continuar.</span>}
         {c.tipo && !habilitado && <span className="muted">Escribe tu usuario en «Firmo como» para guardar.</span>}
       </div>

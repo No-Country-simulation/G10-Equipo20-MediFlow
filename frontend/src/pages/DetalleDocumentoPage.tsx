@@ -69,6 +69,7 @@ export function DetalleDocumentoPage() {
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [atajos, setAtajos] = useState(leerAtajos);
+  const [transcripcionSucia, setTranscripcionSucia] = useState(false);
   const [entregas, setEntregas] = useState<Record<string, boolean>>({});
   const [pendientes, setPendientes] = useState<string[] | null>(null);
   const [ahora, setAhora] = useState(() => new Date());
@@ -83,6 +84,8 @@ export function DetalleDocumentoPage() {
   }, [id]);
 
   useEffect(() => {
+    // Al cambiar de documento no queda nada del anterior en pantalla mientras carga el siguiente.
+    setDetalle(null); setTranscripcionSucia(false);
     setPagina(1); setCorreccion(null); setMensaje(null); setPendientes(null); setConfirmacion(null); setCierre(null); setMotivo("");
     cargar();
   }, [cargar]);
@@ -151,6 +154,10 @@ export function DetalleDocumentoPage() {
       if (e.key === "Escape") { setConfirmacion(null); return; }
       if (!atajos || e.altKey || e.ctrlKey || e.metaKey || esInteractivo(e.target)) return;
       const tecla = e.key.toLowerCase();
+      if ((tecla === "j" || tecla === "k") && transcripcionSucia) {
+        setMensaje({ texto: "Tienes una transcripción sin guardar. Guárdala o descártala antes de pasar a otro documento.", error: true });
+        return;
+      }
       if (tecla === "j") irA(1);
       else if (tecla === "k") irA(-1);
       else if (tecla === "a") pedir("aprobar");
@@ -159,7 +166,7 @@ export function DetalleDocumentoPage() {
     }
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
-  }, [irA, pedir, enRevision, transcribiendo, atajos]);
+  }, [irA, pedir, enRevision, transcribiendo, atajos, transcripcionSucia]);
 
   function cambiarAtajos(activos: boolean) {
     setAtajos(activos);
@@ -272,7 +279,8 @@ export function DetalleDocumentoPage() {
             <span className="muted">{transcribiendo ? "desde el original" : "confianza por campo"}</span>
           </div>
           {transcribiendo ? (
-            <Transcripcion habilitado={!!firma} enviando={enviando} onEnviar={(t) => void resolver("transcribir", { transcripcion: t })} />
+            <Transcripcion key={`${detalle.documento_id}-${detalle.version}`} habilitado={!!firma} enviando={enviando} onCambio={setTranscripcionSucia}
+              onEnviar={(t) => void resolver("transcribir", { transcripcion: t })} />
           ) : !r ? <p className="muted">Sin resultado.</p> : (
             <>
               <dl className="campos-extraccion">

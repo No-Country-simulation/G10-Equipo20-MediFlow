@@ -146,6 +146,25 @@ describe("transcripción cuando el motor no leyó el documento", () => {
   });
 });
 
+describe("la transcripción nunca pasa de un paciente a otro", () => {
+  it("J no cambia de documento con una transcripción sin guardar; al descartarla, el siguiente abre vacío", async () => {
+    const siguiente = { ...enFalloTecnico(), documento_id: "DOC-DESPUES" } as DocumentoDetalle;
+    const consultar = vi.spyOn(api, "consultarDocumento").mockImplementation(async (id: string) => (id === "DOC-DESPUES" ? siguiente : enFalloTecnico()));
+    await abrir(`${RUTA}?cola=1`);
+    const panel = screen.getByTestId("transcripcion");
+    await userEvent.type(within(panel).getByLabelText(/nombre del paciente/i), "PACIENTE DEL DOCUMENTO A");
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: "j" });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/transcripción sin guardar/i);
+    expect(consultar).not.toHaveBeenCalledWith("DOC-DESPUES");
+    await userEvent.click(within(panel).getByRole("button", { name: /descartar transcripción/i }));
+    fireEvent.keyDown(document.body, { key: "j" });
+    await waitFor(() => expect(consultar).toHaveBeenLastCalledWith("DOC-DESPUES"));
+    await waitFor(() => expect(screen.getByText("DOC-DESPUES", { selector: "h1" })).toBeInTheDocument());
+    expect(within(screen.getByTestId("transcripcion")).getByLabelText(/nombre del paciente/i)).toHaveValue("");
+  });
+});
+
 describe("modo discreto", () => {
   it("oculta el nombre del archivo, que puede revelar el diagnóstico", async () => {
     render(<AppRouter rutaInicial={RUTA} rolInicial="jefe_urgencias" />);
