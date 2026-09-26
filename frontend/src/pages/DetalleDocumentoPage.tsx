@@ -1,4 +1,4 @@
-import { ArrowRight, Check, CircleCheckBig, Keyboard, Maximize2, Minimize2, Pencil, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleCheckBig, Keyboard, Maximize2, Minimize2, PanelLeftOpen, Pencil, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -159,7 +159,8 @@ export function DetalleDocumentoPage() {
   useEffect(() => {
     function alTeclear(e: KeyboardEvent) {
       if (e.key === "Escape") { setConfirmacion(null); return; }
-      if (!atajos || e.altKey || e.ctrlKey || e.metaKey || esInteractivo(e.target)) return;
+      // En la pared no hay banco de trabajo: una tecla suelta de quien pasa no decide nada.
+      if (pared || !atajos || e.altKey || e.ctrlKey || e.metaKey || esInteractivo(e.target)) return;
       const tecla = e.key.toLowerCase();
       if ((tecla === "j" || tecla === "k") && transcripcionSucia) {
         setMensaje({ texto: "Tienes una transcripción sin guardar. Guárdala o descártala antes de pasar a otro documento.", error: true });
@@ -173,7 +174,7 @@ export function DetalleDocumentoPage() {
     }
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
-  }, [irA, pedir, enRevision, transcribiendo, atajos, transcripcionSucia]);
+  }, [irA, pedir, enRevision, transcribiendo, atajos, transcripcionSucia, pared]);
 
   function cambiarAtajos(activos: boolean) {
     setAtajos(activos);
@@ -215,10 +216,14 @@ export function DetalleDocumentoPage() {
     <>
       <header className="encabezado banco-cabecera">
         <div>
-          <p className="muted" style={{ margin: 0 }}>
-            <Link to={desdeCola ? "/revision" : "/documentos"}>{desdeCola ? "Cola de revisión" : "Documentos"}</Link> / <code>{detalle.documento_id}</code>
-            {desdeCola && posicionCola >= 0 && <> · {posicionCola + 1} de {cola.length} en la cola</>}
-          </p>
+          {pared ? (
+            <p className="volver-pared"><Link to="/alertas"><ArrowLeft size={20} aria-hidden="true" />Volver a Alertas</Link></p>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              <Link to={desdeCola ? "/revision" : "/documentos"}>{desdeCola ? "Cola de revisión" : "Documentos"}</Link> / <code>{detalle.documento_id}</code>
+              {desdeCola && posicionCola >= 0 && <> · {posicionCola + 1} de {cola.length} en la cola</>}
+            </p>
+          )}
           <div className="titulo-doc">
             <h1 className={titulo ? "hallazgo" : "id"}>{titulo || detalle.documento_id}</h1>
             <TagPrioridad nivel={detalle.nivel_prioridad} />
@@ -241,6 +246,16 @@ export function DetalleDocumentoPage() {
 
       <EstadoMensaje mensaje={mensaje} />
 
+      {pared ? (
+        <section className="tarjeta resguardo-pared" data-testid="documento-resguardado" aria-labelledby="resguardo-titulo">
+          <ShieldCheck size={28} aria-hidden="true" />
+          <div>
+            <h2 id="resguardo-titulo">El documento completo no se muestra en la pantalla compartida</h2>
+            <p>El original, los datos extraídos y la decisión se revisan fuera de la vista de pared, para que el documento del paciente no quede a la vista de quien pasa.</p>
+            <button type="button" className="secundario" onClick={alternarPared}><PanelLeftOpen size={18} aria-hidden="true" />Salir de la vista de pared para revisarlo</button>
+          </div>
+        </section>
+      ) : (
       <div className={`banco ${transcribiendo ? "transcripcion-activa" : ""}`}>
         {/* ------------------------------------------------ Original */}
         <section className="panel" aria-labelledby="p-original">
@@ -472,6 +487,7 @@ export function DetalleDocumentoPage() {
           )}
         </section>
       </div>
+      )}
     </>
   );
 }

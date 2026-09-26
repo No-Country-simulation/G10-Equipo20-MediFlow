@@ -167,6 +167,7 @@ describe("la transcripción nunca pasa de un paciente a otro", () => {
 
 describe("modo discreto", () => {
   it("oculta el nombre del archivo, que puede revelar el diagnóstico", async () => {
+    try { localStorage.setItem("mediflow.pared.jefe_urgencias", "no"); } catch { /* sin storage */ }  // el banco de trabajo se ve fuera de la vista de pared
     render(<AppRouter rutaInicial={RUTA} rolInicial="jefe_urgencias" />);
     await screen.findByRole("heading", { name: /^decisión/i });
     expect(screen.queryByText(/Hipoventilacion/)).not.toBeInTheDocument();

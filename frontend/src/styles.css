@@ -502,33 +502,43 @@ button.icono { padding: 6px; min-width: 36px; }
 .boton-lateral:hover:not(:disabled) { background: rgba(255,255,255,0.16); border-color: #B9D9CB; }
 
 /* Vista de pared: la pantalla compartida de urgencias, leída a unos dos metros. */
-.shell.pared { grid-template-columns: 76px minmax(0, 1fr); }
+.shell.pared { grid-template-columns: 112px minmax(0, 1fr); }
 .pared .lateral { padding: 14px 8px; align-items: stretch; }
 .pared .lateral .logo { justify-content: center; padding: 4px 0 12px; }
-.pared .lateral .texto-lateral, .pared .lateral nav a .etiqueta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.pared .lateral nav a { justify-content: center; padding: 12px 6px; position: relative; }
+/* Solo el nombre de la marca se retira; cada destino y cada control conserva su nombre a la vista. */
+.pared .lateral .logo .texto-lateral { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pared .lateral nav a { flex-direction: column; justify-content: center; gap: 4px; padding: 10px 4px; position: relative; text-align: center; font-size: 0.8125rem; line-height: 1.2; font-weight: 600; }
+.pared .lateral nav a .etiqueta { flex: none; }
 .pared .lateral nav a svg { width: 24px; height: 24px; }
-.pared .lateral nav a .contador { position: absolute; top: 2px; right: 2px; font-size: 0.8125rem; padding: 0 6px; }
-.pared .usuario-pared { display: grid; gap: 8px; justify-items: center; }
-.pared .usuario-pared .interruptor-lateral { justify-content: center; }
-.pared .usuario-pared .boton-lateral { justify-content: center; padding: 8px; }
-.pared .encabezado h1 { font-size: 2rem; }
-.resumen-pared { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 16px 20px; margin-bottom: 14px; border-radius: var(--radio); background: var(--critico-fondo); border: 2px solid var(--critico-relleno); color: var(--texto); }
+.pared .lateral nav a .contador { position: absolute; top: 4px; right: 12px; font-size: 0.8125rem; padding: 0 6px; }
+.pared .usuario-pared { display: grid; gap: 8px; justify-items: stretch; }
+.pared .usuario-pared .interruptor-lateral { flex-direction: column; justify-content: center; gap: 4px; padding: 8px 4px; border: 1px solid #8FB3A9; border-radius: 8px; text-align: center; font-size: 0.8125rem; line-height: 1.2; }
+.pared .usuario-pared .interruptor-lateral svg { display: none; }
+.pared .usuario-pared .boton-lateral { flex-direction: column; justify-content: center; gap: 4px; padding: 8px 4px; text-align: center; font-size: 0.8125rem; line-height: 1.2; white-space: normal; }
+.pared .encabezado h1 { font-size: clamp(2rem, 1.4rem + 1vw, 2.75rem); }
+.resumen-pared { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 16px 20px; margin-bottom: 14px; border-radius: var(--radio); background: var(--critico-fondo); border: 2px solid var(--critico); color: var(--texto); }
 .resumen-pared.en-calma { background: var(--exito-fondo); border-color: var(--exito); }
-.resumen-pared .cuenta { font-family: "Sora", sans-serif; font-weight: 700; font-size: 3.4rem; line-height: 1; color: var(--critico); font-variant-numeric: tabular-nums; }
+.resumen-pared .cuenta { font-family: "Sora", sans-serif; font-weight: 700; font-size: clamp(3.4rem, 2rem + 2vw, 5rem); line-height: 1; color: var(--critico); font-variant-numeric: tabular-nums; }
 .resumen-pared.en-calma .cuenta { color: var(--exito); }
-.resumen-pared strong { display: block; font-family: "Sora", sans-serif; font-size: 1.6rem; }
-.resumen-pared span:not(.cuenta) { font-size: 1.2rem; }
-.pared .tabla-alertas td { font-size: 1.05rem; }
-.pared .tabla-alertas td.hallazgo { font-family: "Sora", sans-serif; font-size: 1.35rem; font-weight: 600; line-height: 1.25; }
-.pared .tabla-alertas .plazo { font-size: 1.2rem; font-weight: 700; }
+.resumen-pared strong { display: block; font-family: "Sora", sans-serif; font-size: clamp(1.6rem, 1rem + 0.9vw, 2.25rem); }
+.resumen-pared span:not(.cuenta) { font-size: clamp(1.2rem, 0.8rem + 0.5vw, 1.5rem); }
+.resumen-pared > div > span { display: block; }
+.resumen-pared .escaladas { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--critico); }
+/* Sin datos confirmados la pared no se pinta en calma ni en alarma: gris neutro hasta saber. */
+.resumen-pared.sin-datos { background: var(--superficie-2); border-color: var(--borde-control); }
+.resumen-pared.sin-datos .cuenta { color: var(--muted); }
+.pared .tabla-alertas td { font-size: clamp(1.05rem, 0.7rem + 0.45vw, 1.35rem); }
+.pared .tabla-alertas td.hallazgo { font-family: "Sora", sans-serif; font-size: clamp(1.35rem, 0.6rem + 1vw, 2rem); font-weight: 600; line-height: 1.25; }
+.pared .tabla-alertas .plazo { font-size: clamp(1.2rem, 0.55rem + 0.85vw, 1.75rem); font-weight: 700; }
+.pared main button { min-height: 48px; }
 .pared .tabla-alertas code { font-size: 0.85rem; }
 @media (max-width: 880px) {
   .shell.pared { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .pared .lateral { padding: 8px 12px; }
   .pared .lateral .logo { justify-content: flex-start; }
-  .pared .lateral.abierta nav a .etiqueta { position: static; width: auto; height: auto; clip: auto; }
-  .pared .lateral.abierta nav a { justify-content: flex-start; }
+  .pared .lateral nav a { flex-direction: row; justify-content: flex-start; text-align: left; font-size: 1rem; }
+  .pared .lateral nav a .contador { position: static; margin-left: auto; }
+  .pared .usuario-pared .interruptor-lateral, .pared .usuario-pared .boton-lateral { flex-direction: row; justify-content: flex-start; text-align: left; font-size: 0.9375rem; }
   .pared .lateral .usuario-pared { display: none; }
   .pared .lateral.abierta .usuario-pared { display: grid; justify-items: stretch; }
   .resumen-pared .cuenta { font-size: 2.6rem; }
@@ -548,7 +558,7 @@ button.icono { padding: 6px; min-width: 36px; }
 .titulo-doc h1.hallazgo { font-family: "Sora", sans-serif; font-size: 1.65rem; font-weight: 600; letter-spacing: -0.01em; }
 .titulo-doc h1.id { font-family: "JetBrains Mono", ui-monospace, monospace; }
 .id-doc code { font-size: max(0.8125rem, 0.95em); }
-.pared .encabezado .sub { display: none; }
+.pared .encabezado:not(.banco-cabecera) .sub { display: none; }
 .mas-abajo { display: block; margin-top: 2px; font-weight: 600; color: var(--critico); }
 .mas-alertas { padding: 12px 14px; border-top: 1px solid var(--borde); }
 .campo-t { display: grid; gap: 3px; align-content: end; }
@@ -565,3 +575,21 @@ button.icono { padding: 6px; min-width: 36px; }
 .lateral nav .contador.critico, .hamburguesa .contador { background: var(--critico-relleno); color: #FFFFFF; }
 .dropzone { border-color: var(--borde-control); }
 .menu summary { border-color: var(--borde-control); }
+
+/* --- Vista de pared completa: en vivo o desactualizada a dos metros, nunca calma sin datos, detalle resguardado --- */
+.punto-vivo { width: 12px; height: 12px; border-radius: 50%; background: var(--exito); box-shadow: 0 0 0 3px var(--exito-fondo); flex: none; }
+.pared .barra-estado .vivo { font-size: clamp(1.0625rem, 0.8rem + 0.4vw, 1.375rem); color: var(--texto); font-weight: 600; gap: 10px; }
+.nota-escalada > span { min-width: 0; }
+.franja-desactualizada { display: flex; align-items: center; gap: 14px; padding: 14px 20px; margin-bottom: 14px; border-radius: var(--radio); background: var(--urgente-tag-fondo); color: var(--urgente-tag-texto); border: 2px solid var(--urgente-tag-borde); }
+.franja-desactualizada p { margin: 0; font-size: clamp(1.125rem, 0.8rem + 0.6vw, 1.5rem); line-height: 1.3; }
+.franja-desactualizada strong { font-family: "Sora", sans-serif; }
+.franja-desactualizada svg { flex: none; }
+.volver-pared { margin: 0 0 8px; }
+.volver-pared a { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 16px 8px 12px; border: 1px solid var(--borde-control); border-radius: 10px; background: var(--superficie); font-family: "Sora", sans-serif; font-weight: 600; font-size: 1.125rem; text-decoration: none; color: var(--primario-tinta); }
+.volver-pared a:hover { background: var(--superficie-2); }
+.pared .titulo-doc h1.hallazgo { font-size: clamp(2rem, 1.2rem + 1.2vw, 2.75rem); }
+.pared .alerta-doc { font-size: 1.125rem; padding: 14px 18px; }
+.resguardo-pared { display: flex; gap: 16px; align-items: flex-start; margin-top: 16px; padding: 20px; }
+.resguardo-pared > svg { flex: none; color: var(--primario-tinta); }
+.resguardo-pared h2 { margin: 0 0 6px; font-size: 1.35rem; }
+.resguardo-pared p { margin: 0 0 14px; max-width: 70ch; color: var(--muted); font-size: 1.0625rem; }

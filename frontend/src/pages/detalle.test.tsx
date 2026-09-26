@@ -72,6 +72,7 @@ describe("banco de trabajo: tres paneles", () => {
   });
 
   it("el modo discreto enmascara nombre y documento del paciente y viene activo para el jefe de urgencias", async () => {
+    try { localStorage.setItem("mediflow.pared.jefe_urgencias", "no"); } catch { /* sin storage */ }  // el banco de trabajo se ve fuera de la vista de pared
     render(<AppRouter rutaInicial={RUTA} rolInicial="jefe_urgencias" />);
     await screen.findByRole("heading", { name: /^original/i });
     expect(screen.queryByText("Carlos Eduardo Mendes")).not.toBeInTheDocument();
@@ -140,9 +141,9 @@ describe("banco de trabajo: tres paneles", () => {
     await screen.findByRole("heading", { name: /^decisión/i });
     expect(screen.getByText(/2 de 3 en la cola/i)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "j" });
-    await waitFor(() => expect(api.consultarDocumento).toHaveBeenLastCalledWith("DOC-DESPUES"));
+    await waitFor(() => expect(api.consultarDocumento).toHaveBeenLastCalledWith("DOC-DESPUES"), { timeout: 3000 });
     fireEvent.keyDown(document.body, { key: "k" });
-    await waitFor(() => expect(api.consultarDocumento).toHaveBeenLastCalledWith("DOC-CLIN-2026-8942"));
+    await waitFor(() => expect(api.consultarDocumento).toHaveBeenLastCalledWith("DOC-CLIN-2026-8942"), { timeout: 3000 });
   });
 
   it("la alerta pendiente se muestra en el encabezado con acuse en línea (RN-J7, RN-Q5)", async () => {

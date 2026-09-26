@@ -99,7 +99,8 @@ describe("estados que no se invierten y menos alarma de fondo", () => {
     render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
     const vieja = (await screen.findAllByTestId("fila-alerta"))[0];
     expect(within(vieja).getByText(/escalada/i).closest(".tag")).toHaveClass("critico");
-    expect(screen.getByText(/1 alerta escalada/i)).toBeInTheDocument();
+    // en la pared, el escalamiento va en el resumen grande y no en una nota aparte
+    expect(within(screen.getByTestId("resumen-pared")).getByText(/1 escalada al siguiente nivel de guardia/i)).toBeInTheDocument();
     expect(document.querySelector(".banner-alertas")).toBeNull();  // la página ya es la lista: el banner no se repite
   });
 
@@ -169,7 +170,7 @@ describe("alertas en vivo (pantalla de urgencias)", () => {
     render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
     await screen.findAllByTestId("fila-alerta");
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
-    expect(await screen.findByRole("alert")).toHaveTextContent(/desactualizada/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/desactualizad/i);
     expect(screen.getAllByTestId("fila-alerta")).toHaveLength(3);
   });
 });

@@ -1,6 +1,6 @@
 import { BarChart3, BellRing, ClipboardCheck, Contrast, FileCheck2, FileText, Home, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { colaRevision, listarAlertas } from "../../api";
 import { useAltoContraste } from "../../app/contraste";
@@ -60,6 +60,9 @@ export function AppShell() {
   }
 
   const permitido = rolPuedeVer(rol, location.pathname);
+  // En la pared, la pantalla de alertas es el inicio: el tablero de escritorio no se lee a dos metros.
+  const paredDeAlertas = pared.activo && rolPuedeVer(rol, "/alertas");
+  const navegacion = paredDeAlertas ? rol.navegacion.filter((item) => item.ruta !== "/inicio") : rol.navegacion;
   const alertasDelMenu = rolPuedeVer(rol, "/alertas") ? contadores.alertas : 0;
   const nombreMenu = menuAbierto
     ? "Cerrar menú"
@@ -91,10 +94,10 @@ export function AppShell() {
             </button>
           </div>
           <nav id="menu-principal" aria-label="Principal">
-            {rol.navegacion.map((item) => {
+            {navegacion.map((item) => {
               const Icono = ICONOS[item.ruta];
               return (
-                <NavLink key={item.ruta} to={item.ruta} title={pared.activo ? item.etiqueta : undefined} className={({ isActive }) => (isActive ? "activo" : "")}>
+                <NavLink key={item.ruta} to={item.ruta} className={({ isActive }) => (isActive ? "activo" : "")}>
                   {Icono && <Icono size={18} aria-hidden="true" />}
                   <span className="etiqueta">{item.etiqueta}</span>
                   {item.contador === "revision" && contadores.revision > 0 && <span className="contador">{contadores.revision}</span>}
@@ -106,7 +109,7 @@ export function AppShell() {
           {pared.activo ? (
             <div className="usuario usuario-pared">
               {interruptorContraste}
-              <button type="button" className="boton-lateral" onClick={pared.alternar} title="Salir de la vista de pared">
+              <button type="button" className="boton-lateral" onClick={pared.alternar}>
                 <PanelLeftOpen size={18} aria-hidden="true" /><span className="texto-lateral">Salir de la vista de pared</span>
               </button>
             </div>
@@ -135,7 +138,7 @@ export function AppShell() {
         <main className="contenido">
           {rol.veDocumentos && location.pathname !== "/alertas" && <BannerAlertas />}
           {permitido ? (
-            <Outlet />
+            paredDeAlertas && location.pathname === "/inicio" ? <Navigate to="/alertas" replace /> : <Outlet />
           ) : (
             <section className="tarjeta" style={{ marginTop: 16 }}>
               <h1>Sin acceso para este rol</h1>
