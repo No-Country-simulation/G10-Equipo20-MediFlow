@@ -290,3 +290,157 @@ export interface Resumen {
   enrutados: number;
   entregados_hoy: number;
 }
+
+/** Fase D: configuración (RN-L), métricas (RN-R) y administración (RN-K). */
+export interface Rango {
+  min: number;
+  max: number;
+  solo_a_la_baja: boolean;
+  base: number;
+  efectivo: number;
+}
+
+export interface HallazgoAmpliado {
+  concepto: string;
+  sinonimos: string[];
+  cie10: string[];
+  cie11: string[];
+}
+
+export interface Ampliaciones {
+  alto_riesgo: string[];
+  control_especial: string[];
+  hallazgos_criticos: HallazgoAmpliado[];
+}
+
+export interface CambiosConfiguracion {
+  umbrales: Record<string, number>;
+  ampliaciones: Ampliaciones;
+}
+
+export interface FilaSimulacion {
+  documento_id: string;
+  version: number;
+  tipo: string;
+  estado_actual: string;
+  estado_simulado: string;
+  prioridad_actual: string;
+  prioridad_simulada: string;
+  motivo_actual: string | null;
+  motivo_simulado: string | null;
+  destino_actual: string;
+  destino_simulado: string;
+  cambia: boolean;
+}
+
+export interface Simulacion {
+  documentos_evaluados: number;
+  sin_propuesta: number;
+  cambian: number;
+  mas_a_revision: number;
+  mas_automaticos: number;
+  detalle: FilaSimulacion[];
+}
+
+export interface VersionConfiguracion {
+  id: number | null;
+  numero: number | null;
+  autor: string;
+  motivo: string;
+  cambios: Partial<CambiosConfiguracion>;
+  simulacion?: Simulacion | null;
+  toca_seguridad?: boolean;
+  aprobaciones?: { usuario: string; fecha_hora: string }[];
+  aprobaciones_requeridas?: number;
+  estado: string;
+  creado_en?: string | null;
+  vigente_desde: string | null;
+  vigente_hasta?: string | null;
+  cierre_por?: string | null;
+  cierre_motivo?: string | null;
+}
+
+export interface Configuracion {
+  vigente: VersionConfiguracion;
+  umbrales_base: Record<string, unknown>;
+  umbrales_efectivos: Record<string, unknown>;
+  rangos: Record<string, Rango>;
+  no_configurable: { news2: Record<string, number> };
+  listas: {
+    alto_riesgo: { base: string[]; ampliadas: string[] };
+    control_especial: { base: string[]; ampliadas: string[] };
+    hallazgos_criticos: { base: string[]; ampliados: string[] };
+  };
+  calidad: { limite_correccion_campo: number; simulacion_ultimos: number };
+  propuestas: VersionConfiguracion[];
+  historial: VersionConfiguracion[];
+}
+
+export interface AvisoMetrica {
+  regla: string;
+  campo: string;
+  tasa: number;
+  limite: number;
+  umbral: string;
+  umbral_actual: number;
+  umbral_propuesto: number;
+  propuesta: string;
+}
+
+export interface Metricas {
+  periodo_dias: number;
+  calculado_en: string;
+  documentos: number;
+  procesados: number;
+  por_estado: Record<string, number>;
+  por_prioridad: Record<string, number>;
+  tasa_automatizacion: number | null;
+  revision_por_motivo: Record<string, { n: number; porcentaje: number }>;
+  tiempo_por_etapa_s: Record<string, number>;
+  acuse_criticos: { emitidas: number; acusadas: number; pendientes: number; minutos_promedio: number | null; dentro_de_plazo: number; plazo_min: number };
+  limite_correccion_campo: number;
+  correccion_por_campo: { campo: string; correcciones: number; documentos_revisados: number; tasa: number; umbral_relacionado: string | null; supera_limite: boolean }[];
+  avisos: AvisoMetrica[];
+  falsos_negativos_criticos: { n: number; documentos: string[]; criticos_totales: number; tasa: number | null };
+  versiones: Record<string, Record<string, number>>;
+  tokens: { entrada: number; salida: number };
+}
+
+export interface UsuarioAdmin {
+  usuario: string;
+  nombre: string;
+  rol: string;
+  tipo: "persona" | "servicio";
+  activo: boolean;
+  creado_por: string;
+  creado_en: string | null;
+  desactivado_en: string | null;
+}
+
+export interface Acceso {
+  documento_id: string;
+  usuario: string;
+  accion: string;
+  fecha_hora: string;
+}
+
+export interface FichaPack {
+  pais: string;
+  nombre: string;
+  version_pack: string;
+  formato: Record<string, string>;
+  terminologia: Record<string, string | null>;
+  identidad_profesional: { registro: string; ambito: string; verificacion_en_linea: Record<string, unknown> };
+  tipos_documento_paciente: Record<string, { nombre: string; estado: string; nacional: boolean; no_identificado: boolean }>;
+  coberturas: Record<string, { modelo: string; entidad: string; estado: string }>;
+  urgencias: Record<string, unknown>;
+  retencion: { anios: number; archivo_gestion_anios: number | null; archivo_central_anios: number | null; norma: string | null; purga_automatica: boolean };
+  datos_personales: Record<string, unknown>;
+  listas: Record<string, number>;
+  por_confirmar: string[];
+}
+
+export interface PuestaEnMarcha {
+  listo: boolean;
+  requisitos: { clave: string; requisito: string; cumplido: boolean; detalle: string }[];
+}

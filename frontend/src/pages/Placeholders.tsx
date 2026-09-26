@@ -17,17 +17,6 @@ function Encabezado({ titulo, sub }: { titulo: string; sub: string }) {
   );
 }
 
-function Pendiente({ titulo, sub, fase }: { titulo: string; sub: string; fase: string }) {
-  return (
-    <>
-      <Encabezado titulo={titulo} sub={sub} />
-      <section className="tarjeta">
-        <p className="muted">Esta sección se construye en la {fase} del plan de diseño. La API necesaria se describe en el estudio UX/UI.</p>
-      </section>
-    </>
-  );
-}
-
 export function AlertasPage() {
   const [alertas, setAlertas] = useState<AlertaListada[]>([]);
   const [usuario, setUsuario] = useUsuario();
@@ -81,14 +70,4 @@ export function AlertasPage() {
       </section>
     </>
   );
-}
-
-export function ConfiguracionPage() {
-  return <Pendiente titulo="Configuración" sub="Umbrales dentro de rango, destinos, plazos y modo simulación (RN-L1, RN-L6)." fase="fase D" />;
-}
-export function MetricasPage() {
-  return <Pendiente titulo="Métricas" sub="Indicadores calculados del historial (RN-R1)." fase="fase D" />;
-}
-export function AdministracionPage() {
-  return <Pendiente titulo="Administración" sub="Usuarios, roles y pack de país. Nada clínico (RN-K2)." fase="fase D" />;
 }

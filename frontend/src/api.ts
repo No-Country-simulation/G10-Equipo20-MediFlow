@@ -1,19 +1,28 @@
 /** Cliente de la API REST de MediFlow. Todas las rutas pasan por /api (proxy de Vite o nginx). */
 import type {
+  Acceso,
   AlertaListada,
   Autorizacion,
   BandejaAutorizaciones,
+  CambiosConfiguracion,
+  Configuracion,
   DatosArchivo,
   DocumentoDetalle,
   DocumentoRequest,
+  FichaPack,
   ItemCola,
   Listado,
+  Metricas,
+  PuestaEnMarcha,
   RecetaPorVerificar,
   ResolucionRequest,
   RespuestaEntrega,
   RespuestaVerificacion,
   ResultadoTriaje,
   Resumen,
+  Simulacion,
+  UsuarioAdmin,
+  VersionConfiguracion,
 } from "./types";
 
 export const BASE_URL = "/api";
@@ -24,10 +33,22 @@ export class ErrorApi extends Error {
   }
 }
 
+/** RN-K3: cada acceso se atribuye al usuario que firma en este navegador (sin autenticación en el MVP). */
+function usuarioActual(): string | null {
+  try {
+    return localStorage.getItem("mediflow.usuario");
+  } catch {
+    return null;
+  }
+}
+
 async function llamar<T>(ruta: string, init?: RequestInit): Promise<T> {
+  const cabeceras: Record<string, string> = { "Content-Type": "application/json" };
+  const usuario = usuarioActual();
+  if (usuario && usuario.trim()) cabeceras["X-Usuario"] = usuario.trim();
   const respuesta = await fetch(`${BASE_URL}${ruta}`, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: { ...cabeceras, ...((init?.headers as Record<string, string> | undefined) ?? {}) },
   });
   const cuerpo = await respuesta.json().catch(() => null);
   if (!respuesta.ok && respuesta.status !== 400) {
@@ -128,4 +149,59 @@ export function resolverAutorizacion(
 
 export function obtenerResumen(): Promise<Resumen> {
   return llamar<Resumen>("/resumen");
+}
+
+// --- Fase D: configuración (RN-L) ---------------------------------------------------------------
+
+export function obtenerConfiguracion(): Promise<Configuracion> {
+  return llamar<Configuracion>("/configuracion");
+}
+
+export function simularConfiguracion(cambios: CambiosConfiguracion, ultimos?: number): Promise<Simulacion> {
+  return llamar("/configuracion/simular", { method: "POST", body: JSON.stringify({ cambios, ultimos }) });
+}
+
+export function proponerConfiguracion(cuerpo: { cambios: CambiosConfiguracion; usuario: string; rol: string; motivo: string }): Promise<VersionConfiguracion> {
+  return llamar("/configuracion/propuestas", { method: "POST", body: JSON.stringify(cuerpo) });
+}
+
+export function aprobarConfiguracion(id: number, actor: { usuario: string; rol: string }): Promise<VersionConfiguracion> {
+  return llamar(`/configuracion/propuestas/${id}/aprobar`, { method: "POST", body: JSON.stringify(actor) });
+}
+
+export function rechazarConfiguracion(id: number, cuerpo: { usuario: string; rol: string; motivo: string }): Promise<VersionConfiguracion> {
+  return llamar(`/configuracion/propuestas/${id}/rechazar`, { method: "POST", body: JSON.stringify(cuerpo) });
+}
+
+// --- Fase D: métricas (RN-R) --------------------------------------------------------------------
+
+export function obtenerMetricas(dias = 30): Promise<Metricas> {
+  return llamar<Metricas>(`/metricas?dias=${dias}`);
+}
+
+// --- Fase D: administración (RN-K, RN-S3) --------------------------------------------------------
+
+export function listarUsuarios(): Promise<UsuarioAdmin[]> {
+  return llamar<UsuarioAdmin[]>("/administracion/usuarios");
+}
+
+export function crearUsuario(cuerpo: { usuario: string; nombre: string; rol: string; tipo: string; actor: string }): Promise<UsuarioAdmin> {
+  return llamar("/administracion/usuarios", { method: "POST", body: JSON.stringify(cuerpo) });
+}
+
+export function cambiarEstadoUsuario(usuario: string, activo: boolean, actor: string): Promise<UsuarioAdmin> {
+  return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/${activo ? "activar" : "desactivar"}`, { method: "POST", body: JSON.stringify({ actor }) });
+}
+
+export function listarAccesos(documentoId?: string): Promise<Acceso[]> {
+  const q = documentoId ? `?documento_id=${encodeURIComponent(documentoId)}` : "";
+  return llamar<Acceso[]>(`/administracion/accesos${q}`);
+}
+
+export function obtenerPack(): Promise<FichaPack> {
+  return llamar<FichaPack>("/administracion/pack");
+}
+
+export function puestaEnMarcha(): Promise<PuestaEnMarcha> {
+  return llamar<PuestaEnMarcha>("/administracion/puesta_en_marcha");
 }

@@ -2,13 +2,16 @@ import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-rout
 
 import App from "../App";
 import { AppShell } from "../components/shell/AppShell";
+import { AdministracionPage } from "../pages/AdministracionPage";
 import { AutorizacionesPage } from "../pages/AutorizacionesPage";
+import { ConfiguracionPage } from "../pages/ConfiguracionPage";
 import { DetalleDocumentoPage } from "../pages/DetalleDocumentoPage";
 import { DocumentosPage } from "../pages/DocumentosPage";
 import { EntregasPage } from "../pages/EntregasPage";
 import { FarmaciaPage } from "../pages/FarmaciaPage";
 import { InicioPage } from "../pages/InicioPage";
-import { AdministracionPage, AlertasPage, ConfiguracionPage, MetricasPage } from "../pages/Placeholders";
+import { MetricasPage } from "../pages/MetricasPage";
+import { AlertasPage } from "../pages/Placeholders";
 import { RevisionPage } from "../pages/RevisionPage";
 import { RolProvider } from "./RolContext";
 import type { RolId } from "./roles";

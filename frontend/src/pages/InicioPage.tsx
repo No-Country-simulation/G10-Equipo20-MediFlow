@@ -43,6 +43,9 @@ export function InicioPage() {
           {tiene("/farmacia") && <li><Link to="/farmacia">Ir a Farmacia</Link> · doble verificación</li>}
           {tiene("/autorizaciones") && <li><Link to="/autorizaciones">Ir a Autorizaciones</Link> · aprobar o devolver</li>}
           {tiene("/entregas") && <li><Link to="/entregas">Ir a Entregas</Link> · confirmar destinos</li>}
+          {tiene("/metricas") && <li><Link to="/metricas">Ir a Métricas</Link> · indicadores del historial (RN-R1)</li>}
+          {tiene("/configuracion") && <li><Link to="/configuracion">Ir a Configuración</Link> · umbrales dentro de rango y simulación (RN-L)</li>}
+          {tiene("/administracion") && <li><Link to="/administracion">Ir a Administración</Link> · usuarios, accesos y pack (RN-K)</li>}
           <li><Link to="/demo">Modo demostración</Link> · el recorrido de seis pasos para el jurado</li>
         </ul>
       </section>
