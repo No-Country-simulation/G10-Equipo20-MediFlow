@@ -8,7 +8,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-mediflow}
       POSTGRES_USER: ${POSTGRES_USER:-mediflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_BACKEND: r2
       R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
@@ -16,7 +16,6 @@ services:
       R2_REGION: ${R2_REGION:-auto}
       DEFAULT_COUNTRY: ${DEFAULT_COUNTRY:-EC}
       APP_TIMEZONE: ${APP_TIMEZONE:-America/Guayaquil}
-      DOCUMENTS_DIR: /data/documents
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
@@ -25,8 +24,7 @@ services:
       PROCESSING_MAX_CHARACTERS: ${PROCESSING_MAX_CHARACTERS:-50000}
       PDF_TIMEOUT_SECONDS: ${PDF_TIMEOUT_SECONDS:-30}
       MAX_PROCESSING_ATTEMPTS: ${MAX_PROCESSING_ATTEMPTS:-3}
-    volumes:
-      - documents_data:/data/documents
+      MIN_DOCUMENT_QUALITY: ${MIN_DOCUMENT_QUALITY:-0.85}
     depends_on:
       db:
         condition: service_healthy
@@ -101,4 +99,3 @@ services:
 
 volumes:
   postgres_data:
-  documents_data:

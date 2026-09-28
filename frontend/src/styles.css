@@ -146,15 +146,16 @@ button:disabled {
 .workspace {
   min-width: 0;
   flex: 1;
+  max-width: 100%;
 }
 .topbar {
-  height: 73px;
+  height: 48px;
   background: #fff;
   border-bottom: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 42px;
+  padding: 0 24px;
   font-size: 12px;
   color: #526c7c;
 }
@@ -171,6 +172,35 @@ button:disabled {
 }
 .locale span {
   font-weight: 400;
+}
+.locale select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: #243c4c;
+  background: #fff;
+}
+.catalog-panel { margin-bottom: 24px; }
+.inbox-links { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px 18px; }
+.inbox-links a { border: 1px solid var(--line); border-radius: 7px; padding: 8px 11px; }
+.inbox-links a.active { background: #e7eff5; border-color: #5289ad; font-weight: 700; }
+.catalog-form { display: flex; flex-wrap: wrap; gap: 10px; padding: 18px 24px; align-items: center; }
+.catalog-form input, .catalog-form select, .catalog-panel td select {
+  min-height: 38px; border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 10px; background: #fff; color: #243c4c;
+}
+.catalog-form input { min-width: 175px; flex: 1; }
+.catalog-code { display: block; color: #698696; font-size: 11px; margin-top: 4px; }
+button.danger { border: 1px solid #bb5252; background: #fff; color: #a33b3b; border-radius: 7px; padding: 9px 12px; cursor: pointer; }
+button.danger:hover { background: #fff1f1; }
+.catalog-panel td button { margin: 3px 5px 3px 0; }
+@media (max-width: 700px) {
+  .sidebar { gap: 4px; padding: 12px; }
+  .sidebar .brand { font-size: 18px; }
+  .sidebar .nav-item { display: flex; gap: 4px; padding: 7px 5px; font-size: 12px; background: transparent; }
+  .topbar { padding: 0 12px; }
+  .catalog-form { padding: 14px; }
+  .catalog-form input, .catalog-form select { min-width: 0; width: 100%; }
 }
 main {
   max-width: 1550px;
@@ -849,9 +879,10 @@ fieldset {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .workspace-label,
-  .nav-item,
   .sidebar-note,
   .account {
     display: none;
@@ -862,7 +893,10 @@ fieldset {
   .topbar {
     height: 48px;
     padding: 0 20px;
+    gap: 8px;
   }
+  .topbar > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .workspace { overflow-x: hidden; }
   main {
     padding: 25px 16px;
   }
@@ -970,4 +1004,23 @@ textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid #5289ad;
+}
+
+.triage-summary {
+  display: grid;
+  gap: 5px;
+  margin: 14px 18px;
+  padding: 14px;
+  border: 1px solid #acbcbf;
+  border-radius: 8px;
+  background: #f4fcfb;
+  color: #243c4c;
+}
+.triage-summary small {
+  color: #526c7c;
+}
+.triage-summary[data-priority="URGENT"],
+.triage-summary[data-priority="CRITICAL"] {
+  border-color: #c68b39;
+  background: #fff9e9;
 }

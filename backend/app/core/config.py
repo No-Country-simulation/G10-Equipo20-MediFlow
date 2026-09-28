@@ -13,14 +13,14 @@ class Settings(BaseModel):
     postgres_db: str = "mediflow"
     postgres_user: str = "mediflow"
     postgres_password: SecretStr
-    documents_dir: Path = Path("/data/documents")
-    storage_backend: Literal["local", "r2"] = "local"
+    documents_dir: Path = Path("/tmp/mediflow-test-documents")
+    storage_backend: Literal["local", "r2"] = "r2"
     r2_endpoint_url: str = ""
     r2_access_key_id: SecretStr = SecretStr("")
     r2_secret_access_key: SecretStr = SecretStr("")
     r2_bucket_name: str = "mediflow-g10"
     r2_region: str = "auto"
-    default_country: Literal["EC"] = "EC"
+    default_country: str = "EC"
     app_timezone: Literal["America/Guayaquil"] = "America/Guayaquil"
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
     gemini_api_key: SecretStr = SecretStr("")
@@ -30,6 +30,7 @@ class Settings(BaseModel):
     processing_max_characters: int = Field(default=50000, ge=100, le=200000)
     pdf_timeout_seconds: int = Field(default=30, ge=1, le=120)
     max_processing_attempts: int = Field(default=3, ge=1, le=10)
+    min_document_quality: float = Field(default=0.85, ge=0, le=1)
 
     @property
     def database_url(self) -> URL:

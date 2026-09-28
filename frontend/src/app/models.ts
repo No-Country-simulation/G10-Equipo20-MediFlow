@@ -8,6 +8,37 @@ export interface DocumentRecord {
   status: string;
   processing_attempts: number;
   rejection_reason: string | null;
+  patient_id: number | null;
+  patient_match_status: string;
+  patient_match_reason: string | null;
+}
+export interface Patient {
+  id: number;
+  country: string;
+  identity_type: string;
+  identity_number: string;
+  name: string;
+  age: number | null;
+  document_count: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface DestinationInput {
+  code: string;
+  name: string;
+  kind: "DEPARTMENT" | "QUEUE" | "SYSTEM";
+}
+export interface Destination extends DestinationInput {
+  active: boolean;
+}
+export interface RoutingRuleInput {
+  document_type: string;
+  specialty: string;
+  destination_code: string;
+  active: boolean;
+}
+export interface RoutingRule extends RoutingRuleInput {
+  id: number;
 }
 export interface Page {
   page: number;
@@ -43,7 +74,32 @@ export interface Result {
     requires_human_review: boolean;
     issues: string[];
   } | null;
-  routing: { destination: string; delivery_status: string } | null;
+  priority?: {
+    level: "ROUTINE" | "URGENT" | "CRITICAL";
+    source: "DEFAULT" | "EXPLICIT";
+    evidence: Evidence | null;
+    ambiguous: boolean;
+  } | null;
+  quality?: {
+    score: number;
+    threshold: number;
+    components: {
+      readability: number;
+      completeness: number;
+      evidence: number;
+      consistency: number;
+    };
+    rule_version: string;
+  } | null;
+  local_alert?: {
+    level: "URGENT" | "CRITICAL";
+    message: string;
+    evidence: Evidence;
+    status: "REGISTERED_LOCAL";
+  } | null;
+  routing: { destination: string; delivery_status: string; external_delivery_status?: string } | null;
+  patient?: { status: string; identity_type: string | null; identity_number: string | null;
+              patient_id: number | null; reason: string | null } | null;
   error_code: string | null;
   processed_at: string;
   model: string;
@@ -91,10 +147,23 @@ export function label(value: string): string {
     (
       {
         DISCHARGE_SUMMARY: "Epicrisis / informe de alta",
-        HISTORIA_CLINICA: "Historia clínica (destino registrado)",
+        HISTORIA_CLINICA: "Historia clínica",
+        COLA_URGENCIAS_MEDICAS: "Cola de Urgencias Médicas",
+        ROUTINE: "Rutina administrativa",
+        URGENT: "Urgente declarado",
+        CRITICAL: "Crítico declarado",
+        PRIORITY_AMBIGUOUS: "Prioridad contradictoria o no reconocida: requiere revisión",
+        LOW_DOCUMENT_QUALITY: "Calidad documental inferior al umbral configurado",
         HUMAN_REVIEW_REJECT: "Rechazado por revisión humana",
         patient_name: "Nombre del paciente",
         patient_age: "Edad del paciente",
+        patient_identity: "Identificación del paciente",
+        PATIENT_IDENTITY_NOT_FOUND: "No se encontró identificación del paciente",
+        PATIENT_IDENTITY_INVALID_FORMAT: "La identificación no cumple el formato del país",
+        PATIENT_IDENTITY_AMBIGUOUS: "Identificación o nombre ambiguo: requiere revisión",
+        PATIENT_IDENTITY_CONFLICT: "La identificación coincide con otro nombre: requiere revisión",
+        PATIENT_NAME_MISSING: "Se detectó una identificación, pero falta el nombre del paciente",
+        LOCAL_INBOX_DELIVERED: "Disponible en la bandeja local del destino",
         professional_name: "Profesional firmante",
         document_date: "Fecha del documento",
         discharge_diagnosis: "Diagnóstico de egreso",

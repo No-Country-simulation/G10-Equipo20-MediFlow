@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit, OnDestroy } from "@angular/core";
-import { ActivatedRoute, RouterLink } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { DatePipe, JsonPipe } from "@angular/common";
 import { Api, ApiError } from "./api";
 import { DocumentRecord, Result, StateEvent, ReviewAudit, label } from "./models";
@@ -12,6 +12,7 @@ import { ReviewForm } from "./review.form";
 export class DetailPage implements OnInit, OnDestroy {
   api = inject(Api);
   route = inject(ActivatedRoute);
+  router = inject(Router);
   id = this.route.snapshot.paramMap.get("id")!;
   doc = signal<DocumentRecord | null>(null);
   result = signal<Result | null>(null);
@@ -104,6 +105,20 @@ export class DetailPage implements OnInit, OnDestroy {
   async reviewed() {
     this.error.set("");
     await this.load();
+  }
+  async deleteDocument() {
+    const doc = this.doc();
+    if (!doc || this.busy() || !confirm(`¿Eliminar definitivamente «${doc.original_filename}» y todos sus datos?`)) return;
+    this.busy.set(true);
+    this.error.set("");
+    try {
+      await this.api.deleteDocument(doc.document_id);
+      await this.router.navigate(["/"]);
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.busy.set(false);
+    }
   }
   ngOnDestroy() {
     this.destroyed = true;
