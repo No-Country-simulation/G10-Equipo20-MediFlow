@@ -7,9 +7,7 @@
 <section class="upload-card" aria-labelledby="upload-title">
   <div class="upload-copy">
     <h2 id="upload-title">Comienza con un documento</h2>
-    <p>
-      Conservamos el original y validamos su formato.<br />Después podrás iniciar el procesamiento.
-    </p>
+    <p>El original se guarda en R2. Puedes validarlo y analizarlo más tarde, o ejecutar el triaje ahora.</p>
     <span class="formats"
       >PDF <i>·</i> JPG <i>·</i> PNG <i>·</i> Hasta
       {{ api.config().max_upload_bytes / 1048576 }} MiB</span
@@ -30,6 +28,10 @@
       {{ uploading() ? "Guardando documento…" : "Cargar documento" }}
       <span>↗</span>
     </button>
+    <button class="secondary" [disabled]="!file() || uploading()" (click)="upload(true)">
+      Cargar y analizar ahora
+    </button>
+    <small class="muted">Cargar documento: solo guarda y valida. Cargar y analizar ahora: también ejecuta Gemini y el grafo.</small>
     @if (uploadError()) {
       <p class="error" role="alert">{{ uploadError() }}</p>
     }
@@ -90,7 +92,7 @@
         <thead>
           <tr>
             <th>Documento</th>
-            <th>Recibido · Ecuador</th>
+            <th>Recibido · {{ api.country() }}</th>
             <th>Estado</th>
             <th>Tamaño</th>
             <th><span class="sr-only">Acción</span></th>

@@ -5,7 +5,9 @@ from app.services.processing import locked_document
 from app.services.processing_validation import validate_processing
 from app.services.lifecycle import transition
 from app.services.routing import route_classification
+from app.services.triage import detect_priority, calculate_quality, local_alert
 from app.services.errors import DocumentError
+from app.services.patients import assess_patient, link_patient
 
 
 def review_document(document_id, request: ReviewRequest, session, settings) -> ProcessingResult:
@@ -47,12 +49,29 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
         if request.content is not None:
             page.method, page.engine = 'human_corrected', None
     result.validation = validate_processing(result.content, result.classification, result.extraction)
+    result.priority = detect_priority(result.content)
+    if result.priority.ambiguous:
+        result.validation.issues.append('PRIORITY_AMBIGUOUS')
+        result.validation.valid = False
+        result.validation.requires_human_review = True
+    result.quality = calculate_quality(result.content, result.classification, result.extraction,
+                                       result.validation, settings.min_document_quality)
+    if result.quality.score < result.quality.threshold:
+        result.validation.issues.append('LOW_DOCUMENT_QUALITY')
+        result.validation.valid = False
+        result.validation.requires_human_review = True
+    result.local_alert = local_alert(result.priority)
+    result.patient = assess_patient(result.extraction, document.country, result.validation, session)
     if not result.validation.valid:
         raise DocumentError(422, 'REVIEW_HAS_UNRESOLVED_ISSUES:' + ','.join(result.validation.issues))
-    result.routing = route_classification(result.classification)
+    result.routing = route_classification(result.classification, result.priority, session)
+    result.pipeline_version = 'cardiopulmonary-v4'
     transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action)
     transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED')
-    result.status, result.error_code, result.processed_at = S.ENRUTADO, None, datetime.now(UTC)
+    result.patient = link_patient(document, result.extraction, result.patient, session)
+    transition(document, S.ENTREGADO, 'LOCAL_INBOX_DELIVERED')
+    result.routing.delivery_status = 'DELIVERED_LOCAL'
+    result.status, result.error_code, result.processed_at = S.ENTREGADO, None, datetime.now(UTC)
     document.processing_result = result.model_dump(mode='json')
     audit = ReviewAudit(action=request.action, reviewer=request.reviewer, notes=request.notes,
                         reviewed_at=result.processed_at, previous_result=previous)

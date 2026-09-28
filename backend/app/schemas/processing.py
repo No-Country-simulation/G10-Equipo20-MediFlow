@@ -65,11 +65,49 @@ class ValidationResult(StructuredModel):
     rule_version: str = "documentary-v1"
 
 
+class PriorityResult(StructuredModel):
+    level: Literal["ROUTINE", "URGENT", "CRITICAL"]
+    source: Literal["DEFAULT", "EXPLICIT"]
+    evidence: Evidence | None = None
+    ambiguous: bool = False
+    rule_version: str = "explicit-priority-v1"
+
+
+class QualityComponents(StructuredModel):
+    readability: float = Field(ge=0, le=1)
+    completeness: float = Field(ge=0, le=1)
+    evidence: float = Field(ge=0, le=1)
+    consistency: float = Field(ge=0, le=1)
+
+
+class QualityResult(StructuredModel):
+    score: float = Field(ge=0, le=1)
+    threshold: float = Field(ge=0, le=1)
+    components: QualityComponents
+    rule_version: str = "document-quality-v1"
+
+
+class LocalAlert(StructuredModel):
+    level: Literal["URGENT", "CRITICAL"]
+    message: str
+    evidence: Evidence
+    status: Literal["REGISTERED_LOCAL"] = "REGISTERED_LOCAL"
+
+
 class RoutingResult(StructuredModel):
-    destination: Literal["CARDIOLOGIA", "NEUMOLOGIA", "CARDIOPULMONAR", "HISTORIA_CLINICA"]
+    destination: str
     routed_at: datetime
     rule_version: str = "cardiopulmonary-v1"
-    delivery_status: Literal["PENDING_INTEGRATION"] = "PENDING_INTEGRATION"
+    delivery_status: Literal["PENDING_INTEGRATION", "DELIVERED_LOCAL"] = "PENDING_INTEGRATION"
+    external_delivery_status: Literal["PENDING_INTEGRATION"] = "PENDING_INTEGRATION"
+
+
+class PatientMatch(StructuredModel):
+    status: Literal["NOT_FOUND", "INVALID_FORMAT", "REVIEW_REQUIRED", "VALID_CANDIDATE", "CREATED", "LINKED"]
+    identity_type: str | None = None
+    identity_number: str | None = None
+    patient_id: int | None = None
+    reason: str | None = None
 
 
 class ProcessingResult(StructuredModel):
@@ -83,8 +121,12 @@ class ProcessingResult(StructuredModel):
     classification: ClassificationResult | None = None
     extraction: ExtractionResult | None = None
     validation: ValidationResult | None = None
+    priority: PriorityResult | None = None
+    quality: QualityResult | None = None
+    local_alert: LocalAlert | None = None
     error_code: str | None = None
     routing: RoutingResult | None = None
+    patient: PatientMatch | None = None
 
 
 class ReviewRequest(StructuredModel):

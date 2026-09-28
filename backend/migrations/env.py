@@ -3,6 +3,8 @@ from sqlalchemy import create_engine
 
 from app.core.config import get_settings
 from app.models.document import Base
+from app.models import destination  # noqa: F401 - register catalog tables
+from app.models import patient  # noqa: F401 - register patient table
 
 target_metadata = Base.metadata
 

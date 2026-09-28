@@ -16,6 +16,13 @@ export class ApiError extends Error {
 }
 @Injectable({ providedIn: "root" })
 export class Api {
+  countries = signal<{ code: string; name: string }[]>([]);
+  country = signal(localStorage.getItem("mediflow-country") || "EC");
+  private configuration?: Promise<void>;
+  selectCountry(code: string) {
+    this.country.set(code);
+    localStorage.setItem("mediflow-country", code);
+  }
   config = signal({
     default_country: "EC",
     timezone: "America/Guayaquil",
@@ -36,17 +43,26 @@ export class Api {
       );
     return data as T;
   }
-  async configure() {
-    this.config.set(await this.request("/config"));
+  configure(): Promise<void> {
+    return this.configuration ??= (async () => {
+      const [config, countries] = await Promise.all([
+        this.request<{ default_country: string; timezone: string; max_upload_bytes: number }>("/config"),
+        this.request<{ code: string; name: string }[]>("/countries"),
+      ]);
+      this.config.set(config);
+      this.countries.set(countries);
+      if (!countries.some((item) => item.code === this.country()))
+        this.selectCountry(config.default_country);
+    })().catch((error) => { this.configuration = undefined; throw error; });
   }
-  list(status: string, q: string, offset: number) {
+  list(status: string, q: string, offset: number, destination = "") {
     return this.request<{
       items: DocumentRecord[];
       total: number;
       limit: number;
       offset: number;
     }>(
-      `/documents?limit=20&offset=${offset}&q=${encodeURIComponent(q)}${status ? "&status=" + encodeURIComponent(status) : ""}`,
+      `/documents?limit=20&offset=${offset}&country=${encodeURIComponent(this.country())}&q=${encodeURIComponent(q)}${status ? "&status=" + encodeURIComponent(status) : ""}${destination ? "&destination=" + encodeURIComponent(destination) : ""}`,
     );
   }
   get(id: string) {
@@ -64,6 +80,7 @@ export class Api {
   upload(file: File) {
     const form = new FormData();
     form.append("file", file);
+    form.append("country", this.country());
     return this.request<DocumentRecord>("/documents", {
       method: "POST",
       body: form,
@@ -71,6 +88,59 @@ export class Api {
   }
   process(id: string) {
     return this.request<Result>(`/documents/${id}/process`, { method: "POST" });
+  }
+  triage(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("country", this.country());
+    return this.request<Result>("/documents/triage", { method: "POST", body: form });
+  }
+  deleteDocument(id: string) {
+    return this.request<void>(`/documents/${id}`, { method: "DELETE" });
+  }
+  destinations() {
+    return this.request<import("./models").Destination[]>("/destinations");
+  }
+  patients(q = "", offset = 0) {
+    return this.request<{ items: import("./models").Patient[]; total: number; limit: number; offset: number }>(
+      `/patients?country=${encodeURIComponent(this.country())}&q=${encodeURIComponent(q)}&limit=20&offset=${offset}`,
+    );
+  }
+  patient(id: number) { return this.request<import("./models").Patient>(`/patients/${id}`); }
+  patientDocuments(id: number) { return this.request<DocumentRecord[]>(`/patients/${id}/documents`); }
+  updatePatient(id: number, body: { name?: string; age?: number | null; identity_number?: string }) {
+    return this.request<import("./models").Patient>(`/patients/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  }
+  createDestination(data: import("./models").DestinationInput) {
+    return this.request<import("./models").Destination>("/destinations", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    });
+  }
+  updateDestination(code: string, data: Partial<import("./models").Destination>) {
+    return this.request<import("./models").Destination>(`/destinations/${code}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    });
+  }
+  deleteDestination(code: string) {
+    return this.request<void>(`/destinations/${code}`, { method: "DELETE" });
+  }
+  rules() {
+    return this.request<import("./models").RoutingRule[]>("/routing-rules");
+  }
+  createRule(data: import("./models").RoutingRuleInput) {
+    return this.request<import("./models").RoutingRule>("/routing-rules", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    });
+  }
+  updateRule(id: number, data: Partial<import("./models").RoutingRule>) {
+    return this.request<import("./models").RoutingRule>(`/routing-rules/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    });
+  }
+  deleteRule(id: number) {
+    return this.request<void>(`/routing-rules/${id}`, { method: "DELETE" });
   }
   review(id: string, body: unknown) {
     return this.request<Result>(`/documents/${id}/review`, {

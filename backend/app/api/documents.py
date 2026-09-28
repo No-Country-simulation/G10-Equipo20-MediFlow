@@ -5,7 +5,7 @@ import sys
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query, Response
 from sqlalchemy import select, func
 from app.models.document import Document
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,11 +22,21 @@ from app.providers.base import DocumentProvider, ProviderError
 from app.providers.gemini import GeminiProvider
 from app.schemas.processing import ProcessingResult
 from app.services.processing import process_document
+from app.services.processing import locked_document
+from app.core.auth import require_superadmin
+from app.core.countries import COUNTRY_CODES
 from app.schemas.lifecycle import DocumentStatus, StateEvent
 from app.schemas.processing import ReviewRequest, ReviewAudit
 from app.services.review import review_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def selected_country(country: str | None, settings: Settings) -> str:
+    code = country or settings.default_country
+    if code not in COUNTRY_CODES:
+        raise HTTPException(422, "UNSUPPORTED_COUNTRY")
+    return code
 
 
 @router.post("/{document_id}/review", response_model=ProcessingResult)
@@ -62,10 +72,11 @@ def upload_document(
     file: Annotated[UploadFile, File(description="Documento PDF, JPG o PNG")],
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
+    country: Annotated[str | None, Form()] = None,
 ) -> DocumentResponse:
     try:
         service = DocumentService(DocumentRepository(session), get_storage(settings),
-                                  settings.max_upload_bytes, settings.default_country)
+                                  settings.max_upload_bytes, selected_country(country, settings))
         return service.ingest(file.filename, file.file)
     except DocumentError as exc:
         detail = {"message": exc.detail, "status": DocumentStatus.RECHAZADO,
@@ -75,17 +86,59 @@ def upload_document(
         raise HTTPException(503, "No fue posible guardar el documento. Intenta nuevamente.") from exc
 
 
+@router.post("/triage", response_model=ProcessingResult, status_code=201)
+def upload_and_triage(
+    file: Annotated[UploadFile, File(description="Documento PDF, JPG o PNG")],
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    provider: Annotated[DocumentProvider, Depends(get_document_provider)],
+    country: Annotated[str | None, Form()] = None,
+) -> ProcessingResult:
+    try:
+        document = DocumentService(DocumentRepository(session), get_storage(settings),
+                                   settings.max_upload_bytes, selected_country(country, settings)).ingest(file.filename, file.file)
+    except DocumentError as exc:
+        raise HTTPException(exc.status_code, {"message": exc.detail, "document_id": str(exc.document_id)}) from None
+    except (SQLAlchemyError, OSError):
+        session.rollback()
+        raise HTTPException(503, "UPLOAD_STORAGE_UNAVAILABLE") from None
+    response.headers["Location"] = f"/documents/{document.document_id}"
+    try:
+        return process_document(document.document_id, session, settings, provider)
+    except (ProviderError, DocumentError) as exc:
+        code = exc.code if isinstance(exc, ProviderError) else exc.detail
+        raise HTTPException(exc.http_status if isinstance(exc, ProviderError) else exc.status_code,
+                            {"document_id": str(document.document_id), "code": code,
+                             "message": "El original se guardó. Puedes consultar el documento y reintentar el análisis."},
+                            headers={"Location": f"/documents/{document.document_id}"}) from None
+    except (SQLAlchemyError, OSError):
+        session.rollback()
+        raise HTTPException(503, {"document_id": str(document.document_id),
+                                  "code": "PROCESSING_STORAGE_UNAVAILABLE",
+                                  "message": "El original se guardó. Consulta el documento antes de reintentar."},
+                            headers={"Location": f"/documents/{document.document_id}"}) from None
+
+
 @router.get("", response_model=DocumentList)
 def list_documents(
     session: Annotated[Session, Depends(get_session)],
     status: DocumentStatus | None = None,
+    country: Annotated[str | None, Query()] = None,
+    destination: Annotated[str | None, Query(max_length=60)] = None,
     q: Annotated[str, Query(max_length=255)] = "",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentList:
     query = select(Document)
+    if country is not None:
+        if country not in COUNTRY_CODES:
+            raise HTTPException(422, "UNSUPPORTED_COUNTRY")
+        query = query.where(Document.country == country)
     if status is not None:
         query = query.where(Document.status == status.value)
+    if destination is not None:
+        query = query.where(Document.processing_result["routing"]["destination"].astext == destination)
     if q.strip():
         query = query.where(Document.original_filename.icontains(q.strip(), autoescape=True))
     try:
@@ -155,6 +208,28 @@ def get_document(
     if document is None:
         raise HTTPException(404, "Documento no encontrado.")
     return DocumentResponse.model_validate(document)
+
+
+@router.delete("/{document_id}", status_code=204)
+def delete_document(
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    admin: Annotated[dict[str, str], Depends(require_superadmin)],
+):
+    try:
+        document = locked_document(document_id, session)
+        if document.storage_key:
+            get_storage(settings, document.storage_backend, document.storage_bucket).delete(document.storage_key)
+        session.delete(document)
+        session.commit()
+        return Response(status_code=204)
+    except DocumentError as exc:
+        session.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from None
+    except (SQLAlchemyError, OSError):
+        session.rollback()
+        raise HTTPException(503, "DOCUMENT_DELETE_INCOMPLETE_RETRY") from None
 
 
 @router.post("/{document_id}/process", response_model=ProcessingResult)

@@ -17,6 +17,10 @@
       {{ d.processing_attempts }} intento(s)</span
     >
     <div>
+      <a class="secondary" href="#historial">Ver historial</a>
+      <button class="danger" (click)="deleteDocument()" [disabled]="busy() || loading()">
+        Eliminar documento
+      </button>
       <button class="secondary" (click)="load()" [disabled]="loading() || busy()">
         Actualizar
       </button>
@@ -34,6 +38,20 @@
       }
     </div>
   </div>
+  <section class="panel catalog-panel">
+    <div class="panel-heading"><h2>Paciente y entrega</h2></div>
+    @if (d.patient_id) {
+      <p>Paciente identificado: <a [routerLink]="['/patients', d.patient_id]">Ver ficha #{{ d.patient_id }}</a></p>
+    } @else {
+      <p>{{ d.patient_match_reason ? label(d.patient_match_reason) : 'Paciente no identificado o pendiente de análisis.' }}</p>
+    }
+    @if (result()?.routing; as routing) {
+      <p>Destino: <a [routerLink]="['/destinations', routing.destination, 'documents']">{{ label(routing.destination) }}</a></p>
+      <p>{{ routing.delivery_status === 'DELIVERED_LOCAL'
+        ? 'Entregado a bandeja local; integración externa pendiente.'
+        : 'Destino registrado; entrega externa pendiente de integración.' }}</p>
+    }
+  </section>
   @if (busy()) {
     <p class="notice" role="status">
       Leyendo y analizando el documento. Puede tardar varios minutos. El historial se actualizará al
@@ -123,6 +141,43 @@
               <p>{{ label(r.classification.specialty) }}</p>
             </div>
           }
+          @if (r.priority; as priority) {
+            <div class="triage-summary" [attr.data-priority]="priority.level">
+              <strong>Prioridad: {{ label(priority.level) }}</strong>
+              <small>{{
+                priority.source === "EXPLICIT"
+                  ? "Declarada en el documento"
+                  : "Sin prioridad explícita; valor administrativo inicial"
+              }}</small>
+              @if (priority.evidence) {
+                <small>Pág. {{ priority.evidence.page }} · «{{ priority.evidence.quote }}»</small>
+              }
+            </div>
+          }
+          @if (r.quality; as quality) {
+            <div class="triage-summary">
+              <strong>Calidad documental: {{ (quality.score * 100).toFixed(0) }} %</strong>
+              <small
+                >Umbral automático {{ (quality.threshold * 100).toFixed(0) }} %. Indicador documental orientativo; no es certeza clínica ni probabilidad de extracción correcta.
+                documental, no probabilidad clínica.</small
+              >
+              <small
+                >Lectura {{ (quality.components.readability * 100).toFixed(0) }} % · Campos
+                {{ (quality.components.completeness * 100).toFixed(0) }} % · Evidencia
+                {{ (quality.components.evidence * 100).toFixed(0) }} % · Consistencia
+                {{ (quality.components.consistency * 100).toFixed(0) }} %</small
+              >
+              @if (r.classification?.document_type !== "DISCHARGE_SUMMARY") {
+                <small>Para este tipo de informe, la cobertura solo comprueba que haya algún campo extraído.</small>
+              }
+            </div>
+          }
+          @if (r.local_alert; as alert) {
+            <div class="notice" role="status">
+              <strong>Alerta local: {{ label(alert.level) }}</strong>
+              <p>Señal {{ label(alert.level) }}. Verifica el original. Visible aquí; no se envió una notificación externa.</p>
+            </div>
+          }
           @if (r.routing) {
             <div class="route-card">
               <span>Destino registrado</span><strong>{{ label(r.routing.destination) }} ↗</strong
@@ -190,7 +245,7 @@
       @if (d.status === "EN_REVISION_HUMANA" && result()) {
         <app-review-form [documentId]="id" [result]="result()!" (completed)="reviewed()" />
       }
-      <section class="panel history-panel">
+      <section class="panel history-panel" id="historial">
         <div class="panel-heading"><h2>Historial del documento</h2></div>
         <ol class="timeline">
           @for (event of history(); track $index) {

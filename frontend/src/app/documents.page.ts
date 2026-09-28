@@ -1,15 +1,15 @@
-import { Component, inject, signal, OnInit } from "@angular/core";
+import { Component, inject, signal, effect, untracked } from "@angular/core";
 import { Router, RouterLink } from "@angular/router";
 import { FormsModule } from "@angular/forms";
 import { DatePipe } from "@angular/common";
-import { Api } from "./api";
+import { Api, ApiError } from "./api";
 import { DocumentRecord, STATUSES, label } from "./models";
 @Component({
   selector: "app-documents",
   imports: [RouterLink, FormsModule, DatePipe],
   templateUrl: "./documents.page.html",
 })
-export class DocumentsPage implements OnInit {
+export class DocumentsPage {
   api = inject(Api);
   router = inject(Router);
   items = signal<DocumentRecord[]>([]);
@@ -25,8 +25,11 @@ export class DocumentsPage implements OnInit {
   statuses = STATUSES;
   label = label;
   private sequence = 0;
-  async ngOnInit() {
-    await Promise.all([this.load(), this.api.configure().catch(() => {})]);
+  constructor() {
+    effect(() => {
+      this.api.country();
+      untracked(() => void this.load(true));
+    });
   }
   async load(reset = false) {
     if (reset) this.offset.set(0);
@@ -66,15 +69,25 @@ export class DocumentsPage implements OnInit {
     }
     this.file.set(file);
   }
-  async upload() {
+  async upload(analyze = false) {
     const file = this.file();
     if (!file || this.uploading()) return;
     this.uploading.set(true);
     this.uploadError.set("");
     try {
-      const doc = await this.api.upload(file);
-      await this.router.navigate(["/documents", doc.document_id]);
+      const id = analyze
+        ? (await this.api.triage(file)).document_id
+        : (await this.api.upload(file)).document_id;
+      await this.router.navigate(["/documents", id]);
     } catch (e) {
+      const saved =
+        e instanceof ApiError && typeof e.detail === "object" && e.detail !== null
+          ? (e.detail as { document_id?: string }).document_id
+          : null;
+      if (saved) {
+        await this.router.navigate(["/documents", saved]);
+        return;
+      }
       this.uploadError.set((e as Error).message);
       await this.load();
     } finally {

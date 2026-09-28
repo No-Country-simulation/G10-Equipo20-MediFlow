@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from contextlib import AbstractContextManager, contextmanager
 from collections.abc import Iterator
 from typing import BinaryIO, Protocol
@@ -66,7 +67,10 @@ class LocalDocumentStorage:
 
 
 def get_storage(settings, backend=None, bucket=None):
-    if (backend or settings.storage_backend) == "local":
+    selected = backend or settings.storage_backend
+    if selected == "local" and os.environ.get("TESTING") == "1":
         return LocalDocumentStorage(settings.documents_dir)
+    if selected != "r2":
+        raise OSError("UNSUPPORTED_STORAGE_BACKEND")
     from app.services.r2_storage import R2DocumentStorage
     return R2DocumentStorage(settings, bucket)

@@ -21,6 +21,9 @@ class DocumentResponse(DocumentMetadata):
     status: DocumentStatus
     processing_attempts: int = 0
     rejection_reason: str | None = None
+    patient_id: int | None = None
+    patient_match_status: str = "NOT_EVALUATED"
+    patient_match_reason: str | None = None
 
 
 class DocumentList(BaseModel):
