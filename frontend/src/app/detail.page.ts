@@ -113,7 +113,7 @@ export class DetailPage implements OnInit, OnDestroy {
     this.error.set("");
     try {
       await this.api.deleteDocument(doc.document_id);
-      await this.router.navigate(["/"]);
+      await this.router.navigate(["/documents"]);
     } catch (e) {
       this.error.set((e as Error).message);
     } finally {

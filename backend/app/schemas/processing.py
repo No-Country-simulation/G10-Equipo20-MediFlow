@@ -40,9 +40,9 @@ class Evidence(StructuredModel):
 class ClassificationResult(StructuredModel):
     document_type: Literal[
         "ECHOCARDIOGRAM_REPORT", "SPIROMETRY_REPORT", "CHEST_IMAGING_REPORT",
-        "ECG_REPORT", "DISCHARGE_SUMMARY", "OTHER", "UNKNOWN",
+        "ECG_REPORT", "DISCHARGE_SUMMARY", "LABORATORY_RESULT", "LABORATORY_ORDER", "OTHER", "UNKNOWN",
     ]
-    specialty: Literal["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "OTHER", "UNKNOWN"]
+    specialty: Literal["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "LABORATORY", "OTHER", "UNKNOWN"]
     evidence: Evidence | None
     reason: str
 

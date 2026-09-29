@@ -39,6 +39,7 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
         expected_specialty = {
             "ECHOCARDIOGRAM_REPORT": "CARDIOLOGY", "ECG_REPORT": "CARDIOLOGY",
             "SPIROMETRY_REPORT": "PULMONOLOGY", "CHEST_IMAGING_REPORT": "PULMONOLOGY",
+            "LABORATORY_RESULT": "LABORATORY", "LABORATORY_ORDER": "LABORATORY",
         }.get(classification.document_type)
         if expected_specialty and classification.specialty not in (expected_specialty, "CARDIOPULMONARY"):
             issues.append("CLASSIFICATION_SPECIALTY_CONFLICT")

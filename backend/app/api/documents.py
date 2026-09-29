@@ -23,13 +23,14 @@ from app.providers.gemini import GeminiProvider
 from app.schemas.processing import ProcessingResult
 from app.services.processing import process_document
 from app.services.processing import locked_document
-from app.core.auth import require_superadmin
+from app.core.auth import require_superadmin, same_origin
 from app.core.countries import COUNTRY_CODES
 from app.schemas.lifecycle import DocumentStatus, StateEvent
 from app.schemas.processing import ReviewRequest, ReviewAudit
 from app.services.review import review_document
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"],
+                   dependencies=[Depends(require_superadmin), Depends(same_origin)])
 
 
 def selected_country(country: str | None, settings: Settings) -> str:

@@ -16,7 +16,9 @@ def read_pdf(path: str, max_pages: int, max_characters: int) -> dict:
         total_characters = 0
         for index, page in enumerate(document):
             text = page.get_text("text", sort=True)
-            if not text.strip() or page.get_image_info():
+            # Logos and stamps often coexist with complete selectable text.
+            # Keep the digital layer when it is substantive; OCR scanned pages.
+            if not text.strip() or (page.get_image_info() and len(text.strip()) < 300):
                 ocr_numbers.append(index + 1)
                 visual.insert_pdf(document, from_page=index, to_page=index)
             else:

@@ -136,10 +136,12 @@ export const TYPES = [
   "CHEST_IMAGING_REPORT",
   "ECG_REPORT",
   "DISCHARGE_SUMMARY",
+  "LABORATORY_RESULT",
+  "LABORATORY_ORDER",
   "OTHER",
   "UNKNOWN",
 ];
-export const SPECIALTIES = ["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "OTHER", "UNKNOWN"];
+export const SPECIALTIES = ["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "LABORATORY", "OTHER", "UNKNOWN"];
 export function label(value: string): string {
   if (value.startsWith("MISSING_REQUIRED_FIELD:"))
     return "Falta campo obligatorio: " + label(value.split(":")[1]);
@@ -147,6 +149,10 @@ export function label(value: string): string {
     (
       {
         DISCHARGE_SUMMARY: "Epicrisis / informe de alta",
+        LABORATORY_RESULT: "Resultados de laboratorio",
+        LABORATORY_ORDER: "Orden de laboratorio",
+        LABORATORY: "Laboratorio",
+        LABORATORIO: "Laboratorio",
         HISTORIA_CLINICA: "Historia clínica",
         COLA_URGENCIAS_MEDICAS: "Cola de Urgencias Médicas",
         ROUTINE: "Rutina administrativa",
@@ -158,6 +164,7 @@ export function label(value: string): string {
         patient_name: "Nombre del paciente",
         patient_age: "Edad del paciente",
         patient_identity: "Identificación del paciente",
+        ordered_test: "Examen solicitado",
         PATIENT_IDENTITY_NOT_FOUND: "No se encontró identificación del paciente",
         PATIENT_IDENTITY_INVALID_FORMAT: "La identificación no cumple el formato del país",
         PATIENT_IDENTITY_AMBIGUOUS: "Identificación o nombre ambiguo: requiere revisión",

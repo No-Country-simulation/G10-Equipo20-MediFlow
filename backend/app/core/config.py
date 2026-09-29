@@ -31,6 +31,7 @@ class Settings(BaseModel):
     pdf_timeout_seconds: int = Field(default=30, ge=1, le=120)
     max_processing_attempts: int = Field(default=3, ge=1, le=10)
     min_document_quality: float = Field(default=0.85, ge=0, le=1)
+    admin_bootstrap_password: SecretStr = SecretStr("")
 
     @property
     def database_url(self) -> URL:
