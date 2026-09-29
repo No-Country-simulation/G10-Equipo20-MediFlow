@@ -8,17 +8,17 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_superadmin
+from app.core.auth import require_superadmin, same_origin
 from app.core.database import get_session
 from app.models.destination import Destination, RoutingRule
 from app.models.document import Document
 
-router = APIRouter(tags=["destinations"])
+router = APIRouter(tags=["destinations"], dependencies=[Depends(require_superadmin), Depends(same_origin)])
 Db = Annotated[Session, Depends(get_session)]
 Admin = Annotated[dict[str, str], Depends(require_superadmin)]
 DocumentType = Literal["ECHOCARDIOGRAM_REPORT", "SPIROMETRY_REPORT", "CHEST_IMAGING_REPORT",
-                       "ECG_REPORT", "DISCHARGE_SUMMARY"]
-Specialty = Literal["ANY", "CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY"]
+                       "ECG_REPORT", "DISCHARGE_SUMMARY", "LABORATORY_RESULT", "LABORATORY_ORDER"]
+Specialty = Literal["ANY", "CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "LABORATORY"]
 
 
 class DestinationInput(BaseModel):

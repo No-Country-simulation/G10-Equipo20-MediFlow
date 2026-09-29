@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_superadmin
+from app.core.auth import require_superadmin, same_origin
 from app.core.countries import COUNTRY_CODES
 from app.core.database import get_session
 from app.models.document import Document
@@ -17,7 +17,8 @@ from app.models.patient import Patient
 from app.schemas.document import DocumentResponse
 from app.services.patients import validate_identity
 
-router = APIRouter(prefix="/patients", tags=["patients"])
+router = APIRouter(prefix="/patients", tags=["patients"],
+                   dependencies=[Depends(require_superadmin), Depends(same_origin)])
 Db = Annotated[Session, Depends(get_session)]
 Admin = Annotated[dict[str, str], Depends(require_superadmin)]
 

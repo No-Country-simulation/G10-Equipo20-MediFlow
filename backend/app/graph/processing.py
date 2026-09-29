@@ -17,6 +17,7 @@ from app.services.processing_validation import validate_processing
 from app.services.routing import route_classification
 from app.services.triage import detect_priority, calculate_quality, local_alert
 from app.services.patients import assess_patient
+from app.services.identity_detection import complete_identity
 
 
 class ProcessingState(TypedDict):
@@ -56,7 +57,8 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
     def extract(state):
         if state.get("extraction"):
             return {}
-        return {"extraction": provider.extract(state["content"], state["classification"])}
+        extracted = provider.extract(state["content"], state["classification"])
+        return {"extraction": complete_identity(state["content"], extracted, state.get("country", "EC"))}
 
     def validate(state):
         return {"validation": validate_processing(

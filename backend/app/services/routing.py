@@ -36,6 +36,7 @@ def route_classification(classification: ClassificationResult, priority: Priorit
     destinations = {
         "ECHOCARDIOGRAM_REPORT": "CARDIOLOGIA", "ECG_REPORT": "CARDIOLOGIA",
         "SPIROMETRY_REPORT": "NEUMOLOGIA", "CHEST_IMAGING_REPORT": "NEUMOLOGIA",
+        "LABORATORY_ORDER": "LABORATORIO", "LABORATORY_RESULT": "HISTORIA_CLINICA",
     }
     destination = destinations.get(classification.document_type)
     if not destination or classification.specialty in ("OTHER", "UNKNOWN"):

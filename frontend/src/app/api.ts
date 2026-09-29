@@ -31,7 +31,7 @@ export class Api {
   async request<T>(path: string, init?: RequestInit): Promise<T> {
     let response: Response;
     try {
-      response = await fetch("/api" + path, { cache: "no-store", ...init });
+      response = await fetch("/api" + path, { cache: "no-store", credentials: "same-origin", ...init });
     } catch {
       throw new Error("No hay conexión con la API. Comprueba los contenedores e intenta de nuevo.");
     }
@@ -43,6 +43,18 @@ export class Api {
       );
     return data as T;
   }
+  me() { return this.request<{ id: number; role: string; country: string | null; email: string }>("/auth/me"); }
+  register(data: {country: string; identity_number: string; email: string; password: string}) {
+    return this.request<{message: string}>("/auth/register", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+  }
+  patientLogin(data: {country: string; identity_number: string; password: string}) {
+    return this.request<{role: string}>("/auth/patient-login", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+  }
+  adminLogin(data: {email: string; password: string}) {
+    return this.request<{role: string}>("/auth/admin-login", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+  }
+  logout() { return this.request<{message: string}>("/auth/logout", {method: "POST"}); }
+  myDocuments() { return this.request<DocumentRecord[]>("/auth/my-documents"); }
   configure(): Promise<void> {
     return this.configuration ??= (async () => {
       const [config, countries] = await Promise.all([
@@ -152,6 +164,7 @@ export class Api {
   async preview(id: string, page: number) {
     const response = await fetch(`/api/documents/${id}/preview?page=${page}`, {
       cache: "no-store",
+      credentials: "same-origin",
     });
     if (!response.ok)
       throw new Error("No se pudo mostrar esta página. Puedes descargar el PDF original.");
@@ -161,7 +174,7 @@ export class Api {
     };
   }
   async original(id: string): Promise<Blob> {
-    const r = await fetch(`/api/documents/${id}/file`, { cache: "no-store" });
+    const r = await fetch(`/api/documents/${id}/file`, { cache: "no-store", credentials: "same-origin" });
     if (!r.ok) throw new Error("No se pudo abrir el original. Intenta de nuevo.");
     return r.blob();
   }

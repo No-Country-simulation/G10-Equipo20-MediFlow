@@ -1,21 +1,22 @@
 import { Component, inject, OnInit } from "@angular/core";
-import { RouterLink, RouterOutlet } from "@angular/router";
+import { Router, RouterLink, RouterOutlet } from "@angular/router";
 import { Api } from "./api";
 @Component({
-  selector: "app-root",
+  selector: "app-admin-shell",
   imports: [RouterLink, RouterOutlet],
   template: ` <div class="shell">
     <aside class="sidebar">
-      <a routerLink="/" class="brand">MediFlow</a>
+      <a routerLink="/documents" class="brand">MediFlow</a>
       <div class="workspace-label">ESPACIO DE TRABAJO</div>
-      <a routerLink="/" class="nav-item">▤ <span>Documentos</span></a>
+      <a routerLink="/documents" class="nav-item">▤ <span>Documentos</span></a>
       <a routerLink="/inboxes" class="nav-item">▧ <span>Bandejas</span></a>
       <a routerLink="/patients" class="nav-item">♙ <span>Pacientes</span></a>
       <a routerLink="/destinations" class="nav-item">◇ <span>Destinos</span></a>
       <div class="account">
         <span class="avatar">SA</span>
-        <div>Superadministrador<small>Acceso local · sin sesión</small></div>
+        <div>Superadministrador<small>Sesión local</small></div>
       </div>
+      <button class="signout" (click)="logout()">Cerrar sesión</button>
     </aside>
     <div class="workspace">
       <header class="topbar">
@@ -30,15 +31,17 @@ import { Api } from "./api";
       </header>
       <main><router-outlet /></main>
       <footer>
-        Entorno local sin autenticación · Prioridad y alertas locales basadas en texto explícito.
+        Prioridad y alertas locales basadas en texto explícito.
       </footer>
     </div>
   </div>`,
 })
 export class App implements OnInit {
   api = inject(Api);
+  router = inject(Router);
   ngOnInit() { void this.api.configure().catch(() => {}); }
   changeCountry(event: Event) {
     this.api.selectCountry((event.target as HTMLSelectElement).value);
   }
+  async logout() { await this.api.logout(); await this.router.navigateByUrl("/administradores"); }
 }
