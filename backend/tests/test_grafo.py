@@ -133,6 +133,30 @@ def test_LLM_caido_sin_hallazgos_va_a_revision_sin_alerta_RN_P2(repo, storage):
     assert r.notificacion_generada is None
 
 
+def test_LLM_caido_la_prioridad_que_declara_el_documento_ordena_la_cola_RN_D8(repo, storage):
+    cliente = ClienteFalso(respuestas=[ErrorTransitorioLLM("caído")] * 4)
+    urgente = ingresar(repo, storage, DocumentoRequest(documento_id="DOC-URG", canal_origen="Externo", tipo_contenido="texto",
+                                                       contenido_texto="Control de falla cardíaca.\nPrioridad: Urgente\nFurosemida 40 mg."))
+    rutina = ingresar(repo, storage, DocumentoRequest(documento_id="DOC-RUT", canal_origen="Externo", tipo_contenido="texto",
+                                                      contenido_texto="Control de hipertensión. Losartán 50 mg."))
+    orq = orquestador(repo, storage, cliente)
+    orq.procesar(rutina)
+    r = orq.procesar(urgente)
+    assert r.clasificacion.nivel_prioridad == "Urgente"
+    assert r.notificacion_generada is None  # solo un Crítico alerta (RN-F1)
+    assert any(d.regla == "RN-D8" and "Prioridad: Urgente" in d.evidencia for d in r.historial_decisiones)
+    assert [d.documento_id for d in repo.en_revision()] == ["DOC-URG", "DOC-RUT"]  # RN-J1: por prioridad, no por llegada
+
+
+def test_LLM_caido_un_critico_declarado_alerta_RN_F1(repo, storage):
+    cliente = ClienteFalso(respuestas=[ErrorTransitorioLLM("caído")] * 2)
+    doc = ingresar(repo, storage, DocumentoRequest(documento_id="DOC-CRI", canal_origen="Externo", tipo_contenido="texto",
+                                                   contenido_texto="Informe de laboratorio.\nPrioridad clínica: crítica\nPotasio 6,9 mEq/L."))
+    r = orquestador(repo, storage, cliente).procesar(doc)
+    assert r.clasificacion.nivel_prioridad == "Crítico"
+    assert repo.alerta_activa(doc).estado_acuse == "pendiente"
+
+
 def test_imagen_con_LLM_caido_va_a_revision_con_prioridad_maxima_RN_P4(repo, storage):
     import base64
     from pathlib import Path

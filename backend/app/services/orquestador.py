@@ -39,6 +39,7 @@ from app.services.errores import ErrorDeRevision
 from app.services.evaluacion import ContextoEvaluacion, evaluar
 from app.services.hallazgos import detectar_en_texto
 from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, ServicioExtraccion
+from app.services.prioridad_declarada import prioridad_declarada
 from app.services.seudonimizacion import limpiar_tokens_no_resueltos, reidentificar_estructura
 from app.services.storage import Storage
 from app.services.usuarios import ServicioUsuarios
@@ -143,6 +144,11 @@ class Orquestador:
             historial.append(DecisionRegistrada(regla="RN-P4", evidencia=f"{d.concepto}: {d.evidencia}", decision="alerta sin LLM"))
         if es_imagen:
             historial.append(DecisionRegistrada(regla="RN-P4", evidencia="imagen sin lectura del LLM", decision="revisión humana con prioridad máxima"))
+        # Sin propuesta del LLM, la prioridad que declara el documento ordena la cola (RN-J1). Solo sube (RN-D8).
+        declarada = prioridad_declarada(texto)
+        if declarada is not None and _ORDEN[declarada.nivel] > _ORDEN[nivel]:
+            nivel = declarada.nivel
+            historial.append(DecisionRegistrada(regla="RN-D8", evidencia=f"el documento declara '{declarada.linea}'", decision=f"{nivel.value} sin LLM"))
 
         ruta = f"{prefijo_storage(E.EN_REVISION_HUMANA, doc.pais_origen)}/{doc.documento_id}{self._sufijo(doc)}.json"
         notificacion = None
