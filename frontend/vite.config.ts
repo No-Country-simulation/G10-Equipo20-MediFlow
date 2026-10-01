@@ -12,6 +12,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // Las pruebas que teclean formularios enteros rozan los 5 s por defecto cuando la máquina está ocupada.
+    testTimeout: 15_000,
     // Solo la hoja de estilos leída como texto por sus pruebas; el resto del CSS no se procesa.
     css: { include: [/styles\.css\?raw$/] },
   },
