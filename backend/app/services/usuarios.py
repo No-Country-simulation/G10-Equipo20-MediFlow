@@ -21,10 +21,11 @@ ACCIONES: dict[str, set[str]] = {
     "acusar_alerta": {"jefe_urgencias", "auditor_clinico"},
     "verificar_receta": {"quimico_farmaceutico"},
     "resolver_autorizacion": {"auditor_autorizaciones"},
+    "editar_paciente": {"auditor_clinico"},
     "configurar": {"gestor"},
     "administrar": {"administrador"},
 }
-ACCIONES_CLINICAS = {"resolver_revision", "acusar_alerta", "verificar_receta", "resolver_autorizacion"}
+ACCIONES_CLINICAS = {"resolver_revision", "acusar_alerta", "verificar_receta", "resolver_autorizacion", "editar_paciente"}
 
 
 class ServicioUsuarios:

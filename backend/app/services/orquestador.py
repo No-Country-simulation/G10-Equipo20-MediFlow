@@ -36,9 +36,10 @@ from app.services.ciclo_vida import prefijo_storage
 from app.services.configuracion import ServicioConfiguracion
 from app.services.enrutamiento import ContextoEnrutamiento, enrutar
 from app.services.errores import ErrorDeRevision
-from app.services.evaluacion import ContextoEvaluacion, evaluar
+from app.services.evaluacion import ContextoEvaluacion, Evaluado, agregar_motivo, evaluar
 from app.services.hallazgos import detectar_en_texto
 from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, ServicioExtraccion
+from app.services.pacientes import ServicioPacientes
 from app.services.prioridad_declarada import prioridad_declarada
 from app.services.seudonimizacion import limpiar_tokens_no_resueltos, reidentificar_estructura
 from app.services.storage import Storage
@@ -76,6 +77,7 @@ class Orquestador:
         self.pack = pack or configuracion.pack(settings.pais_instalacion)
         self.umbrales = umbrales or configuracion.umbrales()
         self.usuarios = ServicioUsuarios(repositorio.session)
+        self.pacientes = ServicioPacientes(repositorio.session)
         self.url_base = url_base or settings.url_base_documentos
         self.version_reglas = settings.version_reglas
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
@@ -117,7 +119,7 @@ class Orquestador:
 
     def nodo_evaluar(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
-        evaluado = evaluar(PropuestaLLM.model_validate(estado["propuesta"]), self._contexto_evaluacion(doc), self.pack, self.umbrales)
+        evaluado = self._evaluar(PropuestaLLM.model_validate(estado["propuesta"]), doc)
         self.repo.transicionar(doc, E.EVALUADO, actor=ACTOR_SISTEMA, motivo=f"prioridad {evaluado.prioridad.value}; motivos {[m.value for m in evaluado.motivos]}")
         return {"evaluado": evaluado}
 
@@ -249,7 +251,7 @@ class Orquestador:
         contexto = self._contexto_evaluacion(doc)
         contexto.prioridad_humana = prioridad_humana
         contexto.usuario_humano = usuario
-        evaluado = evaluar(PropuestaLLM.model_validate(propuesta), contexto, self.pack, self.umbrales)
+        evaluado = self._evaluar(PropuestaLLM.model_validate(propuesta), doc, contexto)
         self.repo.transicionar(doc, E.EVALUADO, actor=usuario, motivo=f"RN-J4: reglas re-ejecutadas tras corrección de {list(correcciones)}")
         nuevo = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
         nuevo.historial_decisiones = resultado.historial_decisiones + [
@@ -293,7 +295,7 @@ class Orquestador:
         self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "transcrito desde el original")
         contexto = self._contexto_evaluacion(doc)
         contexto.usuario_humano = usuario
-        evaluado = evaluar(propuesta, contexto, self.pack, self.umbrales)
+        evaluado = self._evaluar(propuesta, doc, contexto)
         self.repo.transicionar(doc, E.EVALUADO, actor=usuario, motivo="RN-J4: reglas aplicadas sobre la transcripción humana")
         nuevo = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
         nuevo.historial_decisiones = resultado.historial_decisiones + [
@@ -457,8 +459,26 @@ class Orquestador:
 
     def recalcular(self, doc: Documento, *, pack: PackPais, umbrales: Umbrales) -> ResultadoTriaje:
         """RN-L6: qué decidirían las reglas con otra configuración. No toca el documento ni llama al LLM."""
-        evaluado = evaluar(PropuestaLLM.model_validate(doc.propuesta_json), self._contexto_evaluacion(doc), pack, umbrales)
+        evaluado = self._evaluar(PropuestaLLM.model_validate(doc.propuesta_json), doc, pack=pack, umbrales=umbrales)
         return enrutar(evaluado, self._contexto_enrutamiento(doc), pack, umbrales)
+
+    def _evaluar(self, propuesta: PropuestaLLM, doc: Documento, contexto: ContextoEvaluacion | None = None, *,
+                 pack: PackPais | None = None, umbrales: Umbrales | None = None) -> Evaluado:
+        """Reglas determinísticas más lo que solo sabe la instalación: si ese documento de identidad ya es de otra persona (RN-A4)."""
+        evaluado = evaluar(propuesta, contexto or self._contexto_evaluacion(doc), pack or self.pack, umbrales or self.umbrales)
+        registrado = self.pacientes.en_conflicto(doc.pais_origen, evaluado.paciente)
+        if registrado is not None and registrado.id != doc.paciente_id:
+            agregar_motivo(evaluado, M.IDENTIDAD_EN_CONFLICTO, "RN-A4",
+                           f"{registrado.tipo_documento} ya registrado con otro nombre (paciente {registrado.id} del directorio)",
+                           "paciente.nombre", "documento.valor")
+        return evaluado
+
+    def _vincular_paciente(self, doc: Documento, resultado: ResultadoTriaje) -> None:
+        """RN-M6: el documento enrutado queda en la ficha de su paciente. RN-N5: un no identificado se vincula al conciliarse."""
+        datos = resultado.extraccion.paciente
+        if self.pacientes.vincular(doc, datos) is None and self.pacientes.en_conflicto(doc.pais_origen, datos) is not None:
+            resultado.historial_decisiones.append(DecisionRegistrada(
+                regla="RN-A4", evidencia="la identidad sigue en conflicto con el directorio de pacientes", decision="documento sin vincular"))
 
     def _contexto_evaluacion(self, doc: Documento) -> ContextoEvaluacion:
         return ContextoEvaluacion(canal_origen=doc.canal_origen, pais=doc.pais_origen, cobertura_request=doc.cobertura_paciente,
@@ -472,6 +492,8 @@ class Orquestador:
         doc.nivel_prioridad = resultado.clasificacion.nivel_prioridad.value
         if emitir_alerta:
             self._emitir_alerta(doc, resultado)
+        if resultado.estado is E.ENRUTADO:
+            self._vincular_paciente(doc, resultado)
         self._respaldar_json(doc, resultado)
         doc.resultado_json = resultado.model_dump(mode="json")
         self.repo.guardar()

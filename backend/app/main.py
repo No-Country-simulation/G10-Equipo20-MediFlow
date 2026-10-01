@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import administracion, alertas, autorizaciones, configuracion, documentos, farmacia, healthcheck, metricas, resumen, revision
+from app.api import administracion, alertas, autorizaciones, configuracion, documentos, farmacia, healthcheck, metricas, pacientes, resumen, revision
 from app.core.config import get_settings
 from app.core.database import crear_tablas
 
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(configuracion.router)
     app.include_router(metricas.router)
     app.include_router(administracion.router)
+    app.include_router(pacientes.router)
     return app
 
 

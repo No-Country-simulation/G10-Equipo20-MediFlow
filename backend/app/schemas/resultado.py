@@ -107,6 +107,7 @@ class MotivoAuditoria(StrEnum):
     CRITICO_BAJA_CONFIANZA = "critico_baja_confianza"  # RN-D9
     CAMPO_OBLIGATORIO_FALTANTE = "campo_obligatorio_faltante"  # RN-C1
     DESTINO_INACTIVO = "destino_inactivo"  # RN-L1
+    IDENTIDAD_EN_CONFLICTO = "identidad_en_conflicto"  # RN-A4: el documento ya está registrado con otro nombre
 
 
 class Destino(StrEnum):

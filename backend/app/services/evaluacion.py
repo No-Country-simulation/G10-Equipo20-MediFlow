@@ -41,7 +41,7 @@ _ORDEN_PRIORIDAD = {N.RUTINA: 0, N.URGENTE: 1, N.CRITICO: 2}
 _SEVERIDAD = [
     M.FALLO_TECNICO, M.ILEGIBLE, M.NO_CLASIFICABLE, M.CLASIFICACION_BAJA_CONFIANZA, M.FUERA_DE_ALCANCE,
     M.CRITICO_BAJA_CONFIANZA, M.CONTROL_ESPECIAL_SIN_RECETARIO, M.RECETA_INCOMPLETA_NORMA, M.DOSIS_AMBIGUA,
-    M.IDENTIDAD_INVALIDA, M.AMBIGUO, M.PROFESIONAL_NO_IDENTIFICABLE, M.CAMPO_OBLIGATORIO_FALTANTE,
+    M.IDENTIDAD_INVALIDA, M.IDENTIDAD_EN_CONFLICTO, M.AMBIGUO, M.PROFESIONAL_NO_IDENTIFICABLE, M.CAMPO_OBLIGATORIO_FALTANTE,
     M.FECHA_AMBIGUA, M.SIGNOS_VITALES_SIN_ESCALA, M.CAMPO_DUDOSO, M.DOCUMENTACION_INCOMPLETA,
     M.COBERTURA_NO_INFORMADA, M.COBERTURA_NO_CONFIGURADA,
 ]
@@ -410,3 +410,11 @@ class _Evaluador:
 
 def evaluar(propuesta: PropuestaLLM, contexto: ContextoEvaluacion, pack: PackPais, umbrales: Umbrales) -> Evaluado:
     return _Evaluador(propuesta, contexto, pack, umbrales).evaluar()
+
+
+def agregar_motivo(evaluado: Evaluado, motivo: M, regla: str, evidencia: str, *campos: str) -> None:
+    """Suma un motivo que depende de datos de la instalación (no de la propuesta) y mantiene el orden de severidad."""
+    if motivo not in evaluado.motivos:
+        evaluado.motivos = sorted([*evaluado.motivos, motivo], key=_SEVERIDAD.index)
+    evaluado.campos_dudosos.extend(c for c in campos if c not in evaluado.campos_dudosos)
+    evaluado.historial.append(DecisionRegistrada(regla=regla, evidencia=evidencia, decision=f"revision_humana:{motivo.value}"))

@@ -48,6 +48,8 @@ class Documento(Base):
     version_prompt: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tokens_entrada: Mapped[int] = mapped_column(Integer, default=0)
     tokens_salida: Mapped[int] = mapped_column(Integer, default=0)
+    # RN-M6: paciente del directorio al que pertenece el documento. Vacío hasta que se enruta con identidad válida (RN-N5).
+    paciente_id: Mapped[int | None] = mapped_column(ForeignKey("pacientes.id", name="fk_documentos_paciente"), nullable=True, index=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
 
     transiciones: Mapped[list["TransicionEstado"]] = relationship(
