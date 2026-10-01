@@ -7,6 +7,7 @@ import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, etiq
 import { usePared } from "../app/pared";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
 import { useRol } from "../app/RolContext";
+import { rolPuedeVer } from "../app/roles";
 import { enmascarar, useUsuario } from "../app/usuario";
 import { AccionAcuse } from "../components/AccionAcuse";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
@@ -310,6 +311,7 @@ export function DetalleDocumentoPage() {
                   <dt>Paciente</dt>
                   <dd><span>{ver(r.extraccion.paciente.nombre)}</span><span>· {r.extraccion.paciente.edad != null ? `${r.extraccion.paciente.edad} años` : "edad sin dato"}</span> <PildoraConfianza valor={conf.identidad_paciente} umbral={umb.identidad_paciente} /></dd>
                   <dd className="muted">Documento: {docPaciente?.tipo || docPaciente?.valor ? <>{docPaciente.tipo} {docPaciente.valor ? ver(docPaciente.valor) : ""}{docPaciente.estado && docPaciente.estado !== "verificado" && <> · {docPaciente.estado.replace(/_/g, " ")}</>}</> : "sin dato"}</dd>
+                  {detalle.paciente_id != null && rolPuedeVer(rol, "/pacientes") && <dd><Link to={`/pacientes/${detalle.paciente_id}`}>Ficha del paciente ›</Link></dd>}
                   {bajo("identidad_paciente") && <dd className="aviso">Bajo el umbral {umb.identidad_paciente?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.paciente.documento.valor", valor: r.extraccion.paciente.documento.valor ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div data-testid="campo-diagnostico_codigo" className={bajo("diagnostico_codigo") ? "dudoso" : ""}>

@@ -52,6 +52,7 @@ export const MOTIVO_AUDITORIA: Record<string, string> = {
   critico_baja_confianza: "Crítico con baja confianza",
   campo_obligatorio_faltante: "Falta un campo obligatorio",
   destino_inactivo: "Destino sin uso en esta clínica",
+  identidad_en_conflicto: "Documento de identidad registrado con otro nombre",
 };
 
 export function mensajeDeRechazo(codigo: string | null | undefined): string {

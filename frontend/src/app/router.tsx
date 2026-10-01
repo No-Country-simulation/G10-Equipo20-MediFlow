@@ -11,6 +11,8 @@ import { EntregasPage } from "../pages/EntregasPage";
 import { FarmaciaPage } from "../pages/FarmaciaPage";
 import { InicioPage } from "../pages/InicioPage";
 import { MetricasPage } from "../pages/MetricasPage";
+import { PacienteDetallePage } from "../pages/PacienteDetallePage";
+import { PacientesPage } from "../pages/PacientesPage";
 import { AlertasPage } from "../pages/Placeholders";
 import { RevisionPage } from "../pages/RevisionPage";
 import { RolProvider } from "./RolContext";
@@ -30,6 +32,8 @@ function Rutas() {
         <Route path="/farmacia" element={<FarmaciaPage />} />
         <Route path="/autorizaciones" element={<AutorizacionesPage />} />
         <Route path="/entregas" element={<EntregasPage />} />
+        <Route path="/pacientes" element={<PacientesPage />} />
+        <Route path="/pacientes/:id" element={<PacienteDetallePage />} />
         <Route path="/configuracion" element={<ConfiguracionPage />} />
         <Route path="/metricas" element={<MetricasPage />} />
         <Route path="/administracion" element={<AdministracionPage />} />

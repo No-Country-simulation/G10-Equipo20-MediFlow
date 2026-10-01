@@ -38,6 +38,7 @@ const ALERTAS: ItemNavegacion = { ruta: "/alertas", etiqueta: "Alertas críticas
 const FARMACIA: ItemNavegacion = { ruta: "/farmacia", etiqueta: "Farmacia" };
 const AUTORIZACIONES: ItemNavegacion = { ruta: "/autorizaciones", etiqueta: "Autorizaciones" };
 const ENTREGAS: ItemNavegacion = { ruta: "/entregas", etiqueta: "Entregas" };
+const PACIENTES: ItemNavegacion = { ruta: "/pacientes", etiqueta: "Pacientes" };
 const CONFIGURACION: ItemNavegacion = { ruta: "/configuracion", etiqueta: "Configuración" };
 const METRICAS: ItemNavegacion = { ruta: "/metricas", etiqueta: "Métricas" };
 const ADMINISTRACION: ItemNavegacion = { ruta: "/administracion", etiqueta: "Administración" };
@@ -48,7 +49,7 @@ export const ROLES: Rol[] = [
     nombre: "Auditor clínico",
     descripcion: "Resuelve la cola de revisión humana; puede bajar una prioridad con justificación escrita.",
     rutaInicial: "/revision",
-    navegacion: [INICIO, DOCUMENTOS, REVISION, ALERTAS, ENTREGAS],
+    navegacion: [INICIO, DOCUMENTOS, REVISION, ALERTAS, PACIENTES, ENTREGAS],
     veDocumentos: true,
     pantallaCompartida: false,
     altoContraste: false,

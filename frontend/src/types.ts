@@ -149,6 +149,8 @@ export interface DocumentoDetalle {
   transiciones?: Transicion[];
   verificaciones?: { orden: number; usuario: string; fecha_hora?: string }[];
   autorizacion?: Autorizacion | null;
+  /** Ficha del directorio de pacientes a la que quedó vinculado (RN-M6). */
+  paciente_id?: number | null;
 }
 
 export interface ItemCola {
@@ -457,4 +459,49 @@ export interface FichaPack {
 export interface PuestaEnMarcha {
   listo: boolean;
   requisitos: { clave: string; requisito: string; cumplido: boolean; detalle: string }[];
+}
+
+// --- Directorio de pacientes (RN-M6) ----------------------------------------------------------------
+
+export interface PacienteFicha {
+  id: number;
+  pais: string;
+  tipo_documento: string;
+  numero_documento: string;
+  nombre: string;
+  edad: number | null;
+  sexo: string | null;
+  documentos: number;
+  creado_en: string | null;
+  actualizado_en: string | null;
+}
+
+export interface CorreccionDePaciente {
+  fecha_hora: string;
+  usuario: string;
+  motivo: string;
+  anterior: Record<string, unknown>;
+  nuevo: Record<string, unknown>;
+}
+
+export interface DocumentoDePaciente {
+  documento_id: string;
+  version: number;
+  estado: EstadoDocumento;
+  nivel_prioridad: NivelPrioridad | null;
+  tipo: string | null;
+  fecha_documento: string | null;
+  creado_en: string | null;
+}
+
+export interface PacienteDetalle extends PacienteFicha {
+  historial: CorreccionDePaciente[];
+  documentos_listado: DocumentoDePaciente[];
+}
+
+export interface ListadoPacientes {
+  items: PacienteFicha[];
+  total: number;
+  limit: number;
+  offset: number;
 }

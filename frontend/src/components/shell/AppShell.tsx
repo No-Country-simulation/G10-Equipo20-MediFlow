@@ -1,4 +1,4 @@
-import { BarChart3, BellRing, ClipboardCheck, Contrast, FileCheck2, FileText, Home, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
+import { BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -20,6 +20,7 @@ const ICONOS: Record<string, LucideIcon> = {
   "/farmacia": Pill,
   "/autorizaciones": FileCheck2,
   "/entregas": Send,
+  "/pacientes": Contact,
   "/configuracion": SlidersHorizontal,
   "/metricas": BarChart3,
   "/administracion": Users,

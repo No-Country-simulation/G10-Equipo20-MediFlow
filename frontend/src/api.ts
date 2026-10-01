@@ -12,7 +12,11 @@ import type {
   FichaPack,
   ItemCola,
   Listado,
+  ListadoPacientes,
   Metricas,
+  PacienteDetalle,
+  PacienteFicha,
+  CorreccionDePaciente,
   PuestaEnMarcha,
   RecetaPorVerificar,
   ResolucionRequest,
@@ -204,4 +208,26 @@ export function obtenerPack(): Promise<FichaPack> {
 
 export function puestaEnMarcha(): Promise<PuestaEnMarcha> {
   return llamar<PuestaEnMarcha>("/administracion/puesta_en_marcha");
+}
+
+// --- Directorio de pacientes (RN-M6) ----------------------------------------------------------------
+
+export function listarPacientes(filtros: { q?: string; limit?: number; offset?: number } = {}): Promise<ListadoPacientes> {
+  const params = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(filtros)) {
+    if (valor !== undefined && valor !== "") params.set(clave, String(valor));
+  }
+  const consulta = params.toString();
+  return llamar<ListadoPacientes>(`/pacientes${consulta ? `?${consulta}` : ""}`);
+}
+
+export function obtenerPaciente(id: number): Promise<PacienteDetalle> {
+  return llamar<PacienteDetalle>(`/pacientes/${id}`);
+}
+
+export function editarPaciente(
+  id: number,
+  cuerpo: { nombre?: string; edad?: number | null; usuario: string; rol: string; motivo: string },
+): Promise<PacienteFicha & { historial: CorreccionDePaciente[] }> {
+  return llamar(`/pacientes/${id}`, { method: "PATCH", body: JSON.stringify(cuerpo) });
 }
