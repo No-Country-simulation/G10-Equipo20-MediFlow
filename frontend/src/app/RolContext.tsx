@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { type Rol, type RolId, rolPorId } from "./roles";
+import { useSesion } from "./sesion";
 
 const CLAVE = "mediflow.rol";
 
@@ -24,15 +25,26 @@ function leerRolGuardado(): Rol {
   }
 }
 
-/** El MVP no tiene autenticación (sección 2.1); el rol se elige en la barra lateral y se recuerda en este navegador. */
+/**
+ * Con sesión, el rol es el de la cuenta y no se cambia en pantalla (RN-K1). Sin sesión (demostración),
+ * se elige en la barra lateral y se recuerda en este navegador.
+ */
 export function RolProvider({ children, rolInicial }: { children: ReactNode; rolInicial?: RolId }) {
-  const [rol, setRol] = useState<Rol>(() => (rolInicial ? rolPorId(rolInicial) : leerRolGuardado()));
+  const { cuenta } = useSesion();
+  const [elegido, setRol] = useState<Rol>(() => (rolInicial ? rolPorId(rolInicial) : leerRolGuardado()));
+  const rolDeLaCuenta = cuenta?.rol ?? null;
+  const rol = rolDeLaCuenta ? rolPorId(rolDeLaCuenta) : elegido;
   const [discreto, setDiscreto] = useState<boolean>(rol.modoDiscreto);
+
+  useEffect(() => {
+    if (rolDeLaCuenta) setDiscreto(rolPorId(rolDeLaCuenta).modoDiscreto);
+  }, [rolDeLaCuenta]);
 
   const valor = useMemo<ContextoRol>(
     () => ({
       rol,
       cambiarRol: (id) => {
+        if (rolDeLaCuenta) return;
         const nuevo = rolPorId(id);
         setRol(nuevo);
         setDiscreto(nuevo.modoDiscreto);
@@ -45,7 +57,7 @@ export function RolProvider({ children, rolInicial }: { children: ReactNode; rol
       modoDiscreto: discreto,
       alternarModoDiscreto: () => setDiscreto((v) => !v),
     }),
-    [rol, discreto],
+    [rol, discreto, rolDeLaCuenta],
   );
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

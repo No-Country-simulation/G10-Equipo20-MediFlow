@@ -17,6 +17,7 @@ import type {
   PacienteDetalle,
   PacienteFicha,
   CorreccionDePaciente,
+  CuentaSesion,
   PuestaEnMarcha,
   RecetaPorVerificar,
   ResolucionRequest,
@@ -30,6 +31,8 @@ import type {
 } from "./types";
 
 export const BASE_URL = "/api";
+/** Se emite cuando una petición llega sin sesión válida, para que la interfaz vuelva a pedirla. */
+export const EVENTO_SESION = "mediflow:sesion";
 
 export class ErrorApi extends Error {
   constructor(public status: number, public detalle: string, public cuerpo?: unknown) {
@@ -57,9 +60,27 @@ async function llamar<T>(ruta: string, init?: RequestInit): Promise<T> {
   const cuerpo = await respuesta.json().catch(() => null);
   if (!respuesta.ok && respuesta.status !== 400) {
     const detalle = (cuerpo && (cuerpo.detail ?? cuerpo.codigo_error)) || respuesta.statusText;
+    if (respuesta.status === 401 && detalle === "sesion_requerida") {
+      window.dispatchEvent(new Event(EVENTO_SESION));
+      throw new ErrorApi(401, "Tu sesión terminó. Inicia sesión de nuevo.", cuerpo);
+    }
     throw new ErrorApi(respuesta.status, typeof detalle === "string" ? detalle : JSON.stringify(detalle), cuerpo);
   }
   return cuerpo as T;
+}
+
+// --- Sesión (RN-K5) ---------------------------------------------------------------------------------
+
+export function estadoSesion(): Promise<{ exigir_sesion: boolean; sesion: CuentaSesion | null }> {
+  return llamar("/auth/estado");
+}
+
+export function iniciarSesion(usuario: string, clave: string): Promise<CuentaSesion> {
+  return llamar<CuentaSesion>("/auth/ingresar", { method: "POST", body: JSON.stringify({ usuario, clave }) });
+}
+
+export async function cerrarSesion(): Promise<void> {
+  await llamar("/auth/salir", { method: "POST" });
 }
 
 export function enviarDocumento(request: DocumentoRequest): Promise<DocumentoDetalle> {
@@ -189,12 +210,16 @@ export function listarUsuarios(): Promise<UsuarioAdmin[]> {
   return llamar<UsuarioAdmin[]>("/administracion/usuarios");
 }
 
-export function crearUsuario(cuerpo: { usuario: string; nombre: string; rol: string; tipo: string; actor: string }): Promise<UsuarioAdmin> {
+export function crearUsuario(cuerpo: { usuario: string; nombre: string; rol: string; tipo: string; actor: string; clave?: string }): Promise<UsuarioAdmin> {
   return llamar("/administracion/usuarios", { method: "POST", body: JSON.stringify(cuerpo) });
 }
 
 export function cambiarEstadoUsuario(usuario: string, activo: boolean, actor: string): Promise<UsuarioAdmin> {
   return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/${activo ? "activar" : "desactivar"}`, { method: "POST", body: JSON.stringify({ actor }) });
+}
+
+export function definirClave(usuario: string, clave: string, actor: string): Promise<UsuarioAdmin> {
+  return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/clave`, { method: "POST", body: JSON.stringify({ clave, actor }) });
 }
 
 export function listarAccesos(documentoId?: string): Promise<Acceso[]> {

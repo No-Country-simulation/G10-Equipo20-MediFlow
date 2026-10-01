@@ -431,6 +431,15 @@ export interface UsuarioAdmin {
   creado_por: string;
   creado_en: string | null;
   desactivado_en: string | null;
+  /** La cuenta tiene clave: inicia sesión y nadie firma en su nombre sin ella (RN-K5). */
+  con_clave?: boolean;
+}
+
+/** Cuenta que inició sesión (RN-K5). */
+export interface CuentaSesion {
+  usuario: string;
+  nombre: string;
+  rol: string;
 }
 
 export interface Acceso {

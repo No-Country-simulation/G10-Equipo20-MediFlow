@@ -1,4 +1,4 @@
-import { BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
+import { BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, LogIn, LogOut, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -7,6 +7,7 @@ import { useAltoContraste } from "../../app/contraste";
 import { ProveedorPared, useEstadoPared } from "../../app/pared";
 import { useRol } from "../../app/RolContext";
 import { ROLES, rolPuedeVer, type RolId } from "../../app/roles";
+import { useSesion } from "../../app/sesion";
 import { useUsuario } from "../../app/usuario";
 import { BannerAlertas } from "./BannerAlertas";
 
@@ -28,6 +29,7 @@ const ICONOS: Record<string, LucideIcon> = {
 
 export function AppShell() {
   const { rol, cambiarRol } = useRol();
+  const { cuenta, salir } = useSesion();
   const [usuario, setUsuario] = useUsuario();
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,6 +60,11 @@ export function AppShell() {
     cambiarRol(id);
     const destino = ROLES.find((r) => r.id === id)?.rutaInicial ?? "/documentos";
     navigate(destino);
+  }
+
+  async function alSalir() {
+    await salir();
+    navigate("/ingresar");
   }
 
   const permitido = rolPuedeVer(rol, location.pathname);
@@ -118,16 +125,27 @@ export function AppShell() {
             <>
               <NavLink to="/demo" className="demo">Modo demostración ›</NavLink>
               <div className="usuario">
-                <label>
-                  Rol
-                  <select id="selector-rol" value={rol.id} onChange={(e) => alCambiarRol(e.target.value as RolId)}>
-                    {ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Firmo como
-                  <input id="firmo-como" value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="nombre.apellido" autoComplete="off" />
-                </label>
+                {cuenta ? (
+                  <div className="sesion-activa" data-testid="sesion-activa">
+                    <strong>{cuenta.nombre}</strong>
+                    <small>{rol.nombre} · {cuenta.usuario}</small>
+                    <button type="button" className="boton-lateral" onClick={alSalir}><LogOut size={16} aria-hidden="true" />Cerrar sesión</button>
+                  </div>
+                ) : (
+                  <>
+                    <label>
+                      Rol
+                      <select id="selector-rol" value={rol.id} onChange={(e) => alCambiarRol(e.target.value as RolId)}>
+                        {ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      Firmo como
+                      <input id="firmo-como" value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="nombre.apellido" autoComplete="off" />
+                    </label>
+                    <NavLink to="/ingresar" className="enlace-sesion"><LogIn size={16} aria-hidden="true" />Iniciar sesión</NavLink>
+                  </>
+                )}
                 {interruptorContraste}
                 {rol.pantallaCompartida && (
                   <button type="button" className="boton-lateral" onClick={pared.alternar}><Monitor size={16} aria-hidden="true" />Vista de pared</button>
@@ -144,7 +162,7 @@ export function AppShell() {
             <section className="tarjeta" style={{ marginTop: 16 }}>
               <h1>Sin acceso para este rol</h1>
               <p className="muted">
-                {rol.nombre} no ve esta sección. Quien configura no revisa y quien administra no ve datos clínicos. Elige otra opción de la barra lateral o cambia de rol.
+                {rol.nombre} no ve esta sección. Quien configura no revisa y quien administra no ve datos clínicos. Elige otra opción de la barra lateral{cuenta ? "" : " o cambia de rol"}.
               </p>
             </section>
           )}

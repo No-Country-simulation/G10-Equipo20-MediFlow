@@ -593,3 +593,17 @@ button.icono { padding: 6px; min-width: 36px; }
 .resguardo-pared > svg { flex: none; color: var(--primario-tinta); }
 .resguardo-pared h2 { margin: 0 0 6px; font-size: 1.35rem; }
 .resguardo-pared p { margin: 0 0 14px; max-width: 70ch; color: var(--muted); font-size: 1.0625rem; }
+
+/* --- Sesión: ingreso y cuenta en la barra lateral ------------------------------------------------ */
+.ingreso { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.ingreso .tarjeta { width: 100%; max-width: 420px; display: grid; gap: 12px; padding: 28px; }
+.ingreso img { border-radius: 12px; }
+.ingreso h1 { font-size: 1.5rem; margin: 0; }
+.ingreso p { margin: 0; }
+.ingreso form { display: grid; gap: 12px; }
+.ingreso .pie-ingreso { font-size: 0.9375rem; }
+.sesion-activa { display: grid; gap: 2px; color: #fff; }
+.sesion-activa strong { font-family: "Sora", sans-serif; font-weight: 600; }
+.sesion-activa .boton-lateral { margin-top: 8px; }
+.lateral .enlace-sesion { display: inline-flex; align-items: center; gap: 6px; color: var(--menta); font-size: 0.9375rem; text-decoration: none; }
+.lateral .enlace-sesion:hover { text-decoration: underline; }

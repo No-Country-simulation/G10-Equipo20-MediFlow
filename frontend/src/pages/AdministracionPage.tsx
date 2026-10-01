@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 
-import { cambiarEstadoUsuario, crearUsuario, listarAccesos, listarUsuarios, obtenerPack, puestaEnMarcha } from "../api";
+import { cambiarEstadoUsuario, crearUsuario, definirClave, listarAccesos, listarUsuarios, obtenerPack, puestaEnMarcha } from "../api";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { ROLES } from "../app/roles";
 import { useUsuario } from "../app/usuario";
 import type { Acceso, FichaPack, PuestaEnMarcha, UsuarioAdmin } from "../types";
 
 const FORMULARIO_VACIO = { usuario: "", nombre: "", rol: "auditor_clinico", tipo: "persona" };
+const CLAVE_MINIMA = 8;
 
 function nombreRol(id: string): string {
   return ROLES.find((r) => r.id === id)?.nombre ?? id;
@@ -21,6 +22,8 @@ export function AdministracionPage() {
   const [accesos, setAccesos] = useState<Acceso[]>([]);
   const [filtroDoc, setFiltroDoc] = useState("");
   const [form, setForm] = useState(FORMULARIO_VACIO);
+  const [claveInicial, setClaveInicial] = useState("");
+  const [cambioDeClave, setCambioDeClave] = useState<{ usuario: string; clave: string } | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
   const cargar = () => {
@@ -42,9 +45,23 @@ export function AdministracionPage() {
   async function crear() {
     setMensaje(null);
     try {
-      const u = await crearUsuario({ ...form, usuario: form.usuario.trim(), nombre: form.nombre.trim(), actor: actor.trim() });
-      setMensaje({ texto: `Usuario ${u.usuario} creado como ${nombreRol(u.rol)}.` });
+      const u = await crearUsuario({ ...form, usuario: form.usuario.trim(), nombre: form.nombre.trim(), actor: actor.trim(), ...(claveInicial ? { clave: claveInicial } : {}) });
+      setMensaje({ texto: `Usuario ${u.usuario} creado como ${nombreRol(u.rol)}${claveInicial ? ", con clave para iniciar sesión" : ""}.` });
       setForm(FORMULARIO_VACIO);
+      setClaveInicial("");
+      cargar();
+    } catch (e) {
+      informar(e);
+    }
+  }
+
+  async function guardarClave() {
+    if (!cambioDeClave) return;
+    setMensaje(null);
+    try {
+      const u = await definirClave(cambioDeClave.usuario, cambioDeClave.clave, actor.trim());
+      setMensaje({ texto: `Clave de ${u.usuario} definida. Sus sesiones abiertas se cerraron.` });
+      setCambioDeClave(null);
       cargar();
     } catch (e) {
       informar(e);
@@ -125,11 +142,15 @@ export function AdministracionPage() {
               <option value="servicio">Servicio (integración)</option>
             </select>
           </label>
-          <button type="button" disabled={!yo || !form.usuario.trim() || !form.nombre.trim()} onClick={crear}>Crear usuario</button>
+          <label>Clave inicial
+            <input type="password" value={claveInicial} onChange={(e) => setClaveInicial(e.target.value)} autoComplete="new-password" placeholder={`Opcional, mínimo ${CLAVE_MINIMA}`} />
+          </label>
+          <button type="button" disabled={!yo || !form.usuario.trim() || !form.nombre.trim() || (claveInicial !== "" && claveInicial.length < CLAVE_MINIMA)} onClick={crear}>Crear usuario</button>
         </div>
+        <p className="muted">Con clave, la cuenta inicia sesión y nadie puede firmar escribiendo su nombre. Sin clave, sirve solo para la demostración.</p>
         <div className="scroll">
           <table className="tabla-densa">
-            <thead><tr><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Estado</th><th>Sesión</th><th></th></tr></thead>
             <tbody>
               {usuarios?.map((u) => (
                 <tr key={u.usuario} data-testid="fila-usuario" className={`fila ${u.activo ? "rutina" : "critico"}`}>
@@ -137,13 +158,26 @@ export function AdministracionPage() {
                   <td>{nombreRol(u.rol)}</td>
                   <td>{u.tipo === "servicio" ? <span className="tag urgente">Servicio</span> : "Persona"}</td>
                   <td>{u.activo ? <span className="tag exito">Activo</span> : <span className="tag critico">Inactivo</span>}<span className="secundaria">{u.desactivado_en ? `desde ${new Date(u.desactivado_en).toLocaleString("es-CO")}` : `alta por ${u.creado_por}`}</span></td>
-                  <td><button type="button" className={u.activo ? "peligro" : "secundario"} disabled={!yo} onClick={() => cambiarEstado(u)}>{u.activo ? "Desactivar" : "Activar"}</button></td>
+                  <td>{u.con_clave ? <span className="tag exito">Con clave</span> : <span className="tag neutro">Sin clave</span>}</td>
+                  <td className="acciones">
+                    <button type="button" className="secundario" disabled={!yo} aria-label={`Definir la clave de ${u.usuario}`} onClick={() => setCambioDeClave({ usuario: u.usuario, clave: "" })}>Clave</button>
+                    <button type="button" className={u.activo ? "peligro" : "secundario"} disabled={!yo} onClick={() => cambiarEstado(u)}>{u.activo ? "Desactivar" : "Activar"}</button>
+                  </td>
                 </tr>
               ))}
-              {usuarios && usuarios.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 20 }}>Sin usuarios registrados. Mientras tanto cualquiera firma con su nombre (MVP sin autenticación).</td></tr>}
+              {usuarios && usuarios.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 20 }}>Sin usuarios registrados. Mientras tanto cualquiera firma con su nombre (modo demostración).</td></tr>}
             </tbody>
           </table>
         </div>
+        {cambioDeClave && (
+          <div className="formulario" style={{ marginTop: 10 }} data-testid="cambio-de-clave">
+            <label>Clave nueva de {cambioDeClave.usuario}
+              <input type="password" value={cambioDeClave.clave} onChange={(e) => setCambioDeClave({ ...cambioDeClave, clave: e.target.value })} autoComplete="new-password" placeholder={`Mínimo ${CLAVE_MINIMA} caracteres`} />
+            </label>
+            <button type="button" disabled={!yo || cambioDeClave.clave.length < CLAVE_MINIMA} onClick={guardarClave}>Guardar clave</button>
+            <button type="button" className="secundario" onClick={() => setCambioDeClave(null)}>Cancelar</button>
+          </div>
+        )}
       </section>
 
       <section className="tarjeta" style={{ marginTop: 12 }} data-testid="accesos">
