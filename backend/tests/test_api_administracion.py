@@ -1,6 +1,6 @@
 """Fase D: administración de usuarios y accesos (RN-K1 a RN-K5), ficha del pack y puesta en marcha (RN-S3).
 
-Sin autenticación en el MVP: un usuario no registrado sigue pudiendo firmar (como hasta ahora);
+En el modo de demostración, un usuario no registrado sigue pudiendo firmar;
 un usuario registrado queda sujeto a su rol, a su tipo y a su estado.
 """
 from tests.test_aceptacion import med, propuesta, receta, sample, TEXTO_RECETA
@@ -74,7 +74,7 @@ def test_RN_K2_quien_configura_no_revisa_y_cada_rol_solo_su_accion_RN_K1(client,
     r = client.post("/alertas/TEP-1/acuse", json={"usuario": "qf.maria"})
     assert r.status_code == 403
     assert client.post("/revision/REC-DUD/resolver", json={**cuerpo, "usuario": "aud.ana", "rol": "auditor_clinico"}).status_code == 200
-    # un usuario no registrado sigue firmando (MVP sin autenticación)
+    # un usuario no registrado sigue firmando (modo de demostración)
     assert client.post("/alertas/TEP-1/acuse", json={"usuario": "jefe.sin.registro"}).status_code == 200
 
 

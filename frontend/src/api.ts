@@ -40,7 +40,7 @@ export class ErrorApi extends Error {
   }
 }
 
-/** RN-K3: cada acceso se atribuye al usuario que firma en este navegador (sin autenticación en el MVP). */
+/** RN-K3: sin sesión, el acceso se atribuye al usuario que firma en este navegador. Con sesión, el servidor usa la cuenta. */
 function usuarioActual(): string | null {
   try {
     return localStorage.getItem("mediflow.usuario");

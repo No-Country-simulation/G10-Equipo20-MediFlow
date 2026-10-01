@@ -1,6 +1,6 @@
 """Usuarios, roles y accesos (dominio K).
 
-Sin autenticación en el MVP: quien no está registrado firma con su nombre, como hasta ahora.
+En el modo de demostración (sin EXIGIR_SESION), quien no está registrado firma con su nombre.
 Quien sí está registrado queda sujeto a su rol (RN-K1, RN-K2), a su estado (RN-K4) y a su tipo (RN-K5).
 RN-K3: cada acceso a un documento se registra con quién, cuándo y qué vio.
 """
