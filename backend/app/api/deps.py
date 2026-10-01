@@ -12,7 +12,7 @@ from app.core.database import abrir_sesion
 from app.core.sesiones import cuenta_de_la_sesion
 from app.models.gobierno import Usuario
 from app.services.llm import ClienteGemini, ClienteLLM, ClienteOpenAI, ErrorTransitorioLLM, LlamadaLLM, RespuestaLLM
-from app.services.storage import Storage, StorageLocal, StorageOCI
+from app.services.storage import Storage, StorageLocal, StorageOCI, StorageR2
 
 
 def get_session() -> Iterator[Session]:
@@ -22,6 +22,10 @@ def get_session() -> Iterator[Session]:
 @lru_cache
 def get_storage() -> Storage:
     settings = get_settings()
+    if settings.storage_backend.strip().lower() == "r2":
+        return StorageR2(endpoint_url=settings.r2_endpoint_url, access_key_id=settings.r2_access_key_id,
+                         secret_access_key=settings.r2_secret_access_key, bucket=settings.r2_bucket_name,
+                         prefijo=settings.r2_prefijo, region=settings.r2_region)
     if settings.oci_namespace and settings.oci_bucket:
         return StorageOCI(settings.oci_namespace, settings.oci_bucket, settings.oci_region or None)
     return StorageLocal(settings.storage_local_dir)

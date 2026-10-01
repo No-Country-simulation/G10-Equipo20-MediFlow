@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     oci_namespace: str = ""
     oci_bucket: str = ""
     oci_region: str = ""
+    # Almacenamiento: "r2" usa el bucket de Cloudflare R2 del equipo; vacío deja la regla de siempre (OCI si está configurado, si no local).
+    storage_backend: str = ""
+    r2_endpoint_url: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = ""
+    r2_region: str = "auto"
+    r2_prefijo: str = "mediflow-triaje"  # carpeta propia dentro del bucket compartido
     # LLM externo (RN-M10). La clave nunca se versiona. Proveedor por defecto: OpenAI (decisión 2 del docx).
     llm_proveedor: str = "openai"  # openai | gemini
     openai_api_key: str = ""

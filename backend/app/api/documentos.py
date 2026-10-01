@@ -196,7 +196,10 @@ def vista_previa(
         raise HTTPException(status_code=415, detail="la vista previa solo aplica a PDF")
     if not doc.ruta_storage:
         raise HTTPException(status_code=404, detail="original no respaldado")
-    datos = storage.leer(doc.ruta_storage)
+    try:
+        datos = storage.leer(doc.ruta_storage)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="original no disponible") from error
     try:
         png = renderizar_pagina(datos, pagina)
     except ArchivoInvalido as error:
