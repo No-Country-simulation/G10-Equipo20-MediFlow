@@ -84,6 +84,21 @@ class CambiosConfiguracion(BaseModel):
 # --- Reglas puras -----------------------------------------------------------------------------
 
 
+def acumular(previos: CambiosConfiguracion, nuevos: CambiosConfiguracion) -> CambiosConfiguracion:
+    """RN-L4: cada versión guarda solo lo que cambió; lo vigente es la suma de todas las que entraron en vigencia.
+    Un umbral toma su último valor. RN-L3: las listas se unen, así una versión posterior nunca quita lo ampliado."""
+    a, b = previos.ampliaciones, nuevos.ampliaciones
+    conceptos = {h.concepto.strip().upper() for h in a.hallazgos_criticos}
+    return CambiosConfiguracion(
+        umbrales={**previos.umbrales, **nuevos.umbrales},
+        ampliaciones=Ampliaciones(
+            alto_riesgo=_agregar_sin_repetir(a.alto_riesgo, b.alto_riesgo),
+            control_especial=_agregar_sin_repetir(a.control_especial, b.control_especial),
+            hallazgos_criticos=[*a.hallazgos_criticos, *(h for h in b.hallazgos_criticos if h.concepto.strip().upper() not in conceptos)],
+        ),
+    )
+
+
 def _leer(datos: dict, ruta: tuple[str, ...]) -> Any:
     for parte in ruta:
         datos = datos[parte]
@@ -177,8 +192,13 @@ class ServicioConfiguracion:
         return self.session.scalars(select(VersionConfiguracion).where(VersionConfiguracion.estado == "vigente")).first()
 
     def cambios_vigentes(self) -> CambiosConfiguracion:
-        v = self.vigente()
-        return CambiosConfiguracion.model_validate(v.cambios_json) if v else CambiosConfiguracion()
+        """Suma, en orden, de todas las versiones que entraron en vigencia (las rechazadas no tienen número)."""
+        versiones = self.session.scalars(select(VersionConfiguracion).where(VersionConfiguracion.numero.is_not(None))
+                                         .order_by(VersionConfiguracion.numero))
+        acumulado = CambiosConfiguracion()
+        for v in versiones:
+            acumulado = acumular(acumulado, CambiosConfiguracion.model_validate(v.cambios_json))
+        return acumulado
 
     def umbrales(self) -> Umbrales:
         return aplicar_umbrales(cargar_umbrales(), self.cambios_vigentes())

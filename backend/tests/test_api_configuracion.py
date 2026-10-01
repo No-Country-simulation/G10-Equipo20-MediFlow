@@ -183,6 +183,21 @@ def test_una_propuesta_reemplaza_a_la_vigente_y_queda_en_el_historial(client):
     assert cfg["historial"][1]["vigente_hasta"]
 
 
+def test_RN_L3_RN_L4_una_version_posterior_no_deshace_lo_que_cambiaron_las_anteriores(client):
+    primera = proponer(client, {"umbrales": {"confianza.medicamento_dosis": 0.98}, "ampliaciones": {"alto_riesgo": ["atorvastatina"]}}).json()
+    client.post(f"/configuracion/propuestas/{primera['id']}/aprobar", json=GESTOR)
+    segunda = proponer(client, {"umbrales": {"confianza.profesional": 0.92}, "ampliaciones": {"alto_riesgo": ["rosuvastatina"]}}).json()
+    client.post(f"/configuracion/propuestas/{segunda['id']}/aprobar", json=GESTOR)
+    rechazada = proponer(client, {"umbrales": {"confianza.resto": 0.90}}).json()
+    client.post(f"/configuracion/propuestas/{rechazada['id']}/rechazar", json=GESTOR | {"motivo": "no"})
+    cfg = client.get("/configuracion").json()
+    assert cfg["vigente"]["numero"] == 2
+    assert cfg["vigente"]["cambios"]["umbrales"] == {"confianza.profesional": 0.92}  # cada versión guarda solo lo suyo
+    efectivos = cfg["umbrales_efectivos"]["confianza"]
+    assert efectivos["medicamento_dosis"] == 0.98 and efectivos["profesional"] == 0.92 and efectivos["resto"] == 0.80
+    assert cfg["listas"]["alto_riesgo"]["ampliadas"] == ["atorvastatina", "rosuvastatina"]
+
+
 def test_rechazar_una_propuesta_la_saca_de_pendientes(client):
     p = proponer(client, {"umbrales": {"confianza.profesional": 0.90}}).json()
     assert client.get("/configuracion").json()["propuestas"][0]["id"] == p["id"]
