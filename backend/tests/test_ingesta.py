@@ -8,6 +8,7 @@ import base64
 
 import pytest
 
+from app.models.documento import Documento
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import DocumentoRequest
 from app.schemas.resultado import EstadoDocumento as E
@@ -87,6 +88,9 @@ def test_pdf_falso_en_base64_se_rechaza_como_corrupto_RN_A1(servicio):
     r = servicio.recibir(req)
     assert r.documento.estado == E.RECHAZADO
     assert r.codigo_error == "pdf_corrupto"
+    # SQLite no limita el largo; PostgreSQL sí. Lo que se guarda de un rechazo tiene que caber en su columna.
+    assert r.documento.formato == "desconocido"
+    assert len(r.documento.formato) <= Documento.__table__.c.formato.type.length
 
 
 # --- Rechazos: solo desde RECIBIDO, siempre explícitos ------------------------
