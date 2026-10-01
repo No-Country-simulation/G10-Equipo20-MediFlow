@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_llm, get_session, get_storage
+from app.api.deps import cuenta_actual, firmante, get_llm, get_session, get_storage
 from app.core.config import get_settings
 from app.models.gobierno import VersionConfiguracion
 from app.packs.loader import cargar_pack, cargar_umbrales
@@ -39,14 +39,16 @@ class RechazoRequest(Actor):
     motivo: str = ""
 
 
-def _gestor(session: Session, actor: Actor) -> None:
-    """RN-K2: solo el gestor configura. El rol declarado y, si está registrado, el registrado."""
-    if actor.rol != "gestor":
-        raise HTTPException(status_code=403, detail=f"RN-K2: configura el gestor de la clínica, no el rol {actor.rol}")
+def _gestor(session: Session, actor: Actor, cuenta) -> str:
+    """RN-K2: solo el gestor configura. Con sesión, el rol es el de la cuenta; sin ella, el declarado y, si está registrado, el registrado."""
+    quien = firmante(session, cuenta, actor.usuario, actor.rol)
+    if quien.rol != "gestor":
+        raise HTTPException(status_code=403, detail=f"RN-K2: configura el gestor de la clínica, no el rol {quien.rol}")
     try:
-        ServicioUsuarios(session).validar_actor(actor.usuario, "configurar", actor.rol)
+        ServicioUsuarios(session).validar_actor(quien.usuario, "configurar", quien.rol)
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    return quien.usuario
 
 
 def _version(v: VersionConfiguracion) -> dict:
@@ -119,12 +121,13 @@ def simular(cuerpo: SimulacionRequest, session: Session = Depends(get_session), 
 
 
 @router.post("/propuestas", status_code=201)
-def proponer(cuerpo: PropuestaRequest, session: Session = Depends(get_session), storage: Storage = Depends(get_storage), llm: ClienteLLM = Depends(get_llm)):
-    _gestor(session, cuerpo)
+def proponer(cuerpo: PropuestaRequest, session: Session = Depends(get_session), storage: Storage = Depends(get_storage), llm: ClienteLLM = Depends(get_llm),
+             cuenta=Depends(cuenta_actual)):
+    usuario = _gestor(session, cuerpo, cuenta)
     servicio = ServicioConfiguracion(session)
     try:
         simulacion = _simular(servicio, _orquestador(session, storage, llm), cuerpo.cambios, None)
-        v = servicio.proponer(cuerpo.cambios, autor=cuerpo.usuario, motivo=cuerpo.motivo, pais=get_settings().pais_instalacion, simulacion=simulacion)
+        v = servicio.proponer(cuerpo.cambios, autor=usuario, motivo=cuerpo.motivo, pais=get_settings().pais_instalacion, simulacion=simulacion)
     except ErrorConfiguracion as error:
         session.rollback()
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
@@ -132,20 +135,20 @@ def proponer(cuerpo: PropuestaRequest, session: Session = Depends(get_session), 
 
 
 @router.post("/propuestas/{id_}/aprobar")
-def aprobar(id_: int, cuerpo: Actor, session: Session = Depends(get_session)):
-    _gestor(session, cuerpo)
+def aprobar(id_: int, cuerpo: Actor, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    usuario = _gestor(session, cuerpo, cuenta)
     try:
-        return _version(ServicioConfiguracion(session).aprobar(id_, cuerpo.usuario))
+        return _version(ServicioConfiguracion(session).aprobar(id_, usuario))
     except ErrorConfiguracion as error:
         session.rollback()
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
 
 
 @router.post("/propuestas/{id_}/rechazar")
-def rechazar(id_: int, cuerpo: RechazoRequest, session: Session = Depends(get_session)):
-    _gestor(session, cuerpo)
+def rechazar(id_: int, cuerpo: RechazoRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    usuario = _gestor(session, cuerpo, cuenta)
     try:
-        return _version(ServicioConfiguracion(session).rechazar(id_, cuerpo.usuario, cuerpo.motivo))
+        return _version(ServicioConfiguracion(session).rechazar(id_, usuario, cuerpo.motivo))
     except ErrorConfiguracion as error:
         session.rollback()
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error

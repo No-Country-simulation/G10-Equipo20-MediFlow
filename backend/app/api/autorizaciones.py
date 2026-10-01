@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_llm, get_session, get_storage
+from app.api.deps import cuenta_actual, firmante, get_llm, get_session, get_storage
 from app.core.config import get_settings
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.resultado import Destino as D, ResultadoTriaje
@@ -63,12 +63,13 @@ class ResolucionAutorizacion(BaseModel):
 
 @router.post("/{documento_id}/resolver")
 def resolver(documento_id: str, cuerpo: ResolucionAutorizacion, session: Session = Depends(get_session),
-             storage: Storage = Depends(get_storage), llm: ClienteLLM = Depends(get_llm)):
+             storage: Storage = Depends(get_storage), llm: ClienteLLM = Depends(get_llm), cuenta=Depends(cuenta_actual)):
+    quien = firmante(session, cuenta, cuerpo.usuario)
     orq = _orquestador(session, storage, llm)
     doc = orq.repo.ultima_version(documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="documento no encontrado")
     try:
-        return orq.resolver_autorizacion(doc, accion=cuerpo.accion, usuario=cuerpo.usuario, motivo=cuerpo.motivo)
+        return orq.resolver_autorizacion(doc, accion=cuerpo.accion, usuario=quien.usuario, motivo=cuerpo.motivo)
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error

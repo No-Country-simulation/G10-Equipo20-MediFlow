@@ -5,8 +5,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session
+from app.api.deps import cuenta_actual, firmante, get_session
 from app.core.config import get_settings
+from app.core.sesiones import cerrar_sesiones_de, hash_clave
 from app.models.alerta import Alerta
 from app.models.gobierno import Usuario
 from app.services.configuracion import ServicioConfiguracion
@@ -22,10 +23,15 @@ class UsuarioRequest(BaseModel):
     rol: str
     tipo: str = "persona"
     actor: str = Field(..., min_length=1)
+    clave: str | None = Field(default=None, min_length=8, max_length=128)  # sin clave la cuenta no inicia sesión
 
 
 class ActorRequest(BaseModel):
     actor: str = Field(..., min_length=1)
+
+
+class ClaveRequest(ActorRequest):
+    clave: str = Field(..., min_length=8, max_length=128)
 
 
 def _usuario(u: Usuario) -> dict:
@@ -33,14 +39,17 @@ def _usuario(u: Usuario) -> dict:
         "usuario": u.usuario, "nombre": u.nombre, "rol": u.rol, "tipo": u.tipo, "activo": u.activo,
         "creado_por": u.creado_por, "creado_en": u.creado_en.isoformat() if u.creado_en else None,
         "desactivado_en": u.desactivado_en.isoformat() if u.desactivado_en else None,
+        "con_clave": bool(u.clave_hash),  # nunca el hash
     }
 
 
-def _administrador(session: Session, actor: str) -> None:
+def _administrador(session: Session, actor: str, cuenta) -> str:
+    quien = firmante(session, cuenta, actor)
     try:
-        ServicioUsuarios(session).validar_actor(actor, "administrar")
+        ServicioUsuarios(session).validar_actor(quien.usuario, "administrar")
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    return quien.usuario
 
 
 @router.get("/usuarios")
@@ -54,26 +63,46 @@ def roles():
 
 
 @router.post("/usuarios", status_code=201)
-def crear_usuario(cuerpo: UsuarioRequest, session: Session = Depends(get_session)):
-    _administrador(session, cuerpo.actor)
+def crear_usuario(cuerpo: UsuarioRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    actor = _administrador(session, cuerpo.actor, cuenta)
     try:
-        return _usuario(ServicioUsuarios(session).crear(usuario=cuerpo.usuario, nombre=cuerpo.nombre, rol=cuerpo.rol, tipo=cuerpo.tipo, actor=cuerpo.actor))
+        u = ServicioUsuarios(session).crear(usuario=cuerpo.usuario, nombre=cuerpo.nombre, rol=cuerpo.rol, tipo=cuerpo.tipo, actor=actor)
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    if cuerpo.clave:
+        u.clave_hash = hash_clave(cuerpo.clave)
+        session.commit()
+    return _usuario(u)
+
+
+@router.post("/usuarios/{usuario}/clave")
+def definir_clave(usuario: str, cuerpo: ClaveRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    """Define o cambia la clave de una cuenta. Sus sesiones abiertas se cierran."""
+    _administrador(session, cuerpo.actor, cuenta)
+    u = ServicioUsuarios(session).buscar(usuario)
+    if u is None:
+        raise HTTPException(status_code=404, detail="usuario no encontrado")
+    u.clave_hash = hash_clave(cuerpo.clave)
+    cerrar_sesiones_de(u, session)
+    session.commit()
+    return _usuario(u)
 
 
 @router.post("/usuarios/{usuario}/desactivar")
-def desactivar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_session)):
-    _administrador(session, cuerpo.actor)
+def desactivar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    _administrador(session, cuerpo.actor, cuenta)
     try:
-        return _usuario(ServicioUsuarios(session).cambiar_estado(usuario, activo=False))
+        u = ServicioUsuarios(session).cambiar_estado(usuario, activo=False)
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    cerrar_sesiones_de(u, session)  # RN-K4: efecto inmediato también sobre lo que tenga abierto
+    session.commit()
+    return _usuario(u)
 
 
 @router.post("/usuarios/{usuario}/activar")
-def activar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_session)):
-    _administrador(session, cuerpo.actor)
+def activar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    _administrador(session, cuerpo.actor, cuenta)
     try:
         return _usuario(ServicioUsuarios(session).cambiar_estado(usuario, activo=True))
     except ErrorDeRevision as error:
@@ -149,5 +178,7 @@ def puesta_en_marcha(session: Session = Depends(get_session)):
          "detalle": f"{usuarios.activos_con_rol('jefe_urgencias')} activos"},
         {"clave": "alerta_prueba_con_acuse", "requisito": "Una alerta de prueba enviada y con acuse", "cumplido": alerta_acusada,
          "detalle": "hay al menos una alerta acusada" if alerta_acusada else "ninguna alerta acusada todavía"},
+        {"clave": "sesion_obligatoria", "requisito": "Inicio de sesión obligatorio (RN-K5)", "cumplido": settings.exigir_sesion,
+         "detalle": "nada se consulta ni se firma sin sesión" if settings.exigir_sesion else "pendiente: EXIGIR_SESION=true en .env"},
     ]
     return {"listo": all(r["cumplido"] for r in requisitos), "requisitos": requisitos}

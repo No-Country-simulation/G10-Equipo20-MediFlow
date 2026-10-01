@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8
     contrato_transmision_internacional: bool = False  # RN-CO19
+    # RN-K5: con true, nada se consulta ni se firma sin iniciar sesión. En false (demostración) quien no tiene
+    # cuenta con clave sigue firmando con su nombre, y una cuenta con clave solo firma con su sesión.
+    exigir_sesion: bool = False
+    admin_usuario: str = "admin"  # primera cuenta de administrador: python -m scripts.crear_administrador
+    admin_clave_inicial: str = ""
 
 
 @lru_cache

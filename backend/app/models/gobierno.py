@@ -2,7 +2,7 @@
 y registro de accesos a documentos (RN-K3). Nada de esto contiene datos del paciente (RN-M4)."""
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -47,6 +47,19 @@ class Usuario(Base):
     creado_por: Mapped[str] = mapped_column(String(128))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
     desactivado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hash PBKDF2 de la clave. Sin clave la cuenta no inicia sesión; con clave nadie firma en su nombre sin sesión (RN-K5).
+    clave_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class SesionUsuario(Base):
+    """Sesión abierta de una cuenta. Solo se guarda el hash del token de la cookie."""
+
+    __tablename__ = "sesiones"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id", name="fk_sesiones_usuario", ondelete="CASCADE"), index=True)
+    expira_en: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    creada_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
 
 
 class AccesoDocumento(Base):

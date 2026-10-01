@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_llm, get_session, get_storage
+from app.api.deps import cuenta_actual, firmante, get_llm, get_session, get_storage
 from app.core.config import get_settings
 from app.services.configuracion import ServicioConfiguracion
 from app.repositories.documentos import RepositorioDocumentos
@@ -63,7 +63,9 @@ def resolver(
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
+    cuenta=Depends(cuenta_actual),
 ):
+    quien = firmante(session, cuenta, cuerpo.usuario, cuerpo.rol)
     repo = RepositorioDocumentos(session)
     doc = repo.ultima_version(documento_id)
     if doc is None:
@@ -71,7 +73,7 @@ def resolver(
     orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos))
     try:
         resultado = orquestador.resolver_revision(
-            doc, accion=cuerpo.accion, usuario=cuerpo.usuario, rol=cuerpo.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones,
+            doc, accion=cuerpo.accion, usuario=quien.usuario, rol=quien.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones,
             transcripcion=cuerpo.transcripcion,
         )
     except ErrorDeRevision as error:

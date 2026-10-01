@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session
+from app.api.deps import cuenta_actual, firmante, get_session
 from app.models.documento import Documento
 from app.models.paciente import Paciente
 from app.services.errores import ErrorDeRevision
@@ -68,17 +68,18 @@ class EdicionPaciente(BaseModel):
 
 
 @router.patch("/{paciente_id}")
-def editar_paciente(paciente_id: int, cuerpo: EdicionPaciente, session: Session = Depends(get_session)):
+def editar_paciente(paciente_id: int, cuerpo: EdicionPaciente, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
     """Corrige un dato mal registrado (por ejemplo, un nombre con error que genera conflictos). El número de documento no se edita."""
+    quien = firmante(session, cuenta, cuerpo.usuario, cuerpo.rol)
     cambios = cuerpo.model_dump(exclude_unset=True, exclude={"usuario", "rol", "motivo"})
     try:
-        if cuerpo.rol != "auditor_clinico":
-            raise ErrorDeRevision(403, f"RN-K2: los datos de un paciente los corrige el auditor clínico, no el rol {cuerpo.rol}")
-        ServicioUsuarios(session).validar_actor(cuerpo.usuario, "editar_paciente", cuerpo.rol)
+        if quien.rol != "auditor_clinico":
+            raise ErrorDeRevision(403, f"RN-K2: los datos de un paciente los corrige el auditor clínico, no el rol {quien.rol}")
+        ServicioUsuarios(session).validar_actor(quien.usuario, "editar_paciente", quien.rol)
         if not cambios:
             raise ErrorDeRevision(422, "no hay nada que cambiar")
         servicio = ServicioPacientes(session)
-        paciente = servicio.editar(paciente_id, usuario=cuerpo.usuario, motivo=cuerpo.motivo, cambios=cambios)
+        paciente = servicio.editar(paciente_id, usuario=quien.usuario, motivo=cuerpo.motivo, cambios=cambios)
     except ErrorDeRevision as error:
         session.rollback()
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
