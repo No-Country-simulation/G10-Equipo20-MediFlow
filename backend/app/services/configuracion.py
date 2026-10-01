@@ -19,7 +19,7 @@ from app.models.documento import Documento
 from app.models.gobierno import VersionConfiguracion
 from app.packs.loader import cargar_pack, cargar_umbrales
 from app.packs.modelos import HallazgoCritico, PackPais, Umbrales
-from app.schemas.resultado import ResultadoTriaje
+from app.schemas.resultado import Destino, ResultadoTriaje
 
 # Claves configurables (RN-L1) con su ruta dentro de Umbrales. Todo lo demás no se configura (RN-L2).
 CONFIGURABLES: dict[str, tuple[str, ...]] = {
@@ -37,6 +37,8 @@ CONFIGURABLES: dict[str, tuple[str, ...]] = {
     "tiempos.cola_revision.urgente_h": ("tiempos", "cola_revision", "urgente_h"),
     "tiempos.cola_revision.rutina_h_habiles": ("tiempos", "cola_revision", "rutina_h_habiles"),
 }
+# RN-L2: por estos dos pasa la seguridad del paciente (alerta crítica, RN-F1; revisión humana, RN-E8). Nunca se desactivan.
+DESTINOS_PROTEGIDOS = (Destino.COLA_EMERGENCIA_MEDICA, Destino.COLA_REVISION_HUMANA)
 _EPSILON = 1e-9
 
 
@@ -75,10 +77,12 @@ class CambiosConfiguracion(BaseModel):
 
     umbrales: dict[str, float] = Field(default_factory=dict)
     ampliaciones: Ampliaciones = Field(default_factory=Ampliaciones)
+    # RN-L1: destinos que la clínica no usa. None: la versión no los toca; una lista: el conjunto completo desde esa versión.
+    destinos_inactivos: list[Destino] | None = None
 
     @property
     def vacios(self) -> bool:
-        return not self.umbrales and self.ampliaciones.vacias
+        return not self.umbrales and self.ampliaciones.vacias and self.destinos_inactivos is None
 
 
 # --- Reglas puras -----------------------------------------------------------------------------
@@ -96,7 +100,14 @@ def acumular(previos: CambiosConfiguracion, nuevos: CambiosConfiguracion) -> Cam
             control_especial=_agregar_sin_repetir(a.control_especial, b.control_especial),
             hallazgos_criticos=[*a.hallazgos_criticos, *(h for h in b.hallazgos_criticos if h.concepto.strip().upper() not in conceptos)],
         ),
+        destinos_inactivos=nuevos.destinos_inactivos if nuevos.destinos_inactivos is not None else previos.destinos_inactivos,
     )
+
+
+def validar_destinos(cambios: CambiosConfiguracion) -> None:
+    for destino in cambios.destinos_inactivos or []:
+        if destino in DESTINOS_PROTEGIDOS:
+            raise ErrorConfiguracion(f"RN-L2: {destino.value} no se desactiva; por ahí pasan las alertas críticas y la revisión humana")
 
 
 def _leer(datos: dict, ruta: tuple[str, ...]) -> Any:
@@ -159,11 +170,15 @@ def aplicar_pack(base: PackPais, cambios: CambiosConfiguracion) -> PackPais:
         pack.hallazgos_criticos.append(HallazgoCritico(concepto=concepto, cie10=h.cie10, cie11=h.cie11, sinonimos=h.sinonimos,
                                                        estado="por_confirmar"))
         conceptos.add(concepto)
+    if cambios.destinos_inactivos is not None:
+        pack.destinos_inactivos = sorted({d.value for d in cambios.destinos_inactivos})
     return pack
 
 
-def toca_seguridad(base: Umbrales, cambios: CambiosConfiguracion) -> bool:
-    """RN-L5: baja de confianza, más tolerancia o más tiempo de reacción tocan seguridad."""
+def toca_seguridad(base: Umbrales, cambios: CambiosConfiguracion, inactivos_actuales: list[str] | None = None) -> bool:
+    """RN-L5: baja de confianza, más tolerancia, más tiempo de reacción o un destino que deja de recibir tocan seguridad."""
+    if cambios.destinos_inactivos is not None and {d.value for d in cambios.destinos_inactivos} - set(inactivos_actuales or []):
+        return True
     for clave, valor in cambios.umbrales.items():
         if clave not in CONFIGURABLES:
             continue
@@ -223,14 +238,16 @@ class ServicioConfiguracion:
     def validar(self, cambios: CambiosConfiguracion, pais: str) -> tuple[Umbrales, PackPais]:
         if cambios.vacios:
             raise ErrorConfiguracion("RN-L4: una versión necesita al menos un cambio")
+        validar_destinos(cambios)
         return aplicar_umbrales(self.umbrales(), cambios), aplicar_pack(self.pack(pais), cambios)
 
     def proponer(self, cambios: CambiosConfiguracion, *, autor: str, motivo: str, pais: str, simulacion: dict | None) -> VersionConfiguracion:
         if not motivo.strip():
             raise ErrorConfiguracion("RN-L4: cada versión lleva su motivo")
         self.validar(cambios, pais)
-        v = VersionConfiguracion(autor=autor.strip(), motivo=motivo.strip(), cambios_json=cambios.model_dump(),
-                                 simulacion_json=simulacion, toca_seguridad=toca_seguridad(self.umbrales(), cambios), aprobaciones_json=[])
+        v = VersionConfiguracion(autor=autor.strip(), motivo=motivo.strip(), cambios_json=cambios.model_dump(mode="json"),
+                                 simulacion_json=simulacion, aprobaciones_json=[],
+                                 toca_seguridad=toca_seguridad(self.umbrales(), cambios, self.pack(pais).destinos_inactivos))
         self.session.add(v)
         self.session.commit()
         self.session.refresh(v)

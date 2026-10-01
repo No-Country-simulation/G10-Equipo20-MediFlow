@@ -6,6 +6,7 @@ import pytest
 
 from app.packs.loader import cargar_pack, cargar_umbrales
 from app.services.configuracion import CambiosConfiguracion, ErrorConfiguracion, aplicar_pack, aplicar_umbrales, toca_seguridad
+from app.services.configuracion import acumular, validar_destinos
 from tests.test_aceptacion import med, receta, TEXTO_RECETA
 from tests.test_api_farmacia_autorizaciones import enviar
 
@@ -222,3 +223,73 @@ def test_RN_K2_solo_el_gestor_configura(client):
     p = proponer(client, {"umbrales": {"confianza.profesional": 0.9}}).json()
     r = client.post(f"/configuracion/propuestas/{p['id']}/aprobar", json={"usuario": "admin.root", "rol": "administrador"})
     assert r.status_code == 403 and "RN-K2" in r.json()["detail"]
+
+
+# --- Destinos activos (RN-L1) ---------------------------------------------------------------------
+
+
+def test_RN_L2_emergencia_y_revision_humana_no_se_desactivan():
+    for protegido in ("Cola_Emergencia_Medica", "Cola_Revision_Humana"):
+        with pytest.raises(ErrorConfiguracion, match="RN-L2"):
+            validar_destinos(CambiosConfiguracion(destinos_inactivos=[protegido]))
+    validar_destinos(CambiosConfiguracion(destinos_inactivos=["Farmacia_Hospitalaria"]))
+    with pytest.raises(ValueError):
+        CambiosConfiguracion(destinos_inactivos=["Destino_Inventado"])
+
+
+def test_RN_L5_desactivar_un_destino_toca_seguridad_y_reactivarlo_no():
+    base = cargar_umbrales()
+    assert toca_seguridad(base, CambiosConfiguracion(destinos_inactivos=["Farmacia_Hospitalaria"])) is True
+    assert toca_seguridad(base, CambiosConfiguracion(destinos_inactivos=[]), ["Farmacia_Hospitalaria"]) is False
+    assert toca_seguridad(base, CambiosConfiguracion(destinos_inactivos=["Farmacia_Hospitalaria"]), ["Farmacia_Hospitalaria"]) is False
+
+
+def test_los_destinos_de_una_version_se_heredan_hasta_que_otra_los_cambia():
+    v1 = CambiosConfiguracion(destinos_inactivos=["Farmacia_Hospitalaria"])
+    v2 = CambiosConfiguracion(umbrales={"confianza.profesional": 0.9})
+    assert [d.value for d in acumular(v1, v2).destinos_inactivos] == ["Farmacia_Hospitalaria"]
+    assert acumular(acumular(v1, v2), CambiosConfiguracion(destinos_inactivos=[])).destinos_inactivos == []
+    assert aplicar_pack(cargar_pack("CO"), acumular(v1, v2)).destinos_inactivos == ["Farmacia_Hospitalaria"]
+
+
+def test_RN_L1_el_gestor_desactiva_un_destino_y_lo_nuevo_va_a_revision_humana(client, llm_falso):
+    enviar(client, llm_falso, "REC-ANTES", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
+    cfg = client.get("/configuracion").json()
+    assert {d["destino"]: (d["activo"], d["protegido"]) for d in cfg["destinos"]}["Cola_Emergencia_Medica"] == (True, True)
+    assert all(d["activo"] for d in cfg["destinos"])
+
+    r = proponer(client, {"destinos_inactivos": ["Farmacia_Hospitalaria"]}, motivo="la sede no tiene farmacia propia")
+    assert r.status_code == 201, r.text
+    propuesta = r.json()
+    assert propuesta["toca_seguridad"] is True and propuesta["aprobaciones_requeridas"] == 2  # RN-L5
+    assert propuesta["simulacion"]["mas_a_revision"] == 1  # RN-L6: la receta ya procesada cambiaría
+    client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json=GESTOR)
+    aprobada = client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json={"usuario": "gestor.luis", "rol": "gestor"})
+    assert aprobada.json()["estado"] == "vigente"
+
+    destinos = {d["destino"]: d["activo"] for d in client.get("/configuracion").json()["destinos"]}
+    assert destinos["Farmacia_Hospitalaria"] is False and destinos["Historia_Clinica_Electronica"] is True
+    assert client.get("/documentos/REC-ANTES").json()["estado"] == "ENRUTADO"  # RN-L4: no es retroactiva
+    enviar(client, llm_falso, "REC-DESPUES", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
+    despues = client.get("/documentos/REC-DESPUES").json()
+    assert despues["estado"] == "EN_REVISION_HUMANA"
+    assert despues["resultado"]["evaluacion"]["motivo_auditoria"] == "destino_inactivo"
+    assert "Farmacia_Hospitalaria" in next(r["detalle"] for r in client.get("/administracion/puesta_en_marcha").json()["requisitos"]
+                                           if r["clave"] == "destinos_activos")
+
+    # una versión posterior que no toca destinos los hereda; otra los reactiva con una sola aprobación
+    otra = proponer(client, {"umbrales": {"tiempos.escalamiento_sin_acuse_min": 10}}).json()
+    client.post(f"/configuracion/propuestas/{otra['id']}/aprobar", json=GESTOR)
+    assert {d["destino"]: d["activo"] for d in client.get("/configuracion").json()["destinos"]}["Farmacia_Hospitalaria"] is False
+    reactivar = proponer(client, {"destinos_inactivos": []}, motivo="farmacia habilitada").json()
+    assert reactivar["toca_seguridad"] is False
+    assert client.post(f"/configuracion/propuestas/{reactivar['id']}/aprobar", json=GESTOR).json()["estado"] == "vigente"
+    enviar(client, llm_falso, "REC-FINAL", TEXTO_RECETA.replace("30 (treinta)", "60 (sesenta)"), receta([med("losartan", "50 mg", cantidad_numeros="60", cantidad_letras="sesenta")]))
+    assert client.get("/documentos/REC-FINAL").json()["estado"] == "ENRUTADO"
+
+
+def test_RN_L2_la_api_rechaza_desactivar_un_destino_protegido_o_inexistente(client):
+    r = proponer(client, {"destinos_inactivos": ["Cola_Emergencia_Medica"]})
+    assert r.status_code == 422 and "RN-L2" in r.json()["detail"]
+    assert proponer(client, {"destinos_inactivos": ["Destino_Inventado"]}).status_code == 422
+    assert all(d["activo"] for d in client.get("/configuracion").json()["destinos"])

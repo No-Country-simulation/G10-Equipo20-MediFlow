@@ -106,6 +106,7 @@ class MotivoAuditoria(StrEnum):
     SIGNOS_VITALES_SIN_ESCALA = "signos_vitales_sin_escala"  # RN-N1, RN-N2, RN-N4
     CRITICO_BAJA_CONFIANZA = "critico_baja_confianza"  # RN-D9
     CAMPO_OBLIGATORIO_FALTANTE = "campo_obligatorio_faltante"  # RN-C1
+    DESTINO_INACTIVO = "destino_inactivo"  # RN-L1
 
 
 class Destino(StrEnum):

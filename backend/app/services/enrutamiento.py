@@ -205,6 +205,11 @@ class _Enrutador:
         plan = self.plan()
         self._registrar("RN-E2", f"tipo={self.ev.clasificacion.tipo.value} nivel={self.ev.prioridad.value}",
                         f"principal={plan.principal.value} secundarios={[d.value for d in plan.secundarios]}")
+        inactivos = [d.value for d in (plan.principal, *plan.secundarios) if d.value in self.pack.destinos_inactivos]
+        if inactivos:
+            # RN-L1: la clínica desactivó ese destino. No se entrega solo: una persona decide qué hacer con el documento.
+            self._agregar_motivo(M.DESTINO_INACTIVO, "RN-L1", f"destino desactivado en la configuración vigente: {', '.join(inactivos)}")
+            plan.justificacion.append(f"RN-L1: {', '.join(inactivos)} está desactivado en esta instalación")
 
         entregas_retenidas: dict[str, str] = {}
         if self.ev.retiene_hce and D.HISTORIA_CLINICA_ELECTRONICA in (plan.principal, *plan.secundarios):

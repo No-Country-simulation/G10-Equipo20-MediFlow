@@ -8,7 +8,9 @@ from app.core.config import get_settings
 from app.models.gobierno import VersionConfiguracion
 from app.packs.loader import cargar_pack, cargar_umbrales
 from app.repositories.documentos import RepositorioDocumentos
-from app.services.configuracion import CONFIGURABLES, CambiosConfiguracion, ErrorConfiguracion, ServicioConfiguracion, aprobaciones_requeridas, valor_base
+from app.schemas.resultado import Destino
+from app.services.configuracion import (CONFIGURABLES, DESTINOS_PROTEGIDOS, CambiosConfiguracion, ErrorConfiguracion, ServicioConfiguracion,
+                                        aprobaciones_requeridas, valor_base)
 from app.services.errores import ErrorDeRevision
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import Orquestador
@@ -87,7 +89,7 @@ def configuracion(session: Session = Depends(get_session)):
     vigente = servicio.vigente()
     return {
         "vigente": _version(vigente) if vigente else {"id": None, "numero": 0, "autor": "sistema", "motivo": "valores iniciales de la sección 7",
-                                                       "cambios": {"umbrales": {}, "ampliaciones": {}}, "vigente_desde": None, "estado": "vigente"},
+                                                       "cambios": {"umbrales": {}, "ampliaciones": {}, "destinos_inactivos": None}, "vigente_desde": None, "estado": "vigente"},
         "umbrales_base": base.model_dump(exclude={"news2", "rangos", "calidad"}),
         "umbrales_efectivos": efectivos.model_dump(exclude={"news2", "rangos", "calidad"}),
         "rangos": {clave: {**base.rangos[clave].model_dump(), "base": valor_base(base, clave), "efectivo": valor_base(efectivos, clave)}
@@ -99,6 +101,8 @@ def configuracion(session: Session = Depends(get_session)):
             "hallazgos_criticos": {"base": [h.concepto for h in pack_base.hallazgos_criticos],
                                    "ampliados": [h.concepto for h in pack.hallazgos_criticos[len(pack_base.hallazgos_criticos):]]},
         },
+        # RN-L1: destinos que la clínica usa. Los protegidos se muestran y no se pueden desactivar (RN-L2).
+        "destinos": [{"destino": d.value, "activo": d.value not in pack.destinos_inactivos, "protegido": d in DESTINOS_PROTEGIDOS} for d in Destino],
         "calidad": base.calidad.model_dump(),
         "propuestas": [_version(v) for v in servicio.propuestas()],
         "historial": [_version(v) for v in servicio.historial()],

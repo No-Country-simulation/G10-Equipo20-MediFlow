@@ -130,6 +130,8 @@ class PackPais(BaseModel):
     vocabulario: dict[str, list[str]]
     retencion: Retencion
     datos_personales: DatosPersonales
+    # RN-L1: no viene del YAML; lo fija la configuración vigente de la instalación.
+    destinos_inactivos: list[str] = Field(default_factory=list)
 
 
 # --- Umbrales (sección 7) ---------------------------------------------------

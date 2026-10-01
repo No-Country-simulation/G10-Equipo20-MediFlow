@@ -234,3 +234,29 @@ def test_version_2_lleva_sufijo_en_la_ruta_RN_O2():
     evaluado = evaluar(propuesta(), ctx(), PACK, UMB)
     r = enrutar(evaluado, ContextoEnrutamiento(documento_id="DOC-X", canal_origen="Externo", pais="CO", version=2, url_base="http://x"), PACK, UMB)
     assert r.ruta_storage == "co/procesados/rutina/DOC-X_v2.json"
+
+
+# --- Destinos que la clínica desactivó (RN-L1) --------------------------------------------------
+
+
+def test_RN_L1_un_destino_desactivado_no_recibe_solo_va_a_revision_humana():
+    pack = PACK.model_copy(update={"destinos_inactivos": ["Farmacia_Hospitalaria"]})
+    evaluado = evaluar(receta([med("losartan")]), ctx(), pack, UMB)
+    r = enrutar(evaluado, ContextoEnrutamiento(documento_id="REC-1", canal_origen="Consulta_Ambulatoria", pais="CO"), pack, UMB)
+    assert r.estado is E.EN_REVISION_HUMANA
+    assert r.enrutamiento.destino_principal is D.COLA_REVISION_HUMANA
+    assert r.evaluacion.motivo_auditoria is M.DESTINO_INACTIVO
+    assert r.enrutamiento.destinos_tras_revision == [D.FARMACIA_HOSPITALARIA]  # la persona decide si igual se entrega
+    assert any(d.regla == "RN-L1" and "Farmacia_Hospitalaria" in d.evidencia for d in r.historial_decisiones)
+
+
+def test_RN_L1_un_critico_alerta_aunque_su_destino_secundario_este_desactivado_RN_D9():
+    pack = PACK.model_copy(update={"destinos_inactivos": ["Historia_Clinica_Electronica"]})
+    evaluado = evaluar(tep(), ctx(canal_origen="Guardia_Emergencias"), pack, UMB)
+    r = enrutar(evaluado, ContextoEnrutamiento(documento_id="TEP-1", canal_origen="Guardia_Emergencias", pais="CO"), pack, UMB)
+    assert r.evaluacion.motivo_auditoria is M.DESTINO_INACTIVO
+    assert r.notificacion_generada is not None and r.clasificacion.nivel_prioridad is N.CRITICO
+
+
+def test_RN_L1_sin_destinos_desactivados_nada_cambia():
+    assert procesar(receta([med("losartan")])).evaluacion.motivo_auditoria is None
