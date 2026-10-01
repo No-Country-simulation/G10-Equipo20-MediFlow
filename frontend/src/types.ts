@@ -320,6 +320,15 @@ export interface Ampliaciones {
 export interface CambiosConfiguracion {
   umbrales: Record<string, number>;
   ampliaciones: Ampliaciones;
+  /** RN-L1: conjunto completo de destinos sin uso desde esta versión. Ausente: la versión no los toca. */
+  destinos_inactivos?: string[] | null;
+}
+
+export interface DestinoConfigurado {
+  destino: string;
+  activo: boolean;
+  /** Emergencia y Revisión humana: nunca se desactivan (RN-L2). */
+  protegido: boolean;
 }
 
 export interface FilaSimulacion {
@@ -376,6 +385,7 @@ export interface Configuracion {
     hallazgos_criticos: { base: string[]; ampliados: string[] };
   };
   calidad: { limite_correccion_campo: number; simulacion_ultimos: number };
+  destinos?: DestinoConfigurado[];
   propuestas: VersionConfiguracion[];
   historial: VersionConfiguracion[];
 }

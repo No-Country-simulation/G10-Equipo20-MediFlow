@@ -21,6 +21,11 @@ const CONFIGURACION = {
   no_configurable: { news2: { fr_bajo: 8, fr_alto: 25, spo2_bajo: 91, spo2_escala2_min: 88, spo2_escala2_max: 92, fc_bajo: 40, fc_alto: 131, pas_bajo: 90, total_critico: 7, edad_minima: 16 } },
   listas: { alto_riesgo: { base: ["warfarina", "apixaban"], ampliadas: [] }, control_especial: { base: ["morfina"], ampliadas: [] }, hallazgos_criticos: { base: ["TEP_AGUDO", "IAM_STEMI"], ampliados: [] } },
   calidad: { limite_correccion_campo: 0.1, simulacion_ultimos: 50 },
+  destinos: [
+    { destino: "Cola_Emergencia_Medica", activo: true, protegido: true }, { destino: "Auditoria_Autorizaciones", activo: true, protegido: false },
+    { destino: "Farmacia_Hospitalaria", activo: true, protegido: false }, { destino: "Historia_Clinica_Electronica", activo: true, protegido: false },
+    { destino: "Cola_Revision_Humana", activo: true, protegido: true }, { destino: "Gestion_Programa_Cobertura", activo: true, protegido: false },
+  ],
   propuestas: [
     { id: 7, numero: null, autor: "gestor.luis", motivo: "menos revisión", cambios: { umbrales: { "confianza.medicamento_dosis": 0.9 }, ampliaciones: { alto_riesgo: [], control_especial: [], hallazgos_criticos: [] } },
       simulacion: { documentos_evaluados: 10, sin_propuesta: 2, cambian: 3, mas_a_revision: 0, mas_automaticos: 3, detalle: [] }, toca_seguridad: true,
@@ -150,6 +155,33 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     await waitFor(() => expect(aprobar).toHaveBeenCalledWith(7, { usuario: "gestor.ana", rol: "gestor" }));
     expect(screen.getByTestId("historial")).toHaveTextContent("reemplazada");
   });
+
+  it("deja de usar un destino desde la pestaña Destinos; Emergencia y Revisión humana no se pueden desmarcar (RN-L1, RN-L2)", async () => {
+    const proponer = vi.spyOn(api, "proponerConfiguracion").mockResolvedValue({ ...CONFIGURACION.propuestas[0], id: 9, toca_seguridad: true, aprobaciones: [], aprobaciones_requeridas: 2 } as never);
+    render(<AppRouter rutaInicial="/configuracion" rolInicial="gestor" />);
+    await userEvent.click(await screen.findByRole("tab", { name: /destinos/i }));
+    const panel = await screen.findByTestId("destinos");
+    expect(within(panel).getByLabelText("Emergencia médica")).toBeChecked();
+    expect(within(panel).getByLabelText("Emergencia médica")).toBeDisabled();
+    expect(within(panel).getByLabelText("Revisión humana")).toBeDisabled();
+    const farmacia = within(panel).getByLabelText("Farmacia");
+    expect(farmacia).toBeChecked();
+    await userEvent.click(farmacia);
+    expect(screen.getByTestId("barra-proponer")).toHaveTextContent(/1 cambio/);
+    expect(screen.getByTestId("barra-proponer")).toHaveTextContent(/destinos sin uso: Farmacia/);
+    // volver a marcarlo deja la propuesta sin cambios: los destinos viajan solo si cambiaron
+    await userEvent.click(farmacia);
+    expect(screen.getByTestId("barra-proponer")).toHaveTextContent(/sin cambios/i);
+    await userEvent.click(farmacia);
+    await userEvent.type(screen.getByLabelText(/firmo como/i), "gestor.ana");
+    await userEvent.type(screen.getByLabelText(/motivo de la versión/i), "la sede no tiene farmacia");
+    await userEvent.click(screen.getByRole("button", { name: /proponer versión/i }));
+    await waitFor(() => expect(proponer).toHaveBeenCalledWith({
+      cambios: { umbrales: {}, ampliaciones: { alto_riesgo: [], control_especial: [], hallazgos_criticos: [] }, destinos_inactivos: ["Farmacia_Hospitalaria"] },
+      usuario: "gestor.ana", rol: "gestor", motivo: "la sede no tiene farmacia",
+    }));
+    expect(await screen.findByText(/toca seguridad: necesita dos aprobadores/i)).toBeInTheDocument();
+  }, 15_000);
 });
 
 describe("Métricas (RN-R1, RN-R4)", () => {

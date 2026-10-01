@@ -51,6 +51,7 @@ export const MOTIVO_AUDITORIA: Record<string, string> = {
   signos_vitales_sin_escala: "Signos vitales sin escala aplicable",
   critico_baja_confianza: "Crítico con baja confianza",
   campo_obligatorio_faltante: "Falta un campo obligatorio",
+  destino_inactivo: "Destino sin uso en esta clínica",
 };
 
 export function mensajeDeRechazo(codigo: string | null | undefined): string {

@@ -1,8 +1,9 @@
-import { FlaskConical, GitBranchPlus, History, ListPlus, SlidersHorizontal } from "lucide-react";
+import { FlaskConical, GitBranchPlus, History, ListPlus, Signpost, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { aprobarConfiguracion, obtenerConfiguracion, proponerConfiguracion, rechazarConfiguracion, simularConfiguracion } from "../api";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
+import { etiquetaDestino } from "../app/mensajes";
 import { alTeclearPestanas } from "../app/pestanas";
 import { useUsuario } from "../app/usuario";
 import { Vacio } from "../components/Vacio";
@@ -40,7 +41,7 @@ const NEWS2: Record<string, string> = {
   total_critico: "NEWS2 total crítico (≥)", edad_minima: "Edad mínima para NEWS2",
 };
 
-type Pestana = "umbrales" | "listas" | "versiones";
+type Pestana = "umbrales" | "listas" | "destinos" | "versiones";
 
 export function etiquetaUmbral(clave: string): string {
   return UMBRALES.find((u) => u.clave === clave)?.etiqueta ?? clave;
@@ -57,6 +58,9 @@ function resumenCambios(c: Partial<CambiosConfiguracion>): string[] {
   if (a?.alto_riesgo?.length) salida.push(`+ alto riesgo: ${a.alto_riesgo.join(", ")}`);
   if (a?.control_especial?.length) salida.push(`+ control especial: ${a.control_especial.join(", ")}`);
   if (a?.hallazgos_criticos?.length) salida.push(`+ hallazgos críticos: ${a.hallazgos_criticos.map((h) => h.concepto).join(", ")}`);
+  if (c.destinos_inactivos) {
+    salida.push(c.destinos_inactivos.length ? `destinos sin uso: ${c.destinos_inactivos.map(etiquetaDestino).join(", ")}` : "todos los destinos en uso");
+  }
   return salida;
 }
 
@@ -76,6 +80,7 @@ export function ConfiguracionPage() {
   const [altoRiesgo, setAltoRiesgo] = useState("");
   const [controlEspecial, setControlEspecial] = useState("");
   const [hallazgo, setHallazgo] = useState({ concepto: "", sinonimos: "", cie10: "" });
+  const [sinUso, setSinUso] = useState<string[]>([]);
   const [usuario] = useUsuario();
   const [motivo, setMotivo] = useState("");
   const [simulacion, setSimulacion] = useState<Simulacion | null>(null);
@@ -88,6 +93,7 @@ export function ConfiguracionPage() {
       .then((c) => {
         setCfg(c);
         setTextos(Object.fromEntries(Object.entries(c.rangos).map(([k, r]) => [k, String(r.efectivo)])));
+        setSinUso((c.destinos ?? []).filter((d) => !d.activo).map((d) => d.destino));
       })
       .catch(() => setMensaje({ texto: "No hay conexión con el servidor. La página se mostrará cuando vuelva.", error: true }));
   useEffect(() => { cargar(); }, []);
@@ -106,11 +112,16 @@ export function ConfiguracionPage() {
         ? [{ concepto: hallazgo.concepto.trim(), sinonimos: separar(hallazgo.sinonimos), cie10: separar(hallazgo.cie10), cie11: [] }]
         : [],
     };
+    // Los destinos viajan solo si cambiaron, y entonces como conjunto completo (RN-L1).
+    const vigentes = (cfg?.destinos ?? []).filter((d) => !d.activo).map((d) => d.destino);
+    const pedidos = (cfg?.destinos ?? []).map((d) => d.destino).filter((d) => sinUso.includes(d));
+    if (pedidos.join("|") !== vigentes.join("|")) return { umbrales, ampliaciones, destinos_inactivos: pedidos };
     return { umbrales, ampliaciones };
-  }, [textos, cfg, altoRiesgo, controlEspecial, hallazgo]);
+  }, [textos, cfg, altoRiesgo, controlEspecial, hallazgo, sinUso]);
 
   const nCambios = Object.keys(cambios.umbrales).length + cambios.ampliaciones.alto_riesgo.length
-    + cambios.ampliaciones.control_especial.length + cambios.ampliaciones.hallazgos_criticos.length;
+    + cambios.ampliaciones.control_especial.length + cambios.ampliaciones.hallazgos_criticos.length
+    + (cambios.destinos_inactivos ? 1 : 0);
   const fueraDeRango = Object.entries(cambios.umbrales).filter(([k, v]) => {
     const r = cfg?.rangos[k];
     return r && (v < r.min || v > r.max || (r.solo_a_la_baja && v > r.base));
@@ -198,6 +209,7 @@ export function ConfiguracionPage() {
       <div className="pestanas" role="tablist" aria-label="Secciones de configuración" onKeyDown={alTeclearPestanas}>
         <button type="button" role="tab" id="tab-umbrales" aria-controls="panel-configuracion" tabIndex={pestana === "umbrales" ? 0 : -1} aria-selected={pestana === "umbrales"} className={pestana === "umbrales" ? "" : "secundario"} onClick={() => setPestana("umbrales")}><SlidersHorizontal size={16} aria-hidden="true" />Umbrales</button>
         <button type="button" role="tab" id="tab-listas" aria-controls="panel-configuracion" tabIndex={pestana === "listas" ? 0 : -1} aria-selected={pestana === "listas"} className={pestana === "listas" ? "" : "secundario"} onClick={() => setPestana("listas")}><ListPlus size={16} aria-hidden="true" />Listas ampliables</button>
+        <button type="button" role="tab" id="tab-destinos" aria-controls="panel-configuracion" tabIndex={pestana === "destinos" ? 0 : -1} aria-selected={pestana === "destinos"} className={pestana === "destinos" ? "" : "secundario"} onClick={() => setPestana("destinos")}><Signpost size={16} aria-hidden="true" />Destinos</button>
         <button type="button" role="tab" id="tab-versiones" aria-controls="panel-configuracion" tabIndex={pestana === "versiones" ? 0 : -1} aria-selected={pestana === "versiones"} className={pestana === "versiones" ? "" : "secundario"} onClick={() => setPestana("versiones")}><History size={16} aria-hidden="true" />Versiones{pendientes > 0 && <span className="contador-pestana">{pendientes}</span>}</button>
       </div>
 
@@ -265,6 +277,37 @@ export function ConfiguracionPage() {
         </section>
       )}
 
+      {pestana === "destinos" && (
+        <section className="tarjeta" data-testid="destinos">
+          <h2>Destinos en uso</h2>
+          <p className="muted">
+            Desmarca un destino que esta clínica no usa. Lo que iba a ese destino pasa a revisión humana, donde una persona decide.
+            Dejar de usar un destino toca seguridad: necesita dos aprobadores.
+          </p>
+          <table className="umbrales">
+            <thead><tr><th>Destino</th><th>Recibe documentos</th></tr></thead>
+            <tbody>
+              {(cfg?.destinos ?? []).map((d) => {
+                const enUso = !sinUso.includes(d.destino);
+                const id = `destino-${d.destino}`;
+                return (
+                  <tr key={d.destino} className={enUso !== d.activo ? "cambiado" : ""}>
+                    <td>
+                      <label htmlFor={id}>{etiquetaDestino(d.destino)}</label>
+                      {d.protegido && <span className="secundaria">Siempre en uso: por aquí pasan las alertas críticas y la revisión humana.</span>}
+                    </td>
+                    <td>
+                      <input id={id} type="checkbox" checked={enUso} disabled={d.protegido}
+                        onChange={(e) => setSinUso(e.target.checked ? sinUso.filter((x) => x !== d.destino) : [...sinUso, d.destino])} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       {pestana === "versiones" && (
         <>
           <section className="tarjeta">
@@ -325,7 +368,7 @@ export function ConfiguracionPage() {
           {simulacion && <section className="tarjeta" style={{ marginTop: 12 }}><ResultadoSimulacion s={simulacion} /></section>}
           <div className="barra-acciones" data-testid="barra-proponer">
             <span className="resumen-cambios">
-              {nCambios === 0 ? <span className="muted">Sin cambios. Ajusta un umbral o amplía una lista.</span> : <><strong>{nCambios} {nCambios === 1 ? "cambio" : "cambios"}</strong> <span className="muted">· {resumenCambios(cambios).join(" · ")}</span></>}
+              {nCambios === 0 ? <span className="muted">Sin cambios. Ajusta un umbral, amplía una lista o cambia un destino.</span> : <><strong>{nCambios} {nCambios === 1 ? "cambio" : "cambios"}</strong> <span className="muted">· {resumenCambios(cambios).join(" · ")}</span></>}
             </span>
             <button type="button" className="secundario" disabled={nCambios === 0 || fueraDeRango.length > 0 || simulando} onClick={simular}>
               <FlaskConical size={16} aria-hidden="true" />{simulando ? "Simulando…" : "Simular"}
