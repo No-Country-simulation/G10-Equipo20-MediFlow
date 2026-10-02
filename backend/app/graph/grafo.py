@@ -21,7 +21,7 @@ def _rama_tras_validar(estado: EstadoGrafo) -> str:
     return "rechazado" if estado.get("codigo_error") else "clasificar_extraer"
 
 
-def construir_grafo(orquestador):
+def construir_grafo(orquestador, memoria=None):
     grafo = StateGraph(EstadoGrafo)
     grafo.add_node("validar", orquestador.nodo_validar)
     grafo.add_node("clasificar_extraer", orquestador.nodo_clasificar_extraer)
@@ -35,7 +35,7 @@ def construir_grafo(orquestador):
     grafo.add_edge("evaluar", "enrutar")
     grafo.add_edge("enrutar", END)
     grafo.add_edge("fallo_tecnico", END)
-    return grafo.compile()
+    return grafo.compile(checkpointer=memoria)
 
 
 def diagrama_mermaid() -> str:

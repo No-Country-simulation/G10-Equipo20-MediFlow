@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import cuenta_actual, get_llm, get_session, get_storage
+from app.api.deps import get_memoria, cuenta_actual, get_llm, get_session, get_storage
 from app.core.config import get_settings
 from app.models.documento import Documento
 from app.services.configuracion import ServicioConfiguracion
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/documentos", tags=["documentos"])
 
 def _orquestador(session: Session, storage: Storage, llm: ClienteLLM) -> Orquestador:
     settings = get_settings()
-    return Orquestador(RepositorioDocumentos(session), storage, ServicioExtraccion(llm, max_intentos=settings.llm_max_intentos))
+    return Orquestador(RepositorioDocumentos(session), storage, ServicioExtraccion(llm, max_intentos=settings.llm_max_intentos), memoria=get_memoria())
 
 
 def _ingesta(session: Session, storage: Storage) -> ServicioIngesta:

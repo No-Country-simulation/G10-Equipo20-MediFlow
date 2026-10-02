@@ -11,6 +11,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.graph.estado import EstadoGrafo
+from app.graph.memoria import hilo
 from app.models.documento import Documento
 from app.packs.loader import cargar_pack, cargar_umbrales
 from app.packs.modelos import PackPais, Umbrales
@@ -68,6 +69,7 @@ class Orquestador:
         pack: PackPais | None = None,
         umbrales: Umbrales | None = None,
         url_base: str | None = None,
+        memoria=None,
     ):
         self.repo = repositorio
         self.storage = storage
@@ -84,7 +86,8 @@ class Orquestador:
         self.ingesta = ServicioIngesta(repositorio, storage, tamano_maximo_bytes=settings.tamano_maximo_bytes, max_paginas_pdf=settings.max_paginas_pdf)
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
 
-        self._grafo = construir_grafo(self)
+        self.memoria = memoria
+        self.grafo = construir_grafo(self, memoria)
 
     # --- entrada principal -----------------------------------------------------------
 
@@ -92,8 +95,18 @@ class Orquestador:
         """Corre el grafo desde la etapa en que está el documento. Devuelve None si validar lo rechazó (RN-I5)."""
         if documento.estado not in (E.RECIBIDO, E.VALIDADO):
             raise ValueError(f"solo se procesa un documento RECIBIDO o VALIDADO; está en {documento.estado}")
-        final = self._grafo.invoke({"documento_pk": documento.id})
-        return final.get("resultado")
+        return self._resultado_de(self.grafo.invoke({"documento_pk": documento.id}, config=hilo(documento)))
+
+    def reanudar(self, documento: Documento) -> ResultadoTriaje | None:
+        """Retoma el hilo del documento en la etapa donde quedó (RN-P2). Exige memoria del grafo."""
+        if self.memoria is None:
+            raise ValueError("reanudar exige memoria del grafo (app/graph/memoria.py)")
+        return self._resultado_de(self.grafo.invoke(None, config=hilo(documento)))
+
+    @staticmethod
+    def _resultado_de(final: EstadoGrafo) -> ResultadoTriaje | None:
+        volcado = final.get("resultado")
+        return ResultadoTriaje.model_validate(volcado) if volcado else None
 
     def _doc(self, estado: EstadoGrafo) -> Documento:
         return self.repo.session.get(Documento, estado["documento_pk"])
@@ -138,18 +151,21 @@ class Orquestador:
     def nodo_evaluar(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
         evaluado = self._evaluar(PropuestaLLM.model_validate(estado["propuesta"]), doc)
-        self.repo.transicionar(doc, E.EVALUADO, actor=ACTOR_SISTEMA, motivo=f"prioridad {evaluado.prioridad.value}; motivos {[m.value for m in evaluado.motivos]}")
-        return {"evaluado": evaluado}
+        motivos = [m.value for m in evaluado.motivos]
+        self.repo.transicionar(doc, E.EVALUADO, actor=ACTOR_SISTEMA, motivo=f"prioridad {evaluado.prioridad.value}; motivos {motivos}")
+        return {"evaluacion": {"prioridad": evaluado.prioridad.value, "motivos": motivos}}
 
     def nodo_enrutar(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
-        resultado = enrutar(estado["evaluado"], self._contexto_enrutamiento(doc), self.pack, self.umbrales)
+        # La evaluación es determinística: se recalcula desde la propuesta en vez de viajar como objeto en el estado.
+        evaluado = self._evaluar(PropuestaLLM.model_validate(estado["propuesta"]), doc)
+        resultado = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
         motivo = resultado.enrutamiento.justificacion_enrutamiento
         if resultado.evaluacion.motivo_auditoria is not None:
             motivo = f"{resultado.evaluacion.motivo_auditoria.value}: {motivo}"
         self.repo.transicionar(doc, resultado.estado, actor=ACTOR_SISTEMA, motivo=motivo[:500])
         self._persistir(doc, resultado)
-        return {"resultado": resultado}
+        return {"resultado": resultado.model_dump(mode="json")}
 
     def nodo_fallo_tecnico(self, estado: EstadoGrafo) -> EstadoGrafo:
         """RN-P2: reintentos agotados -> revisión humana. RN-P4: la detección determinística sigue alertando."""
@@ -193,7 +209,7 @@ class Orquestador:
         )
         self.repo.transicionar(doc, E.EN_REVISION_HUMANA, actor=ACTOR_SISTEMA, motivo="fallo_tecnico")
         self._persistir(doc, resultado)
-        return {"resultado": resultado}
+        return {"resultado": resultado.model_dump(mode="json")}
 
     # --- acciones humanas (RN-J) ---------------------------------------------------------
 

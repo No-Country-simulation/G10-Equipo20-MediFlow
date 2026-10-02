@@ -1,5 +1,5 @@
-"""Estado que viaja por el grafo. Los objetos pesados (evaluación, resultado) se
-mantienen en memoria dentro de la misma transacción; lo persistente vive en la base."""
+"""Estado que viaja por el grafo. Es JSON puro: se guarda como checkpoint y se lee desde otro proceso
+(app/graph/memoria.py). Lo persistente vive en las tablas propias; aquí solo va lo que la siguiente etapa necesita."""
 from typing import Any, TypedDict
 
 
@@ -8,5 +8,5 @@ class EstadoGrafo(TypedDict, total=False):
     codigo_error: str | None  # motivo de rechazo decidido por validar (RN-I5)
     propuesta: dict[str, Any] | None  # propuesta del LLM ya re-identificada
     error: str | None  # motivo del fallo técnico, si lo hubo
-    evaluado: Any  # app.services.evaluacion.Evaluado
-    resultado: Any  # app.schemas.resultado.ResultadoTriaje
+    evaluacion: dict[str, Any] | None  # resumen de evaluar: prioridad y motivos (la evaluación completa se recalcula, es determinística)
+    resultado: dict[str, Any] | None  # ResultadoTriaje volcado a JSON

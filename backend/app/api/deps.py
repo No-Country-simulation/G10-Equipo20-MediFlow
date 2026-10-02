@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import abrir_sesion
+from app.graph.memoria import crear_memoria
 from app.core.sesiones import cuenta_de_la_sesion
 from app.models.gobierno import Usuario
 from app.services.llm import ClienteGemini, ClienteLLM, ClienteOpenAI, ErrorTransitorioLLM, LlamadaLLM, RespuestaLLM
@@ -29,6 +30,12 @@ def get_storage() -> Storage:
     if settings.oci_namespace and settings.oci_bucket:
         return StorageOCI(settings.oci_namespace, settings.oci_bucket, settings.oci_region or None)
     return StorageLocal(settings.storage_local_dir)
+
+
+@lru_cache
+def get_memoria():
+    """Memoria del grafo en la misma base PostgreSQL (RN-P2, RN-I4)."""
+    return crear_memoria(get_settings().database_url)
 
 
 class ClienteNoConfigurado:
