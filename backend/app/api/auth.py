@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import cuenta_actual, get_session
 from app.core.config import get_settings
+from datetime import datetime, timezone
+
 from app.core.sesiones import abrir_sesion, cerrar_sesion, clave_coincide
 from app.models.gobierno import Usuario
 from app.services.usuarios import ServicioUsuarios
@@ -27,8 +29,16 @@ def ingresar(cuerpo: Credenciales, request: Request, response: Response, session
     # El mismo mensaje para usuario desconocido, clave equivocada, cuenta sin clave o desactivada: no se revela cuál fue.
     if u is None or not u.activo or not clave_coincide(cuerpo.clave, u.clave_hash):
         raise HTTPException(status_code=401, detail="Usuario o clave incorrectos")
+    u.ultimo_ingreso_en = datetime.now(timezone.utc)
     abrir_sesion(u, session, response, request)
     return _cuenta(u)
+
+
+@router.get("/roles")
+def roles(session: Session = Depends(get_session)):
+    """Tabla K como datos: el frontend arma el menú y el comportamiento de cada rol desde aquí (RN-K1). Público:
+    no lleva nada clínico ni personal."""
+    return [r.como_dict() for r in ServicioUsuarios(session).roles()]
 
 
 @router.get("/estado")

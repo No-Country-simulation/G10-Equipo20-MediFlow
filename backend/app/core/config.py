@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # cuenta con clave sigue firmando con su nombre, y una cuenta con clave solo firma con su sesión.
     exigir_sesion: bool = False
     admin_usuario: str = "admin"  # primera cuenta de administrador: python -m scripts.crear_administrador
+    # Cuentas de demostración (una persona por rol, con clave) que el backend genera al arrancar. Solo para el hackathon.
+    cuentas_demo: bool = False
+    cuentas_demo_clave: str = "MediFlow.2026"
     admin_clave_inicial: str = ""
 
 

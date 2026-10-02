@@ -12,7 +12,7 @@ from app.models.alerta import Alerta
 from app.models.gobierno import Usuario
 from app.services.configuracion import ServicioConfiguracion
 from app.services.errores import ErrorDeRevision
-from app.services.usuarios import ROLES, TIPOS, ServicioUsuarios
+from app.services.usuarios import TIPOS, ServicioUsuarios
 
 router = APIRouter(prefix="/administracion", tags=["administracion"])
 
@@ -58,8 +58,8 @@ def listar_usuarios(session: Session = Depends(get_session)):
 
 
 @router.get("/roles")
-def roles():
-    return {"roles": list(ROLES), "tipos": list(TIPOS)}
+def roles(session: Session = Depends(get_session)):
+    return {"roles": [r.id for r in ServicioUsuarios(session).roles()], "tipos": list(TIPOS)}
 
 
 @router.post("/usuarios", status_code=201)

@@ -9,22 +9,14 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.gobierno import AccesoDocumento, Usuario
+from app.models.gobierno import AccesoDocumento, Rol, Usuario
 from app.services.errores import ErrorDeRevision
+from app.services.roles_base import ROLES_BASE
 
-ROLES = ("auditor_clinico", "quimico_farmaceutico", "auditor_autorizaciones", "jefe_urgencias", "gestor", "administrador")
+# Los roles y sus acciones viven en la tabla `roles` (tabla K). Estas constantes solo repiten la base para
+# quien necesite la lista sin sesión abierta (por ejemplo, el script del primer administrador).
+ROLES = tuple(r["id"] for r in ROLES_BASE)
 TIPOS = ("persona", "servicio")
-
-# Qué rol ejecuta cada acción (tabla K). Quien configura no revisa; quien administra no ve datos clínicos (RN-K2).
-ACCIONES: dict[str, set[str]] = {
-    "resolver_revision": {"auditor_clinico", "jefe_urgencias"},
-    "acusar_alerta": {"jefe_urgencias", "auditor_clinico"},
-    "verificar_receta": {"quimico_farmaceutico"},
-    "resolver_autorizacion": {"auditor_autorizaciones"},
-    "editar_paciente": {"auditor_clinico"},
-    "configurar": {"gestor"},
-    "administrar": {"administrador"},
-}
 ACCIONES_CLINICAS = {"resolver_revision", "acusar_alerta", "verificar_receta", "resolver_autorizacion", "editar_paciente"}
 
 
@@ -35,12 +27,32 @@ class ServicioUsuarios:
     def buscar(self, usuario: str) -> Usuario | None:
         return self.session.scalars(select(Usuario).where(Usuario.usuario == usuario.strip())).first()
 
+    # --- roles (tabla K como datos) --------------------------------------------------------------
+
+    def roles(self) -> list[Rol]:
+        """Los roles de la tabla. Si la tabla está vacía (base recién creada sin migración), se repone desde la base."""
+        roles = list(self.session.scalars(select(Rol).order_by(Rol.orden)))
+        if not roles:
+            from app.services.semillas import sembrar_roles  # noqa: PLC0415 - evita import circular
+
+            sembrar_roles(self.session)
+            roles = list(self.session.scalars(select(Rol).order_by(Rol.orden)))
+        return roles
+
+    def rol(self, id_rol: str) -> Rol | None:
+        return next((r for r in self.roles() if r.id == id_rol), None)
+
+    def roles_de_accion(self, accion: str) -> set[str]:
+        """Qué roles ejecutan una acción (tabla K). Quien configura no revisa; quien administra no ve datos clínicos (RN-K2)."""
+        return {r.id for r in self.roles() if accion in r.acciones}
+
     def listar(self) -> list[Usuario]:
         return list(self.session.scalars(select(Usuario).order_by(Usuario.id)))
 
     def crear(self, *, usuario: str, nombre: str, rol: str, tipo: str, actor: str) -> Usuario:
-        if rol not in ROLES:
-            raise ErrorDeRevision(422, f"rol desconocido: {rol}. Roles: {', '.join(ROLES)}")
+        ids = [r.id for r in self.roles()]
+        if rol not in ids:
+            raise ErrorDeRevision(422, f"rol desconocido: {rol}. Roles: {', '.join(ids)}")
         if tipo not in TIPOS:
             raise ErrorDeRevision(422, f"tipo desconocido: {tipo}. Tipos: {', '.join(TIPOS)}")
         if self.buscar(usuario) is not None:
@@ -77,7 +89,7 @@ class ServicioUsuarios:
             raise ErrorDeRevision(403, "RN-K5: ninguna acción clínica la ejecuta una cuenta de servicio")
         if rol_declarado and rol_declarado != u.rol:
             raise ErrorDeRevision(403, f"RN-K1: {u.usuario} está registrado como {u.rol}, no como {rol_declarado}")
-        permitidos = ACCIONES.get(accion, set())
+        permitidos = self.roles_de_accion(accion)
         if u.rol not in permitidos:
             raise ErrorDeRevision(403, f"RN-K2: el rol {u.rol} no ejecuta {accion}. Quien configura no revisa; quien administra no ve datos clínicos")
 

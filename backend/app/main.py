@@ -3,11 +3,13 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
 
 from app.api import administracion, alertas, auth, autorizaciones, configuracion, documentos, farmacia, healthcheck, metricas, pacientes, resumen, revision
 from app.api.deps import ROLES_CLINICOS, acceso, get_memoria
 from app.core.config import get_settings
-from app.core.database import crear_tablas
+from app.core.arranque import preparar_instalacion
+from app.core.database import crear_tablas, get_engine
 from app.services.escalamiento import escalar_una_vuelta
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,10 @@ async def _bucle_de_escalamiento(cada_s: int) -> None:
 @asynccontextmanager
 async def ciclo_de_vida(_: FastAPI):
     crear_tablas()
+    with Session(get_engine()) as sesion:
+        informe = preparar_instalacion(sesion)  # roles de la tabla K y, si la instalación lo pide, cuentas de demostración
+    if informe["roles"] or informe["cuentas"]:
+        logger.info("Instalación preparada: %d roles y %d cuentas de demostración creados", informe["roles"], informe["cuentas"])
     get_memoria()  # la memoria del grafo abre su conexión y crea sus tablas al arrancar, no en la primera petición
     cada_s = get_settings().escalamiento_cada_s
     tarea = asyncio.create_task(_bucle_de_escalamiento(cada_s)) if cada_s > 0 else None

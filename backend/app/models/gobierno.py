@@ -33,6 +33,35 @@ class VersionConfiguracion(Base):
     cierre_motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Rol(Base):
+    """Tabla K como datos: qué ve y qué puede cada rol. Se siembra desde app/services/roles_base.py."""
+
+    __tablename__ = "roles"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    orden: Mapped[int] = mapped_column(Integer)
+    nombre: Mapped[str] = mapped_column(String(64))
+    descripcion: Mapped[str] = mapped_column(Text)
+    ve: Mapped[str] = mapped_column(String(128))  # columna "Ve" de la tabla K
+    puede: Mapped[str] = mapped_column(String(128))  # columna "Puede" de la tabla K
+    secciones: Mapped[list] = mapped_column(JSON)  # lo que el frontend muestra en el menú (RN-K1)
+    acciones: Mapped[list] = mapped_column(JSON)  # lo que la API deja firmar (RN-K1, RN-K2)
+    tipos_documento: Mapped[list] = mapped_column(JSON)  # RN-J9: vacío = todos
+    ve_documentos: Mapped[bool] = mapped_column(Boolean)
+    ruta_inicial: Mapped[str] = mapped_column(String(64))
+    modo_discreto: Mapped[bool] = mapped_column(Boolean)
+    alto_contraste: Mapped[bool] = mapped_column(Boolean)
+    pantalla_compartida: Mapped[bool] = mapped_column(Boolean)
+
+    def como_dict(self) -> dict:
+        return {
+            "id": self.id, "nombre": self.nombre, "descripcion": self.descripcion, "ve": self.ve, "puede": self.puede,
+            "secciones": list(self.secciones), "acciones": list(self.acciones), "tipos_documento": list(self.tipos_documento),
+            "ve_documentos": self.ve_documentos, "ruta_inicial": self.ruta_inicial, "modo_discreto": self.modo_discreto,
+            "alto_contraste": self.alto_contraste, "pantalla_compartida": self.pantalla_compartida,
+        }
+
+
 class Usuario(Base):
     """Tabla K: un usuario tiene un rol. RN-K4: desactivado pierde acceso; RN-K5: las cuentas de servicio no firman."""
 
@@ -49,6 +78,7 @@ class Usuario(Base):
     desactivado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Hash PBKDF2 de la clave. Sin clave la cuenta no inicia sesión; con clave nadie firma en su nombre sin sesión (RN-K5).
     clave_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ultimo_ingreso_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SesionUsuario(Base):
