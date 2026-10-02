@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 
 from app.api import administracion, alertas, auth, autorizaciones, configuracion, documentos, farmacia, healthcheck, metricas, pacientes, resumen, revision
-from app.api.deps import ROLES_CLINICOS, acceso
+from app.api.deps import ROLES_CLINICOS, acceso, get_memoria
 from app.core.config import get_settings
 from app.core.database import crear_tablas
 
@@ -11,6 +11,7 @@ from app.core.database import crear_tablas
 @asynccontextmanager
 async def ciclo_de_vida(_: FastAPI):
     crear_tablas()
+    get_memoria()  # la memoria del grafo abre su conexión y crea sus tablas al arrancar, no en la primera petición
     yield
 
 
