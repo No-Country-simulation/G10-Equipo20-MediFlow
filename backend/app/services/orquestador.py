@@ -127,6 +127,8 @@ class Orquestador:
             return "validar"
         if estado_doc == E.EN_REVISION_HUMANA:
             return "revision_humana"
+        if estado_doc == E.ENRUTADO:
+            return "entrega"
         return "clasificar_extraer"
 
     # --- nodos del grafo -----------------------------------------------------------------
@@ -285,8 +287,44 @@ class Orquestador:
 
     def esperando_decision(self, doc: Documento) -> bool:
         """El hilo del documento está detenido en revision_humana, a la espera de la persona (RN-I4)."""
+        return self._esperando_en(doc, "revision_humana")
+
+    def esperando_entrega(self, doc: Documento) -> bool:
+        """El hilo está detenido en entrega, a la espera de confirmaciones, verificaciones o acuse."""
+        return self._esperando_en(doc, "entrega")
+
+    def _esperando_en(self, doc: Documento, nodo: str) -> bool:
         instantanea = self.grafo.get_state(hilo(doc))
-        return any(tarea.name == "revision_humana" and tarea.interrupts for tarea in instantanea.tasks)
+        return any(tarea.name == nodo and tarea.interrupts for tarea in instantanea.tasks)
+
+    # --- entrega: el grafo espera los hechos (sección 3.3, RN-J7) --------------------------------------
+
+    def nodo_entrega(self, estado: EstadoGrafo) -> EstadoGrafo:
+        """Enrutado es una decisión; Entregado, un hecho. El grafo espera cada confirmación de destino, cada
+        verificación y el acuse de la alerta, y cierra cuando no queda nada pendiente. Un crítico no cierra sin acuse (RN-J7)."""
+        doc = self._doc(estado)
+        evento = interrupt({"documento_id": doc.documento_id, "version": doc.version, "pendientes": self._pendientes_de_cierre(doc)})
+        if evento.get("tipo") == "entrega":
+            entregas = dict(doc.entregas_json or {})
+            entregas[evento["destino"]] = True
+            doc.entregas_json = entregas  # la entrega no cambia de estado hasta el cierre (RN-I)
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        if self._pendientes_de_cierre(doc):
+            self.repo.guardar()
+            return {"resultado": resultado.model_dump(mode="json")}
+        alerta = self.repo.alerta_activa(doc)
+        self.repo.transicionar(doc, E.ENTREGADO, actor=ACTOR_SISTEMA, motivo="destinos confirmados" + ("; alerta con acuse" if alerta else ""))
+        resultado.estado = E.ENTREGADO
+        doc.resultado_json = resultado.model_dump(mode="json")
+        self.repo.guardar()
+        return {"resultado": doc.resultado_json}
+
+    def _evento_de_entrega(self, doc: Documento, evento: dict[str, Any]) -> None:
+        """Reanuda el hilo detenido en entrega con un hecho ya validado. Un documento anterior a la memoria entra a esperar primero."""
+        config = hilo(doc)
+        if not self.esperando_entrega(doc):
+            self.grafo.invoke({"documento_pk": doc.id}, config=config)
+        self.grafo.invoke(Command(resume=evento), config=config)
 
     def _validar_decision(self, doc: Documento, resultado: ResultadoTriaje, decision: dict[str, Any]) -> None:
         """Todo lo que puede rechazar una decisión, sin tocar nada (RN-J3, RN-J5, RN-P3)."""
@@ -428,8 +466,9 @@ class Orquestador:
             raise ErrorDeRevision(404, "el documento no tiene alerta crítica")
         if alerta.estado_acuse != "acusado":
             self.repo.acusar_alerta(alerta, usuario)
-        self._intentar_cierre(doc)
         self.repo.guardar()
+        if doc.estado == E.ENRUTADO:  # RN-J7: el acuse puede ser lo último que faltaba para cerrar
+            self._evento_de_entrega(doc, {"tipo": "acuse", "usuario": usuario.strip()})
         return {"documento_id": doc.documento_id, "estado_acuse": alerta.estado_acuse, "acusado_por": alerta.acusado_por, "estado": doc.estado}
 
     def entregar(self, doc: Documento, destino: str) -> dict[str, Any]:
@@ -439,13 +478,9 @@ class Orquestador:
         plan = [resultado.enrutamiento.destino_principal.value, *(d.value for d in resultado.enrutamiento.destinos_secundarios)]
         if destino not in plan:
             raise ErrorDeRevision(400, f"{destino} no está en el plan de enrutamiento {plan}")
-        entregas = dict(doc.entregas_json or {})
-        entregas[destino] = True
-        doc.entregas_json = entregas  # la entrega no cambia de estado hasta el cierre (RN-I)
-        pendientes = self._intentar_cierre(doc)
-        self.repo.guardar()
-        return {"documento_id": doc.documento_id, "estado": doc.estado, "entregas": entregas,
-                "retenidas": resultado.enrutamiento.entregas_retenidas, "pendientes": pendientes}
+        self._evento_de_entrega(doc, {"tipo": "entrega", "destino": destino})
+        return {"documento_id": doc.documento_id, "estado": doc.estado, "entregas": dict(doc.entregas_json or {}),
+                "retenidas": resultado.enrutamiento.entregas_retenidas, "pendientes": self._pendientes_de_cierre(doc)}
 
     # --- Farmacia (RN-E6, RN-J6, RN-CO9) ---------------------------------------------------
 
@@ -490,8 +525,11 @@ class Orquestador:
             entregas[D.FARMACIA_HOSPITALARIA.value] = True
             doc.entregas_json = entregas
         doc.resultado_json = resultado.model_dump(mode="json")
-        pendientes = self._intentar_cierre(doc) if completa else []
         self.repo.guardar()
+        pendientes: list[str] = []
+        if completa:
+            self._evento_de_entrega(doc, {"tipo": "verificacion", "usuario": usuario.strip()})
+            pendientes = self._pendientes_de_cierre(doc)
         return {"documento_id": doc.documento_id, "verificaciones": [{"orden": v["orden"], "usuario": v["usuario"]} for v in verificaciones],
                 "requeridas": requeridas, "completa": completa, "estado": doc.estado, "pendientes": pendientes}
 
@@ -525,12 +563,12 @@ class Orquestador:
         entregas[D.AUDITORIA_AUTORIZACIONES.value] = True
         doc.entregas_json = entregas
         doc.resultado_json = resultado.model_dump(mode="json")
-        pendientes = self._intentar_cierre(doc)
         self.repo.guardar()
-        return {"documento_id": doc.documento_id, "autorizacion": doc.autorizacion_json, "estado": doc.estado, "pendientes": pendientes}
+        self._evento_de_entrega(doc, {"tipo": "autorizacion", "usuario": usuario.strip()})
+        return {"documento_id": doc.documento_id, "autorizacion": doc.autorizacion_json, "estado": doc.estado, "pendientes": self._pendientes_de_cierre(doc)}
 
-    def _intentar_cierre(self, doc: Documento) -> list[str]:
-        """ENRUTADO -> ENTREGADO cuando los destinos no retenidos confirmaron y, si es crítico, hay acuse (RN-J7)."""
+    def _pendientes_de_cierre(self, doc: Documento) -> list[str]:
+        """Lo que falta para pasar de ENRUTADO a ENTREGADO: destinos no retenidos sin confirmar y, si es crítico, el acuse (RN-J7)."""
         if doc.estado != E.ENRUTADO:
             return []
         resultado = ResultadoTriaje.model_validate(doc.resultado_json)
@@ -541,10 +579,6 @@ class Orquestador:
         alerta = self.repo.alerta_activa(doc)
         if alerta is not None and alerta.estado_acuse != "acusado":
             pendientes.append("acuse_alerta")
-        if not pendientes:
-            self.repo.transicionar(doc, E.ENTREGADO, actor=ACTOR_SISTEMA, motivo="destinos confirmados" + ("; alerta con acuse" if alerta else ""))
-            resultado.estado = E.ENTREGADO
-            doc.resultado_json = resultado.model_dump(mode="json")
         return pendientes
 
     # --- utilidades ---------------------------------------------------------------------------

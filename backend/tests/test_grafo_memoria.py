@@ -52,7 +52,7 @@ def test_el_estado_que_viaja_por_el_grafo_es_json_puro(repo, storage):
     for punto in historia:
         json.dumps(punto.values)  # sin objetos de Python: se guarda y se lee desde cualquier proceso
     assert set(historia[0].values) <= {"documento_pk", "codigo_error", "error", "propuesta", "evaluacion", "resultado", "revision"}
-    assert historia[0].next == ()  # terminó
+    assert historia[0].next == ("entrega",)  # ENRUTADO: espera las confirmaciones de los destinos
 
 
 def test_tras_un_corte_el_grafo_se_reanuda_en_la_etapa_donde_quedo_RN_P2(repo, storage):

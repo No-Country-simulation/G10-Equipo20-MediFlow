@@ -7,8 +7,10 @@
                                                       aprobar / rechazar <-- revision_humana <-- EN_REVISION_HUMANA (RN-I4)
 
 El grafo entra por la etapa en que está el documento: RECIBIDO valida primero; VALIDADO va directo al LLM;
-EN_REVISION_HUMANA espera la decisión. En revision_humana el grafo se interrumpe (RN-I4) y reanuda con la decisión
-de la persona: aprobar y rechazar cierran; corregir y transcribir vuelven a evaluar sin tocar el LLM (RN-J4).
+EN_REVISION_HUMANA espera la decisión; ENRUTADO espera las confirmaciones. En revision_humana el grafo se interrumpe
+(RN-I4) y reanuda con la decisión de la persona: rechazar cierra; aprobar pasa a entrega; corregir y transcribir vuelven
+a evaluar sin tocar el LLM (RN-J4). En entrega se interrumpe por cada confirmación, verificación o acuse, y cierra en
+ENTREGADO cuando no queda nada pendiente: un crítico nunca sin acuse (RN-J7).
 """
 from langgraph.graph import END, START, StateGraph
 
@@ -25,12 +27,22 @@ def _rama_tras_validar(estado: EstadoGrafo) -> str:
     return "rechazado" if estado.get("codigo_error") else "clasificar_extraer"
 
 
+def _estado_resultado(estado: EstadoGrafo) -> str | None:
+    return (estado.get("resultado") or {}).get("estado")
+
+
 def _rama_tras_enrutar(estado: EstadoGrafo) -> str:
-    return "revision_humana" if (estado.get("resultado") or {}).get("estado") == "EN_REVISION_HUMANA" else "fin"
+    return "revision_humana" if _estado_resultado(estado) == "EN_REVISION_HUMANA" else "entrega"
 
 
 def _rama_tras_revision(estado: EstadoGrafo) -> str:
-    return "evaluar" if estado.get("revision") else "fin"
+    if estado.get("revision"):
+        return "evaluar"
+    return "entrega" if _estado_resultado(estado) == "ENRUTADO" else "fin"
+
+
+def _rama_tras_entrega(estado: EstadoGrafo) -> str:
+    return "fin" if _estado_resultado(estado) == "ENTREGADO" else "entrega"
 
 
 def construir_grafo(orquestador, memoria=None):
@@ -41,15 +53,18 @@ def construir_grafo(orquestador, memoria=None):
     grafo.add_node("enrutar", orquestador.nodo_enrutar)
     grafo.add_node("fallo_tecnico", orquestador.nodo_fallo_tecnico)
     grafo.add_node("revision_humana", orquestador.nodo_revision_humana)
+    grafo.add_node("entrega", orquestador.nodo_entrega)
 
     grafo.add_conditional_edges(START, orquestador.etapa_de_entrada,
-                                {"validar": "validar", "clasificar_extraer": "clasificar_extraer", "revision_humana": "revision_humana"})
+                                {"validar": "validar", "clasificar_extraer": "clasificar_extraer", "revision_humana": "revision_humana", "entrega": "entrega"})
     grafo.add_conditional_edges("validar", _rama_tras_validar, {"clasificar_extraer": "clasificar_extraer", "rechazado": END, "fallo_tecnico": "fallo_tecnico"})
     grafo.add_conditional_edges("clasificar_extraer", _rama_tras_llm, {"evaluar": "evaluar", "fallo_tecnico": "fallo_tecnico"})
     grafo.add_edge("evaluar", "enrutar")  # RN-I2
-    grafo.add_conditional_edges("enrutar", _rama_tras_enrutar, {"revision_humana": "revision_humana", "fin": END})
+    grafo.add_conditional_edges("enrutar", _rama_tras_enrutar, {"revision_humana": "revision_humana", "entrega": "entrega"})
     grafo.add_edge("fallo_tecnico", "revision_humana")  # RN-P2: a revisión humana; RN-P4: ya alertó si había hallazgo
-    grafo.add_conditional_edges("revision_humana", _rama_tras_revision, {"evaluar": "evaluar", "fin": END})
+    grafo.add_conditional_edges("revision_humana", _rama_tras_revision, {"evaluar": "evaluar", "entrega": "entrega", "fin": END})
+    # Enrutado es una decisión; Entregado, un hecho (sección 3.3). Cada confirmación vuelve a esperar hasta cerrar.
+    grafo.add_conditional_edges("entrega", _rama_tras_entrega, {"entrega": "entrega", "fin": END})
     return grafo.compile(checkpointer=memoria)
 
 

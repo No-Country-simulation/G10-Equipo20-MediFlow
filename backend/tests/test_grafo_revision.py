@@ -66,7 +66,7 @@ def test_aprobar_reanuda_el_hilo_y_enruta_RN_J3(repo, storage):
     assert r.evaluacion.requiere_auditoria_humana is False
     assert [t.a_estado for t in doc.transiciones][-3:] == [E.EN_REVISION_HUMANA, E.RESUELTO, E.ENRUTADO]
     assert doc.transiciones[-1].actor == "ana"  # RN-G4
-    assert orq.grafo.get_state(hilo(doc)).next == ()  # el hilo terminó
+    assert orq.grafo.get_state(hilo(doc)).next == ("entrega",)  # enrutado: ahora espera las confirmaciones
 
 
 def test_corregir_vuelve_a_evaluar_por_el_grafo_sin_LLM_RN_J4_RN_J8(repo, storage):
@@ -81,7 +81,7 @@ def test_corregir_vuelve_a_evaluar_por_el_grafo_sin_LLM_RN_J4_RN_J8(repo, storag
     assert [t.a_estado for t in doc.transiciones][-4:] == [E.EN_REVISION_HUMANA, E.RESUELTO, E.EVALUADO, E.ENRUTADO]
     assert any(d.regla == "RN-J3" and d.decision == "corregido" for d in r.historial_decisiones)
     assert [(c.campo, c.extraido, c.corregido) for c in doc.correcciones] == [("clasificacion.score_confianza", 0.6, 0.99)]  # RN-J8
-    assert orq.grafo.get_state(hilo(doc)).next == ()
+    assert orq.grafo.get_state(hilo(doc)).next == ("entrega",)
 
 
 def test_corregir_puede_dejarlo_otra_vez_en_revision_y_el_grafo_vuelve_a_esperar(repo, storage):
