@@ -16,6 +16,7 @@ from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.resultado import EstadoDocumento as E
 from app.services.llm import ClienteFalso, ServicioExtraccion
 from app.services.orquestador import Orquestador
+from tests.test_api_revision import propuesta_para_revision
 from tests.test_grafo import ingresar, request_caso_1
 from tests.test_llm import propuesta_caso_1
 
@@ -50,7 +51,7 @@ def test_el_estado_que_viaja_por_el_grafo_es_json_puro(repo, storage):
     assert len(historia) >= 5  # un checkpoint por etapa
     for punto in historia:
         json.dumps(punto.values)  # sin objetos de Python: se guarda y se lee desde cualquier proceso
-    assert set(historia[0].values) <= {"documento_pk", "codigo_error", "error", "propuesta", "evaluacion", "resultado"}
+    assert set(historia[0].values) <= {"documento_pk", "codigo_error", "error", "propuesta", "evaluacion", "resultado", "revision"}
     assert historia[0].next == ()  # terminó
 
 
@@ -68,15 +69,11 @@ def test_tras_un_corte_el_grafo_se_reanuda_en_la_etapa_donde_quedo_RN_P2(repo, s
     assert [t.a_estado for t in doc.transiciones] == [E.RECIBIDO, E.VALIDADO, E.CLASIFICADO, E.EXTRAIDO, E.EVALUADO, E.ENRUTADO]
 
 
-def test_reanudar_sin_memoria_es_un_error_claro(repo, storage):
-    doc = ingresar(repo, storage)
-    with pytest.raises(ValueError, match="memoria"):
-        orquestador(repo, storage, ClienteFalso(respuestas=[]), None).reanudar(doc)
-
-
-def test_sin_memoria_el_grafo_corre_igual_y_no_guarda_nada(repo, storage):
+def test_sin_memoria_configurada_el_grafo_usa_memoria_en_ram(repo, storage):
+    """Sin memoria el grafo no podría esperar a una persona (RN-I4): la suite unitaria usa la de RAM."""
     doc = ingresar(repo, storage)
     orq = orquestador(repo, storage, ClienteFalso(respuestas=[propuesta_caso_1()]), None)
+    assert isinstance(orq.memoria, InMemorySaver)
     assert orq.procesar(doc).estado is E.ENRUTADO
 
 
@@ -96,3 +93,17 @@ def test_la_memoria_del_grafo_vive_en_postgresql(repo, storage):
     doc = ingresar(repo, storage, request_caso_1(documento_id=f"DOC-PG-{os.getpid()}"))
     orquestador(repo, storage, ClienteFalso(respuestas=[propuesta_caso_1()]), memoria).procesar(doc)
     assert memoria.get(hilo(doc)) is not None
+
+
+@pytest.mark.skipif(not URL_PG.startswith("postgresql"), reason="la espera de la revisión humana se guarda en PostgreSQL; corre contra una base real")
+def test_la_espera_de_la_revision_humana_sobrevive_en_postgresql_RN_I4(repo, storage):
+    memoria = crear_memoria(URL_PG)
+    doc = ingresar(repo, storage, request_caso_1(documento_id=f"DOC-PG-REV-{os.getpid()}"))
+    orquestador(repo, storage, ClienteFalso(respuestas=[propuesta_para_revision()]), memoria).procesar(doc)
+    assert doc.estado == E.EN_REVISION_HUMANA
+    # Otro proceso, con otra conexión a la misma base, encuentra el hilo esperando y lo resuelve.
+    otro = orquestador(repo, storage, ClienteFalso(respuestas=[]), crear_memoria(URL_PG))
+    assert otro.esperando_decision(doc)
+    otro.resolver_revision(doc, accion="aprobar", usuario="ana", rol="auditor_clinico", motivo="confirmado")
+    assert doc.estado == E.ENRUTADO
+    assert not otro.esperando_decision(doc)

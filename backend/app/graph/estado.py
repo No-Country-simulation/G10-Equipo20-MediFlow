@@ -10,3 +10,4 @@ class EstadoGrafo(TypedDict, total=False):
     error: str | None  # motivo del fallo técnico, si lo hubo
     evaluacion: dict[str, Any] | None  # resumen de evaluar: prioridad y motivos (la evaluación completa se recalcula, es determinística)
     resultado: dict[str, Any] | None  # ResultadoTriaje volcado a JSON
+    revision: dict[str, Any] | None  # decisión humana que re-ejecuta las reglas (RN-J4): usuario, rol, prioridad fijada, historial previo

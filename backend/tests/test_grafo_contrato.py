@@ -21,7 +21,7 @@ def _grafo():
 
 def test_nodos_del_grafo_son_las_etapas_de_la_seccion_3():
     nodos = set(_grafo().nodes) - {"__start__", "__end__"}
-    assert nodos == {"validar", "clasificar_extraer", "evaluar", "enrutar", "fallo_tecnico"}
+    assert nodos == {"validar", "clasificar_extraer", "evaluar", "enrutar", "fallo_tecnico", "revision_humana"}
 
 
 def test_aristas_no_saltan_etapas_RN_I2():
@@ -29,6 +29,7 @@ def test_aristas_no_saltan_etapas_RN_I2():
     assert aristas == {
         ("__start__", "validar"),  # RECIBIDO entra por la validación sin LLM (sección 3.3)
         ("__start__", "clasificar_extraer"),  # un documento ya VALIDADO entra por su etapa
+        ("__start__", "revision_humana"),  # un documento EN_REVISION_HUMANA sin hilo (anterior a la memoria) entra a esperar la decisión
         ("validar", "clasificar_extraer"),
         ("validar", "__end__"),  # RECHAZADO: único rechazo del sistema (RN-I5)
         ("validar", "fallo_tecnico"),  # el original no se pudo leer
@@ -36,15 +37,20 @@ def test_aristas_no_saltan_etapas_RN_I2():
         ("clasificar_extraer", "fallo_tecnico"),  # RN-P2, RN-P3
         ("evaluar", "enrutar"),
         ("enrutar", "__end__"),
-        ("fallo_tecnico", "__end__"),  # RN-P4: a revisión humana, con la detección determinística
+        ("enrutar", "revision_humana"),  # requiere_auditoria_humana: el grafo espera a la persona (RN-I4)
+        ("fallo_tecnico", "revision_humana"),  # RN-P4: a revisión humana, con la detección determinística
+        ("revision_humana", "evaluar"),  # corregir o transcribir: las reglas se re-ejecutan sin LLM (RN-J4)
+        ("revision_humana", "__end__"),  # aprobar o rechazar
     }
+    # RN-J4: tras una decisión humana las reglas se re-ejecutan; nunca se vuelve al LLM.
+    assert ("revision_humana", "clasificar_extraer") not in aristas
     # RN-I2: nada llega a enrutar sin pasar por evaluar.
     assert all(origen == "evaluar" for origen, destino in aristas if destino == "enrutar")
 
 
 def test_el_grafo_entra_por_la_etapa_en_que_esta_el_documento():
     entradas = {e.target for e in _grafo().edges if e.source == "__start__"}
-    assert entradas == {"validar", "clasificar_extraer"}
+    assert entradas == {"validar", "clasificar_extraer", "revision_humana"}
 
 
 def test_la_decision_tras_el_llm_es_condicional():

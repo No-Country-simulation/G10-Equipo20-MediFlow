@@ -1,10 +1,14 @@
 """Grafo determinístico LangGraph (decisión 6 de la sección 2.1).
 
     RECIBIDO --validar--> VALIDADO --clasificar_extraer--> CLASIFICADO -> EXTRAIDO --evaluar--> EVALUADO --enrutar--> ENRUTADO
-                 |                        |                                                                       \\-> EN_REVISION_HUMANA
-                 \\-> RECHAZADO (RN-I5)    \\-- fallo --> FALLO_TECNICO --fallo_tecnico--> EN_REVISION_HUMANA (RN-P2, RN-P4)
+                 |                        |                                              ^                          |
+                 \\-> RECHAZADO (RN-I5)    \\-- fallo --> FALLO_TECNICO --fallo_tecnico--+   corregir / transcribir |
+                                                                                 |      (RN-J4)                 v
+                                                      aprobar / rechazar <-- revision_humana <-- EN_REVISION_HUMANA (RN-I4)
 
-El grafo entra por la etapa en que está el documento: RECIBIDO valida primero; VALIDADO va directo al LLM.
+El grafo entra por la etapa en que está el documento: RECIBIDO valida primero; VALIDADO va directo al LLM;
+EN_REVISION_HUMANA espera la decisión. En revision_humana el grafo se interrumpe (RN-I4) y reanuda con la decisión
+de la persona: aprobar y rechazar cierran; corregir y transcribir vuelven a evaluar sin tocar el LLM (RN-J4).
 """
 from langgraph.graph import END, START, StateGraph
 
@@ -21,6 +25,14 @@ def _rama_tras_validar(estado: EstadoGrafo) -> str:
     return "rechazado" if estado.get("codigo_error") else "clasificar_extraer"
 
 
+def _rama_tras_enrutar(estado: EstadoGrafo) -> str:
+    return "revision_humana" if (estado.get("resultado") or {}).get("estado") == "EN_REVISION_HUMANA" else "fin"
+
+
+def _rama_tras_revision(estado: EstadoGrafo) -> str:
+    return "evaluar" if estado.get("revision") else "fin"
+
+
 def construir_grafo(orquestador, memoria=None):
     grafo = StateGraph(EstadoGrafo)
     grafo.add_node("validar", orquestador.nodo_validar)
@@ -28,13 +40,16 @@ def construir_grafo(orquestador, memoria=None):
     grafo.add_node("evaluar", orquestador.nodo_evaluar)
     grafo.add_node("enrutar", orquestador.nodo_enrutar)
     grafo.add_node("fallo_tecnico", orquestador.nodo_fallo_tecnico)
+    grafo.add_node("revision_humana", orquestador.nodo_revision_humana)
 
-    grafo.add_conditional_edges(START, orquestador.etapa_de_entrada, {"validar": "validar", "clasificar_extraer": "clasificar_extraer"})
+    grafo.add_conditional_edges(START, orquestador.etapa_de_entrada,
+                                {"validar": "validar", "clasificar_extraer": "clasificar_extraer", "revision_humana": "revision_humana"})
     grafo.add_conditional_edges("validar", _rama_tras_validar, {"clasificar_extraer": "clasificar_extraer", "rechazado": END, "fallo_tecnico": "fallo_tecnico"})
     grafo.add_conditional_edges("clasificar_extraer", _rama_tras_llm, {"evaluar": "evaluar", "fallo_tecnico": "fallo_tecnico"})
-    grafo.add_edge("evaluar", "enrutar")
-    grafo.add_edge("enrutar", END)
-    grafo.add_edge("fallo_tecnico", END)
+    grafo.add_edge("evaluar", "enrutar")  # RN-I2
+    grafo.add_conditional_edges("enrutar", _rama_tras_enrutar, {"revision_humana": "revision_humana", "fin": END})
+    grafo.add_edge("fallo_tecnico", "revision_humana")  # RN-P2: a revisión humana; RN-P4: ya alertó si había hallazgo
+    grafo.add_conditional_edges("revision_humana", _rama_tras_revision, {"evaluar": "evaluar", "fin": END})
     return grafo.compile(checkpointer=memoria)
 
 

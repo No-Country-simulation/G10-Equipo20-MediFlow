@@ -9,6 +9,9 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, interrupt
+
 from app.core.config import get_settings
 from app.graph.estado import EstadoGrafo
 from app.graph.memoria import hilo
@@ -86,8 +89,9 @@ class Orquestador:
         self.ingesta = ServicioIngesta(repositorio, storage, tamano_maximo_bytes=settings.tamano_maximo_bytes, max_paginas_pdf=settings.max_paginas_pdf)
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
 
-        self.memoria = memoria
-        self.grafo = construir_grafo(self, memoria)
+        # El grafo siempre tiene memoria: sin ella no puede esperar a una persona (RN-I4). Sin configurar, en RAM (suite unitaria).
+        self.memoria = memoria if memoria is not None else InMemorySaver()
+        self.grafo = construir_grafo(self, self.memoria)
 
     # --- entrada principal -----------------------------------------------------------
 
@@ -98,9 +102,7 @@ class Orquestador:
         return self._resultado_de(self.grafo.invoke({"documento_pk": documento.id}, config=hilo(documento)))
 
     def reanudar(self, documento: Documento) -> ResultadoTriaje | None:
-        """Retoma el hilo del documento en la etapa donde quedó (RN-P2). Exige memoria del grafo."""
-        if self.memoria is None:
-            raise ValueError("reanudar exige memoria del grafo (app/graph/memoria.py)")
+        """Retoma el hilo del documento en la etapa donde quedó (RN-P2)."""
         return self._resultado_de(self.grafo.invoke(None, config=hilo(documento)))
 
     @staticmethod
@@ -112,8 +114,14 @@ class Orquestador:
         return self.repo.session.get(Documento, estado["documento_pk"])
 
     def etapa_de_entrada(self, estado: EstadoGrafo) -> str:
-        """El grafo entra por la etapa del documento: RECIBIDO valida primero; VALIDADO va directo al LLM."""
-        return "validar" if self._doc(estado).estado == E.RECIBIDO else "clasificar_extraer"
+        """El grafo entra por la etapa del documento: RECIBIDO valida primero; VALIDADO va directo al LLM;
+        EN_REVISION_HUMANA (sin hilo, anterior a la memoria del grafo) entra a esperar la decisión."""
+        estado_doc = self._doc(estado).estado
+        if estado_doc == E.RECIBIDO:
+            return "validar"
+        if estado_doc == E.EN_REVISION_HUMANA:
+            return "revision_humana"
+        return "clasificar_extraer"
 
     # --- nodos del grafo -----------------------------------------------------------------
 
@@ -148,24 +156,41 @@ class Orquestador:
         self.repo.transicionar(doc, E.EXTRAIDO, actor=ACTOR_SISTEMA, motivo="datos clínicos estructurados y re-identificados")
         return {"propuesta": propuesta, "error": None}
 
+    def _evaluado_de(self, estado: EstadoGrafo, doc: Documento) -> Evaluado:
+        """Reglas determinísticas sobre la propuesta del estado. Tras una decisión humana, con lo que ella fijó (RN-J5)."""
+        revision = estado.get("revision")
+        contexto = self._contexto_evaluacion(doc)
+        if revision:
+            contexto.prioridad_humana = N(revision["prioridad_humana"]) if revision.get("prioridad_humana") else None
+            contexto.usuario_humano = revision["usuario"]
+        return self._evaluar(PropuestaLLM.model_validate(estado["propuesta"]), doc, contexto)
+
     def nodo_evaluar(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
-        evaluado = self._evaluar(PropuestaLLM.model_validate(estado["propuesta"]), doc)
+        evaluado = self._evaluado_de(estado, doc)
         motivos = [m.value for m in evaluado.motivos]
-        self.repo.transicionar(doc, E.EVALUADO, actor=ACTOR_SISTEMA, motivo=f"prioridad {evaluado.prioridad.value}; motivos {motivos}")
+        revision = estado.get("revision")
+        if revision:
+            # RN-J4: las reglas se re-ejecutan tras la decisión de la persona; queda a su nombre (RN-G4).
+            self.repo.transicionar(doc, E.EVALUADO, actor=revision["usuario"], motivo=revision["motivo_evaluado"])
+        else:
+            self.repo.transicionar(doc, E.EVALUADO, actor=ACTOR_SISTEMA, motivo=f"prioridad {evaluado.prioridad.value}; motivos {motivos}")
         return {"evaluacion": {"prioridad": evaluado.prioridad.value, "motivos": motivos}}
 
     def nodo_enrutar(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
         # La evaluación es determinística: se recalcula desde la propuesta en vez de viajar como objeto en el estado.
-        evaluado = self._evaluar(PropuestaLLM.model_validate(estado["propuesta"]), doc)
+        evaluado = self._evaluado_de(estado, doc)
         resultado = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
         motivo = resultado.enrutamiento.justificacion_enrutamiento
         if resultado.evaluacion.motivo_auditoria is not None:
             motivo = f"{resultado.evaluacion.motivo_auditoria.value}: {motivo}"
-        self.repo.transicionar(doc, resultado.estado, actor=ACTOR_SISTEMA, motivo=motivo[:500])
+        revision = estado.get("revision")
+        if revision:
+            resultado.historial_decisiones = [DecisionRegistrada.model_validate(d) for d in revision["historial_previo"]] + resultado.historial_decisiones
+        self.repo.transicionar(doc, resultado.estado, actor=revision["usuario"] if revision else ACTOR_SISTEMA, motivo=motivo[:500])
         self._persistir(doc, resultado)
-        return {"resultado": resultado.model_dump(mode="json")}
+        return {"resultado": resultado.model_dump(mode="json"), "revision": None}
 
     def nodo_fallo_tecnico(self, estado: EstadoGrafo) -> EstadoGrafo:
         """RN-P2: reintentos agotados -> revisión humana. RN-P4: la detección determinística sigue alertando."""
@@ -211,7 +236,21 @@ class Orquestador:
         self._persistir(doc, resultado)
         return {"resultado": resultado.model_dump(mode="json")}
 
-    # --- acciones humanas (RN-J) ---------------------------------------------------------
+    # --- revisión humana: el grafo espera a la persona (RN-I4, RN-J3, RN-J4) -------------------------
+
+    def nodo_revision_humana(self, estado: EstadoGrafo) -> EstadoGrafo:
+        """El documento queda bloqueado para el agente hasta que una persona decida (RN-I4). El grafo se interrumpe
+        con un aviso sin datos del paciente (RN-M4) y, al reanudar, aplica la decisión: aprobar y rechazar cierran;
+        corregir y transcribir dejan la propuesta nueva en el estado para re-ejecutar las reglas desde evaluar (RN-J4)."""
+        doc = self._doc(estado)
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        decision = interrupt({
+            "documento_id": doc.documento_id,
+            "version": doc.version,
+            "motivo_auditoria": resultado.evaluacion.motivo_auditoria.value if resultado.evaluacion.motivo_auditoria else None,
+            "campos_dudosos": list(resultado.evaluacion.campos_dudosos),
+        })
+        return self._aplicar_decision(doc, resultado, decision)
 
     def resolver_revision(self, doc: Documento, *, accion: str, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any] | None = None,
                           transcripcion: dict[str, Any] | None = None) -> ResultadoTriaje:
@@ -220,21 +259,57 @@ class Orquestador:
             raise ErrorDeRevision(409, f"RN-I4: el documento está en {doc.estado}, no en revisión humana")
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-K5: la acción exige un usuario identificado")
-        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        decision = {"accion": accion, "usuario": usuario, "rol": rol, "motivo": motivo,
+                    "correcciones": correcciones or {}, "transcripcion": transcripcion or {}}
+        # Se valida antes de reanudar: LangGraph conserva el valor de reanudación aunque el nodo falle,
+        # así que una decisión inválida no debe llegar al hilo. El hilo sigue esperando intacto.
+        self._validar_decision(doc, ResultadoTriaje.model_validate(doc.resultado_json), decision)
+        config = hilo(doc)
+        if not self.esperando_decision(doc):
+            # Documento anterior a la memoria del grafo: se abre su hilo y el grafo entra directo a esperar la decisión.
+            self.grafo.invoke({"documento_pk": doc.id}, config=config)
+        return self._resultado_de(self.grafo.invoke(Command(resume=decision), config=config))
 
+    def esperando_decision(self, doc: Documento) -> bool:
+        """El hilo del documento está detenido en revision_humana, a la espera de la persona (RN-I4)."""
+        instantanea = self.grafo.get_state(hilo(doc))
+        return any(tarea.name == "revision_humana" and tarea.interrupts for tarea in instantanea.tasks)
+
+    def _validar_decision(self, doc: Documento, resultado: ResultadoTriaje, decision: dict[str, Any]) -> None:
+        """Todo lo que puede rechazar una decisión, sin tocar nada (RN-J3, RN-J5, RN-P3)."""
+        accion, rol, motivo = decision["accion"], decision["rol"], decision.get("motivo") or ""
         if accion == "rechazar":
             if not motivo.strip():
                 raise ErrorDeRevision(422, "RN-J3: rechazar exige motivo")
+        elif accion == "aprobar":
+            if not resultado.enrutamiento.destinos_tras_revision:
+                raise ErrorDeRevision(409, "no hay plan de enrutamiento; corrija la propuesta con la acción corregir")
+        elif accion == "corregir":
+            if not doc.propuesta_json:
+                raise ErrorDeRevision(409, "sin propuesta que corregir (fallo técnico sin lectura del LLM)")
+            if not decision.get("correcciones"):
+                raise ErrorDeRevision(422, "corregir exige al menos una corrección")
+            self._prioridad_corregida(doc, rol=rol, motivo=motivo, correcciones=decision["correcciones"])
+        elif accion == "transcribir":
+            if doc.propuesta_json:
+                raise ErrorDeRevision(409, "el documento ya tiene lectura del LLM; use la acción corregir")
+            self._propuesta_transcrita(doc, decision.get("transcripcion") or {})
+        else:
+            raise ErrorDeRevision(422, f"acción desconocida: {accion}")
+
+    def _aplicar_decision(self, doc: Documento, resultado: ResultadoTriaje, decision: dict[str, Any]) -> EstadoGrafo:
+        self._validar_decision(doc, resultado, decision)
+        accion, usuario, rol, motivo = decision["accion"], decision["usuario"], decision["rol"], decision.get("motivo") or ""
+
+        if accion == "rechazar":
             self.repo.transicionar(doc, E.RECHAZADO, actor=usuario, motivo=motivo)
             resultado.estado = E.RECHAZADO
             resultado.historial_decisiones.append(DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}): {motivo}", decision="rechazado"))
             self._persistir(doc, resultado, emitir_alerta=False)
-            return resultado
+            return {"resultado": resultado.model_dump(mode="json"), "revision": None}
 
         if accion == "aprobar":
             plan = resultado.enrutamiento.destinos_tras_revision
-            if not plan:
-                raise ErrorDeRevision(409, "no hay plan de enrutamiento; corrija la propuesta con la acción corregir")
             self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "aprobado")
             resultado.enrutamiento = resultado.enrutamiento.model_copy(update={
                 "destino_principal": plan[0], "destinos_secundarios": plan[1:], "destinos_tras_revision": [],
@@ -246,34 +321,44 @@ class Orquestador:
             resultado.historial_decisiones.append(DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}): {motivo}", decision="aprobado"))
             self.repo.transicionar(doc, E.ENRUTADO, actor=usuario, motivo=motivo or "aprobado")
             self._persistir(doc, resultado, emitir_alerta=False)
-            return resultado
+            return {"resultado": resultado.model_dump(mode="json"), "revision": None}
 
         if accion == "corregir":
-            return self._corregir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, correcciones=correcciones or {})
+            return self._corregir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, correcciones=decision["correcciones"])
+        return self._transcribir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, transcripcion=decision.get("transcripcion") or {})
 
-        if accion == "transcribir":
-            return self._transcribir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, transcripcion=transcripcion or {})
+    @staticmethod
+    def _revision(resultado: ResultadoTriaje, *, usuario: str, rol: str, prioridad_humana: N | None, motivo_evaluado: str,
+                  decision_rn_j3: DecisionRegistrada) -> dict[str, Any]:
+        """Lo que evaluar y enrutar necesitan saber de la decisión humana, en JSON puro para el estado del grafo."""
+        return {
+            "usuario": usuario,
+            "rol": rol,
+            "prioridad_humana": prioridad_humana.value if prioridad_humana else None,
+            "motivo_evaluado": motivo_evaluado,
+            "historial_previo": [d.model_dump(mode="json") for d in resultado.historial_decisiones + [decision_rn_j3]],
+        }
 
-        raise ErrorDeRevision(422, f"acción desconocida: {accion}")
+    @staticmethod
+    def _prioridad_corregida(doc: Documento, *, rol: str, motivo: str, correcciones: dict[str, Any]) -> N | None:
+        """RN-J5, sin tocar nada: la prioridad que fija la persona. Bajar un nivel exige rol clínico y justificación escrita."""
+        valor = correcciones.get("nivel_prioridad")
+        if valor is None:
+            return None
+        nueva = N(valor)
+        actual = N(doc.nivel_prioridad) if doc.nivel_prioridad else N.RUTINA
+        if _ORDEN[nueva] < _ORDEN[actual]:
+            if rol not in _ROLES_CLINICOS:
+                raise ErrorDeRevision(403, "RN-J5: solo un rol clínico puede bajar la prioridad")
+            if not motivo.strip():
+                raise ErrorDeRevision(422, "RN-J5: bajar la prioridad exige justificación escrita")
+        return nueva
 
-    def _corregir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any]) -> ResultadoTriaje:
-        if not doc.propuesta_json:
-            raise ErrorDeRevision(409, "sin propuesta que corregir (fallo técnico sin lectura del LLM)")
-        if not correcciones:
-            raise ErrorDeRevision(422, "corregir exige al menos una corrección")
+    def _corregir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any]) -> EstadoGrafo:
+        prioridad_humana = self._prioridad_corregida(doc, rol=rol, motivo=motivo, correcciones=correcciones)
         propuesta = json.loads(json.dumps(doc.propuesta_json))
-        prioridad_humana: N | None = None
         for campo, valor in correcciones.items():
             if campo == "nivel_prioridad":
-                nueva = N(valor)
-                actual = N(doc.nivel_prioridad) if doc.nivel_prioridad else N.RUTINA
-                if _ORDEN[nueva] < _ORDEN[actual]:
-                    # RN-J5: bajar un Crítico exige rol clínico y justificación escrita.
-                    if rol not in _ROLES_CLINICOS:
-                        raise ErrorDeRevision(403, "RN-J5: solo un rol clínico puede bajar la prioridad")
-                    if not motivo.strip():
-                        raise ErrorDeRevision(422, "RN-J5: bajar la prioridad exige justificación escrita")
-                prioridad_humana = nueva
                 self.repo.registrar_correccion(doc, campo=campo, extraido=doc.nivel_prioridad, corregido=valor, usuario=usuario)
                 continue
             anterior = _asignar(propuesta, campo, valor)
@@ -281,29 +366,14 @@ class Orquestador:
 
         doc.propuesta_json = propuesta
         self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "corregido")
-        # RN-J4: se re-ejecutan las reglas determinísticas; no se vuelve a llamar al LLM.
-        contexto = self._contexto_evaluacion(doc)
-        contexto.prioridad_humana = prioridad_humana
-        contexto.usuario_humano = usuario
-        evaluado = self._evaluar(PropuestaLLM.model_validate(propuesta), doc, contexto)
-        self.repo.transicionar(doc, E.EVALUADO, actor=usuario, motivo=f"RN-J4: reglas re-ejecutadas tras corrección de {list(correcciones)}")
-        nuevo = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
-        nuevo.historial_decisiones = resultado.historial_decisiones + [
-            DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) corrigió {list(correcciones)}: {motivo}", decision="corregido")
-        ] + nuevo.historial_decisiones
-        self.repo.transicionar(doc, nuevo.estado, actor=usuario, motivo=nuevo.enrutamiento.justificacion_enrutamiento[:500])
-        self._persistir(doc, nuevo, emitir_alerta=self.repo.alerta_activa(doc) is None)
-        return nuevo
+        # RN-J4: el grafo vuelve a evaluar con esta propuesta; no se vuelve a llamar al LLM.
+        return {"propuesta": propuesta, "revision": self._revision(
+            resultado, usuario=usuario, rol=rol, prioridad_humana=prioridad_humana,
+            motivo_evaluado=f"RN-J4: reglas re-ejecutadas tras corrección de {list(correcciones)}",
+            decision_rn_j3=DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) corrigió {list(correcciones)}: {motivo}", decision="corregido"))}
 
-    def _transcribir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, transcripcion: dict[str, Any]) -> ResultadoTriaje:
-        """Sin lectura del LLM (RN-P2), la persona transcribe desde el original y las reglas se aplican igual.
-
-        La transcripción tiene la forma de la propuesta del LLM y se valida con el mismo esquema estricto (RN-P3).
-        La prioridad transcrita entra como propuesta: el código puede subirla y nunca bajarla (RN-D8), así que un
-        hallazgo crítico detectado en el texto (RN-P4) se mantiene. Cada dato queda como corrección (RN-J8).
-        """
-        if doc.propuesta_json:
-            raise ErrorDeRevision(409, "el documento ya tiene lectura del LLM; use la acción corregir")
+    def _propuesta_transcrita(self, doc: Documento, transcripcion: dict[str, Any]) -> PropuestaLLM:
+        """La transcripción tiene la forma de la propuesta del LLM y se valida con el mismo esquema estricto (RN-P3)."""
         tipo = (transcripcion.get("clasificacion") or {}).get("tipo")
         if not tipo:
             raise ErrorDeRevision(422, "la transcripción exige el tipo de documento (clasificacion.tipo)")
@@ -317,27 +387,24 @@ class Orquestador:
             "confianzas": {"identidad_paciente": 1.0, "medicamento_dosis": 1.0, "diagnostico_codigo": 1.0, "profesional": 1.0},
             "campos_dudosos": [],
         }
-        propuesta_dict = _fusionar(base, transcripcion)
         try:
-            propuesta = PropuestaLLM.model_validate(propuesta_dict)
+            return PropuestaLLM.model_validate(_fusionar(base, transcripcion))
         except ValueError as error:
             raise ErrorDeRevision(422, f"la transcripción no tiene la forma esperada: {error}") from error
 
+    def _transcribir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, transcripcion: dict[str, Any]) -> EstadoGrafo:
+        """Sin lectura del LLM (RN-P2), la persona transcribe desde el original y las reglas se aplican igual.
+        La prioridad transcrita entra como propuesta: el código puede subirla y nunca bajarla (RN-D8), así que un
+        hallazgo crítico detectado en el texto (RN-P4) se mantiene. Cada dato queda como corrección (RN-J8)."""
+        propuesta = self._propuesta_transcrita(doc, transcripcion)
         for ruta, valor in _hojas(transcripcion):
             self.repo.registrar_correccion(doc, campo=ruta, extraido=None, corregido=valor, usuario=usuario)  # RN-J8
         doc.propuesta_json = propuesta.model_dump(mode="json")
         self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "transcrito desde el original")
-        contexto = self._contexto_evaluacion(doc)
-        contexto.usuario_humano = usuario
-        evaluado = self._evaluar(propuesta, doc, contexto)
-        self.repo.transicionar(doc, E.EVALUADO, actor=usuario, motivo="RN-J4: reglas aplicadas sobre la transcripción humana")
-        nuevo = enrutar(evaluado, self._contexto_enrutamiento(doc), self.pack, self.umbrales)
-        nuevo.historial_decisiones = resultado.historial_decisiones + [
-            DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) transcribió el documento desde el original: {motivo}", decision="transcrito")
-        ] + nuevo.historial_decisiones
-        self.repo.transicionar(doc, nuevo.estado, actor=usuario, motivo=nuevo.enrutamiento.justificacion_enrutamiento[:500])
-        self._persistir(doc, nuevo, emitir_alerta=self.repo.alerta_activa(doc) is None)
-        return nuevo
+        return {"propuesta": doc.propuesta_json, "revision": self._revision(
+            resultado, usuario=usuario, rol=rol, prioridad_humana=None,
+            motivo_evaluado="RN-J4: reglas aplicadas sobre la transcripción humana",
+            decision_rn_j3=DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) transcribió el documento desde el original: {motivo}", decision="transcrito"))}
 
     def acusar(self, doc: Documento, usuario: str) -> dict[str, Any]:
         if not usuario.strip():
