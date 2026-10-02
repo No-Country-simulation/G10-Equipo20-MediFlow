@@ -26,3 +26,17 @@ def construir_grafo(orquestador):
     grafo.add_edge("enrutar", END)
     grafo.add_edge("fallo_tecnico", END)
     return grafo.compile()
+
+
+def diagrama_mermaid() -> str:
+    """Diagrama del grafo compilado, tal como existe en el código. El README lo copia entre marcadores
+    y un test comprueba que coinciden: la documentación de arquitectura nunca describe un grafo distinto."""
+    from unittest.mock import MagicMock  # noqa: PLC0415 - solo se necesita la forma del grafo, no un orquestador real
+
+    lineas = ["```mermaid", "graph TD;"]
+    for linea in construir_grafo(MagicMock()).get_graph().draw_mermaid().splitlines():
+        texto = linea.strip()
+        if "-->" in texto or "-.->" in texto:
+            lineas.append("    " + texto)
+    lineas.append("```")
+    return "\n".join(lineas)
