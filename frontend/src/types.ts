@@ -442,6 +442,20 @@ export interface CuentaSesion {
   rol: string;
 }
 
+/** Un rol tal como lo describe el backend (tabla K como datos, GET /auth/roles). */
+export interface RolApi {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  secciones: string[];
+  acciones: string[];
+  ve_documentos: boolean;
+  ruta_inicial: string;
+  modo_discreto: boolean;
+  alto_contraste: boolean;
+  pantalla_compartida: boolean;
+}
+
 export interface Acceso {
   documento_id: string;
   usuario: string;

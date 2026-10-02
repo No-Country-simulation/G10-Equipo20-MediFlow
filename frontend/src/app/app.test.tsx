@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
 import { detalleCaso1 } from "../test/fixtures";
 import { calcularPlazo, plazoDeRevision } from "./plazos";
-import { rolPorId, rolPuedeVer, ROLES } from "./roles";
+import { rolDesdeApi, rolPorId, rolPuedeVer, ROLES } from "./roles";
 import { AppRouter } from "./router";
 
 const LISTADO = {
@@ -42,6 +42,25 @@ describe("roles (RN-K1, RN-K2)", () => {
     expect(rolPuedeVer(rolPorId("auditor_clinico"), "/documentos/DOC-1")).toBe(true);
     expect(rolPuedeVer(rolPorId("quimico_farmaceutico"), "/revision")).toBe(false);
     expect(rolPorId("jefe_urgencias").modoDiscreto).toBe(true);
+  });
+});
+
+describe("roles como datos del backend (tabla K, RN-K1)", () => {
+  it("el menú se arma con las secciones que entrega la API, no con las escritas en la interfaz", async () => {
+    vi.spyOn(api, "listarRoles").mockResolvedValue([
+      { id: "quimico_farmaceutico", nombre: "Químico farmacéutico", descripcion: "x", secciones: ["inicio", "farmacia", "documentos", "alertas"], acciones: ["verificar_receta"],
+        ve_documentos: true, ruta_inicial: "/farmacia", modo_discreto: false, alto_contraste: false, pantalla_compartida: false },
+    ]);
+    render(<AppRouter rutaInicial="/farmacia" rolInicial="quimico_farmaceutico" />);
+    const nav = screen.getByRole("navigation", { name: /principal/i });
+    expect(await within(nav).findByRole("link", { name: /alertas críticas/i })).toBeInTheDocument();  // sección agregada por el backend
+    expect(within(nav).queryByRole("link", { name: /cola de revisión/i })).toBeNull();
+  });
+
+  it("una sección que la interfaz no conoce no rompe el menú", () => {
+    const rol = rolDesdeApi({ id: "gestor", nombre: "Gestor", descripcion: "x", secciones: ["inicio", "tablero_nuevo", "metricas"], acciones: [],
+      ve_documentos: false, ruta_inicial: "/metricas", modo_discreto: true, alto_contraste: false, pantalla_compartida: false });
+    expect(rol.navegacion.map((n) => n.ruta)).toEqual(["/inicio", "/metricas"]);
   });
 });
 

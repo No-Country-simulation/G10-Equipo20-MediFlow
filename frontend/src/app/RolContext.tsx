@@ -30,10 +30,11 @@ function leerRolGuardado(): Rol {
  * se elige en la barra lateral y se recuerda en este navegador.
  */
 export function RolProvider({ children, rolInicial }: { children: ReactNode; rolInicial?: RolId }) {
-  const { cuenta } = useSesion();
+  const { cuenta, versionRoles } = useSesion();
   const [elegido, setRol] = useState<Rol>(() => (rolInicial ? rolPorId(rolInicial) : leerRolGuardado()));
   const rolDeLaCuenta = cuenta?.rol ?? null;
-  const rol = rolDeLaCuenta ? rolPorId(rolDeLaCuenta) : elegido;
+  // Cuando el backend entrega los roles, el elegido se vuelve a buscar por su id para tomar la definición nueva.
+  const rol = useMemo(() => rolPorId(rolDeLaCuenta ?? elegido.id), [rolDeLaCuenta, elegido, versionRoles]);
   const [discreto, setDiscreto] = useState<boolean>(rol.modoDiscreto);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function RolProvider({ children, rolInicial }: { children: ReactNode; rol
       modoDiscreto: discreto,
       alternarModoDiscreto: () => setDiscreto((v) => !v),
     }),
-    [rol, discreto, rolDeLaCuenta],
+    [rol, discreto, rolDeLaCuenta, versionRoles],  // eslint-disable-line react-hooks/exhaustive-deps
   );
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

@@ -28,7 +28,7 @@ import type {
   Simulacion,
   UsuarioAdmin,
   VersionConfiguracion,
-} from "./types";
+RolApi } from "./types";
 
 export const BASE_URL = "/api";
 /** Se emite cuando una petición llega sin sesión válida, para que la interfaz vuelva a pedirla. */
@@ -73,6 +73,11 @@ async function llamar<T>(ruta: string, init?: RequestInit): Promise<T> {
 
 export function estadoSesion(): Promise<{ exigir_sesion: boolean; sesion: CuentaSesion | null }> {
   return llamar("/auth/estado");
+}
+
+/** Tabla K como datos: el menú y el comportamiento de cada rol salen del backend (RN-K1). */
+export function listarRoles(): Promise<RolApi[]> {
+  return llamar<RolApi[]>("/auth/roles");
 }
 
 export function iniciarSesion(usuario: string, clave: string): Promise<CuentaSesion> {

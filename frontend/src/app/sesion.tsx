@@ -1,13 +1,16 @@
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { cerrarSesion, estadoSesion, EVENTO_SESION, iniciarSesion } from "../api";
+import { cerrarSesion, estadoSesion, EVENTO_SESION, iniciarSesion, listarRoles } from "../api";
 import type { CuentaSesion } from "../types";
+import { registrarRoles } from "./roles";
 
 interface ContextoSesion {
   /** Cuenta que inició sesión; null cuando se trabaja sin sesión (modo demostración). */
   cuenta: CuentaSesion | null;
   /** La instalación no deja consultar ni firmar sin sesión (EXIGIR_SESION). */
   exigida: boolean;
+  /** Cambia cuando llegan los roles del backend: quien derive algo de la lista de roles se vuelve a calcular. */
+  versionRoles: number;
   /** `alEntrar` corre con la cuenta ya validada y antes de que la interfaz cambie: es el momento de navegar. */
   ingresar: (usuario: string, clave: string, alEntrar?: (cuenta: CuentaSesion) => void) => Promise<CuentaSesion>;
   salir: () => Promise<void>;
@@ -16,6 +19,7 @@ interface ContextoSesion {
 const SIN_SESION: ContextoSesion = {
   cuenta: null,
   exigida: false,
+  versionRoles: 0,
   ingresar: () => Promise.reject(new Error("sin proveedor de sesión")),
   salir: () => Promise.resolve(),
 };
@@ -28,6 +32,16 @@ const Contexto = createContext<ContextoSesion>(SIN_SESION);
  */
 export function SesionProvider({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<{ cuenta: CuentaSesion | null; exigida: boolean }>({ cuenta: null, exigida: false });
+  const [versionRoles, setVersionRoles] = useState(0);
+
+  // Tabla K como datos (RN-K1): los roles vienen del backend; sin servidor queda el respaldo de la interfaz.
+  useEffect(() => {
+    let activo = true;
+    listarRoles()
+      .then((roles) => { if (activo && registrarRoles(roles) > 0) setVersionRoles((v) => v + 1); })
+      .catch(() => { /* sin servidor: respaldo */ });
+    return () => { activo = false; };
+  }, []);
 
   const consultar = useCallback(() => {
     estadoSesion()
@@ -46,6 +60,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
 
   const valor = useMemo<ContextoSesion>(() => ({
     ...estado,
+    versionRoles,
     ingresar: async (usuario, clave, alEntrar) => {
       const cuenta = await iniciarSesion(usuario, clave);
       alEntrar?.(cuenta);
@@ -57,7 +72,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
       await cerrarSesion().catch(() => undefined);
       setEstado((previo) => ({ ...previo, cuenta: null }));
     },
-  }), [estado]);
+  }), [estado, versionRoles]);
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }
