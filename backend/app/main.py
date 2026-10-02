@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -6,13 +8,30 @@ from app.api import administracion, alertas, auth, autorizaciones, configuracion
 from app.api.deps import ROLES_CLINICOS, acceso, get_memoria
 from app.core.config import get_settings
 from app.core.database import crear_tablas
+from app.services.escalamiento import escalar_una_vuelta
+
+logger = logging.getLogger(__name__)
+
+
+async def _bucle_de_escalamiento(cada_s: int) -> None:
+    """RN-F2: las alertas sin acuse escalan solas, aunque nadie tenga la bandeja abierta."""
+    while True:
+        await asyncio.sleep(cada_s)
+        try:
+            await asyncio.to_thread(escalar_una_vuelta)
+        except Exception:  # noqa: BLE001 - una vuelta fallida no detiene las siguientes
+            logger.exception("Fallo en la vuelta de escalamiento de alertas")
 
 
 @asynccontextmanager
 async def ciclo_de_vida(_: FastAPI):
     crear_tablas()
     get_memoria()  # la memoria del grafo abre su conexión y crea sus tablas al arrancar, no en la primera petición
+    cada_s = get_settings().escalamiento_cada_s
+    tarea = asyncio.create_task(_bucle_de_escalamiento(cada_s)) if cada_s > 0 else None
     yield
+    if tarea is not None:
+        tarea.cancel()
 
 
 def create_app() -> FastAPI:

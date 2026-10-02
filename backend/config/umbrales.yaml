@@ -51,6 +51,13 @@ rangos:                           # RN-L1: el gestor mueve cada umbral solo dent
   tiempos.cola_revision.urgente_h:         {min: 1, max: 8}
   tiempos.cola_revision.rutina_h_habiles:  {min: 8, max: 72}
 
+notificaciones:                   # RN-Q2: la clínica configura la cadena de guardia. RN-P7: orden de canales
+  cadena_guardia:                 # a quién va la alerta crítica y a quién escala sin acuse (RN-F2)
+    - Jefe de Urgencias
+    - Coordinador Médico de Turno
+    - Dirección Médica
+  canales: [Slack, Correo]        # se intentan en este orden; el MVP solo los registra, no hay envío real
+
 calidad:
   limite_correccion_campo: 0.10   # RN-R4: sobre esta tasa se avisa al gestor y se propone subir el umbral
   simulacion_ultimos: 50          # RN-L6: documentos recientes sobre los que se simula una configuración

@@ -184,8 +184,8 @@ class _Enrutador:
         if nivel is N.CRITICO:
             self._registrar("RN-F1", "nivel Crítico", "alerta con acuse pendiente; escala a los 15 min (RN-F2)")
             return Notificacion(
-                canal="Slack",
-                destinatario="Jefe de Urgencias",
+                canal=self.u.notificaciones.canales[0],
+                destinatario=self.u.notificaciones.cadena_guardia[0],
                 mensaje=f"Alerta Crítica. Doc: {self.ctx.documento_id}. Nivel: Crítico. Requiere acuse.",
                 enlace=enlace,
             )

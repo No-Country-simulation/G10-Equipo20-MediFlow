@@ -191,6 +191,13 @@ class Calidad(BaseModel):
     simulacion_ultimos: int = 50  # RN-L6
 
 
+class Notificaciones(BaseModel):
+    """RN-Q2: cadena de guardia de la clínica. RN-P7: canales en orden de intento."""
+
+    cadena_guardia: list[str] = Field(default_factory=lambda: ["Jefe de Urgencias", "Coordinador Médico de Turno", "Dirección Médica"])
+    canales: list[str] = Field(default_factory=lambda: ["Slack", "Correo"])
+
+
 class Umbrales(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -198,6 +205,7 @@ class Umbrales(BaseModel):
     consistencia: UmbralesConsistencia
     tiempos: UmbralesTiempo
     news2: UmbralesNews2
+    notificaciones: Notificaciones = Field(default_factory=Notificaciones)
     rangos: dict[str, Rango] = Field(default_factory=dict)
     calidad: Calidad = Field(default_factory=Calidad)
 

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     llm_limite_llamadas_por_periodo: int = 0
     llm_periodo_h: float = 24.0
     limite_documentos_por_minuto: int = 0  # RN-T2 (0 = sin límite)
+    escalamiento_cada_s: int = 60  # RN-F2: cada cuánto se revisan las alertas sin acuse (0 = solo por script)
     prompt_version: str = "triaje_v1"  # RN-R5
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8

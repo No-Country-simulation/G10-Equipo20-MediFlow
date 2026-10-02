@@ -36,6 +36,7 @@ from app.schemas.resultado import (
     Setting,
     TipoDocumento as T,
 )
+from app.services.alertas import ServicioAlertas
 from app.services.ciclo_vida import prefijo_storage
 from app.services.configuracion import ServicioConfiguracion
 from app.services.enrutamiento import ContextoEnrutamiento, enrutar
@@ -75,6 +76,7 @@ class Orquestador:
         url_base: str | None = None,
         memoria=None,
         limite_llm: LimiteLLM | None = None,
+        notificador=None,
     ):
         self.repo = repositorio
         self.storage = storage
@@ -89,6 +91,7 @@ class Orquestador:
         self.url_base = url_base or settings.url_base_documentos
         self.version_reglas = settings.version_reglas
         self.ingesta = ServicioIngesta(repositorio, storage, tamano_maximo_bytes=settings.tamano_maximo_bytes, max_paginas_pdf=settings.max_paginas_pdf)
+        self.alertas = ServicioAlertas(repositorio, self.umbrales, notificador)
         self.limite_llm = limite_llm or LimiteLLM(llamadas=settings.llm_limite_llamadas_por_periodo, periodo_h=settings.llm_periodo_h)
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
 
@@ -623,7 +626,7 @@ class Orquestador:
             if original is not None and original.nivel == N.CRITICO.value:
                 resultado.historial_decisiones.append(DecisionRegistrada(regla="RN-O3", evidencia=f"posible duplicado de {doc.posible_duplicado_de} con alerta activa", decision="alerta no duplicada"))
                 return
-        self.repo.crear_alerta(doc, nivel=N.CRITICO.value, canal=n.canal, destinatario=n.destinatario, mensaje=n.mensaje, enlace=n.enlace)
+        self.alertas.emitir(doc, n)  # RN-F1; con el canal caído, RN-P7
 
     def _respaldar_json(self, doc: Documento, resultado: ResultadoTriaje) -> None:
         """RN-G2: se guarda el JSON con el historial. RN-G3: un fallo no invalida el triaje."""

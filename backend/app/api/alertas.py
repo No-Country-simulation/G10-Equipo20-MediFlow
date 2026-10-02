@@ -40,6 +40,7 @@ def listar_alertas(estado_acuse: str | None = None, session: Session = Depends(g
             "acusado_por": a.acusado_por,
             "acusado_en": a.acusado_en.isoformat() if a.acusado_en else None,
             "estado_documento": a.documento.estado,
+            "escalamientos": a.escalamientos or [],  # RN-F2, RN-P7
         })
     return salida
 
