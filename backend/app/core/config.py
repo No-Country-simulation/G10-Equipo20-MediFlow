@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     openai_timeout_s: float = 60.0
     llm_max_intentos: int = 3  # RN-P2
     tiempo_maximo_documento_s: float = 180.0  # RN-P5: superado, el documento cuenta como fallo técnico
+    # RN-T1: llamadas al LLM por periodo (0 = sin límite). Agotado, la extracción no crítica se detiene.
+    llm_limite_llamadas_por_periodo: int = 0
+    llm_periodo_h: float = 24.0
+    limite_documentos_por_minuto: int = 0  # RN-T2 (0 = sin límite)
     prompt_version: str = "triaje_v1"  # RN-R5
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8

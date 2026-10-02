@@ -1,5 +1,7 @@
 """Paso 5: endpoint de ingesta. La API rechaza con código explícito (RN-A1) y nunca
 pierde un documento que llegó (RN-P1)."""
+from app.core.config import get_settings
+from tests.test_llm import propuesta_caso_1
 
 CUERPO = {
     "documento_id": "DOC-CLIN-2026-8942",
@@ -200,3 +202,19 @@ def test_get_documento_sin_propuesta_devuelve_confianzas_vacias(client, llm_fals
     d = client.get("/documentos/DOC-CLIN-2026-8942").json()
     assert d["confianzas"] == {}
     assert "[PACIENTE_1]" in d["texto_enviado_llm"]
+
+
+def test_limite_de_documentos_por_minuto_es_429_con_su_regla_RN_T2(client, llm_falso, monkeypatch):
+    monkeypatch.setattr(get_settings(), "limite_documentos_por_minuto", 1)
+    llm_falso.respuestas.extend([propuesta_caso_1(), propuesta_caso_1()])
+    assert client.post("/documentos", json=CUERPO).status_code == 200
+    r = client.post("/documentos", json={**CUERPO, "documento_id": "DOC-2"})
+    assert r.status_code == 429
+    assert "RN-T2" in r.json()["detail"]
+    assert client.get("/documentos/DOC-2").status_code == 404  # no se recibió: no hay nada que perder (RN-P1 no aplica)
+
+
+def test_sin_limite_por_minuto_configurado_entra_todo_RN_T2(client, llm_falso):
+    llm_falso.respuestas.extend([propuesta_caso_1(), propuesta_caso_1()])
+    assert client.post("/documentos", json=CUERPO).status_code == 200
+    assert client.post("/documentos", json={**CUERPO, "documento_id": "DOC-2"}).status_code == 200

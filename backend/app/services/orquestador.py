@@ -43,6 +43,7 @@ from app.services.errores import ErrorDeRevision
 from app.services.evaluacion import ContextoEvaluacion, Evaluado, agregar_motivo, evaluar
 from app.services.hallazgos import detectar_en_texto
 from app.services.ingesta import ServicioIngesta
+from app.services.limites import LimiteLLM
 from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, ServicioExtraccion
 from app.services.pacientes import ServicioPacientes
 from app.services.prioridad_declarada import prioridad_declarada
@@ -73,6 +74,7 @@ class Orquestador:
         umbrales: Umbrales | None = None,
         url_base: str | None = None,
         memoria=None,
+        limite_llm: LimiteLLM | None = None,
     ):
         self.repo = repositorio
         self.storage = storage
@@ -87,6 +89,7 @@ class Orquestador:
         self.url_base = url_base or settings.url_base_documentos
         self.version_reglas = settings.version_reglas
         self.ingesta = ServicioIngesta(repositorio, storage, tamano_maximo_bytes=settings.tamano_maximo_bytes, max_paginas_pdf=settings.max_paginas_pdf)
+        self.limite_llm = limite_llm or LimiteLLM(llamadas=settings.llm_limite_llamadas_por_periodo, periodo_h=settings.llm_periodo_h)
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
 
         # El grafo siempre tiene memoria: sin ella no puede esperar a una persona (RN-I4). Sin configurar, en RAM (suite unitaria).
@@ -138,6 +141,12 @@ class Orquestador:
 
     def nodo_clasificar_extraer(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)
+        # RN-T1: agotado el límite de llamadas del periodo, la extracción no crítica se detiene. La detección
+        # determinística corre igual, y un crítico detectado en el texto sí se extrae con el LLM.
+        if self.limite_llm.agotado(self.repo) and not detectar_en_texto(doc.texto_seudonimizado or "", self.pack):
+            motivo = f"RN-T1: límite de {self.limite_llm.descripcion()} agotado; extracción no crítica detenida"
+            self.repo.transicionar(doc, E.FALLO_TECNICO, actor=ACTOR_SISTEMA, motivo=motivo)
+            return {"error": motivo, "propuesta": None}
         try:
             entrada = self._entrada_llm(doc)
             r = self.extraccion.procesar(entrada)
@@ -200,7 +209,8 @@ class Orquestador:
         # RN-P4: solo lo que el sistema no pudo leer (páginas escaneadas) va con prioridad máxima; un PDF con texto se evalúa por su texto.
         es_imagen = any(p.get("tipo") == "imagen" for p in doc.paginas_json or [])
         nivel = N.CRITICO if (detecciones or es_imagen) else N.RUTINA
-        historial = [DecisionRegistrada(regla="RN-P2", evidencia=estado.get("error") or "fallo", decision="revision_humana:fallo_tecnico")]
+        error = estado.get("error") or "fallo"
+        historial = [DecisionRegistrada(regla="RN-T1" if error.startswith("RN-T1") else "RN-P2", evidencia=error, decision="revision_humana:fallo_tecnico")]
         for d in detecciones:
             historial.append(DecisionRegistrada(regla="RN-P4", evidencia=f"{d.concepto}: {d.evidencia}", decision="alerta sin LLM"))
         if es_imagen:

@@ -85,6 +85,15 @@ class RepositorioDocumentos:
         )
         return self.session.scalar(consulta) or 0
 
+    def lecturas_llm_desde(self, desde: datetime) -> int:
+        """RN-T1: documentos leídos por el LLM en el periodo (cada lectura es una llamada que produjo propuesta)."""
+        consulta = select(func.count(Documento.id)).where(Documento.modelo_llm.is_not(None), Documento.creado_en >= desde)
+        return self.session.scalar(consulta) or 0
+
+    def recibidos_desde(self, desde: datetime) -> int:
+        """RN-T2: documentos recibidos en la ventana."""
+        return self.session.scalar(select(func.count(Documento.id)).where(Documento.creado_en >= desde)) or 0
+
     def version_previa(self, documento: Documento) -> Documento | None:
         """RN-O2: la versión anterior del mismo documento_id."""
         consulta = (

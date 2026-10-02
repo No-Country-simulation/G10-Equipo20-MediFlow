@@ -11,6 +11,7 @@ from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import DocumentoRequest
 from app.schemas.resultado import EstadoDocumento as E, MotivoAuditoria as M
 from app.services.ingesta import ServicioIngesta
+from app.services.limites import LimiteLLM
 from app.services.llm import ClienteFalso, ErrorTransitorioLLM, ServicioExtraccion
 from app.services.orquestador import Orquestador
 from tests.test_llm import propuesta_caso_1
@@ -238,6 +239,43 @@ def test_si_el_original_no_esta_en_memoria_validar_lo_relee_del_storage(repo, st
     r = orquestador(repo, storage, ClienteFalso(respuestas=[propuesta_caso_1()])).procesar(doc)
     assert doc.estado == E.ENRUTADO
     assert r.extraccion.paciente.nombre == "Carlos Eduardo Mendes"
+
+
+# --- Límite de llamadas al LLM por periodo (RN-T1) -------------------------------------------------
+
+RUTINA_1 = DocumentoRequest(documento_id="DOC-RUT-1", canal_origen="Externo", tipo_contenido="texto", contenido_texto="Control de hipertensión. Fecha: 03/04/2026. Losartán 50 mg.")
+RUTINA_2 = DocumentoRequest(documento_id="DOC-RUT-2", canal_origen="Externo", tipo_contenido="texto", contenido_texto="Control de asma. Fecha: 03/04/2026. Salbutamol inhalado.")
+
+
+def test_agotado_el_limite_la_extraccion_no_critica_se_detiene_y_va_a_revision_RN_T1(repo, storage):
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1(), propuesta_caso_1()])
+    orq = orquestador(repo, storage, cliente, limite_llm=LimiteLLM(llamadas=1, periodo_h=24))
+    orq.procesar(ingresar(repo, storage, RUTINA_1))  # consume la única llamada del periodo
+    segundo = ingresar(repo, storage, RUTINA_2)
+    r = orq.procesar(segundo)
+    assert len(cliente.llamadas) == 1
+    assert segundo.estado == E.EN_REVISION_HUMANA
+    assert r.evaluacion.motivo_auditoria is M.FALLO_TECNICO
+    assert any(d.regla == "RN-T1" for d in r.historial_decisiones)
+
+
+def test_la_deteccion_de_criticos_nunca_se_detiene_por_el_limite_RN_T1(repo, storage):
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1(), propuesta_caso_1()])
+    orq = orquestador(repo, storage, cliente, limite_llm=LimiteLLM(llamadas=1, periodo_h=24))
+    orq.procesar(ingresar(repo, storage, RUTINA_1))
+    critico = ingresar(repo, storage)  # caso 1: el texto trae un TEP agudo
+    r = orq.procesar(critico)
+    assert len(cliente.llamadas) == 2  # un crítico detectado en el texto sí se extrae con el LLM
+    assert critico.estado == E.ENRUTADO
+    assert r.clasificacion.nivel_prioridad == "Crítico"
+
+
+def test_sin_limite_configurado_nada_se_detiene_RN_T1(repo, storage):
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1(), propuesta_caso_1()])
+    orq = orquestador(repo, storage, cliente, limite_llm=LimiteLLM(llamadas=0))
+    orq.procesar(ingresar(repo, storage, RUTINA_1))
+    orq.procesar(ingresar(repo, storage, RUTINA_2))
+    assert len(cliente.llamadas) == 2
 
 
 # --- Versiones y duplicados (RN-O2, RN-O3) ----------------------------------------------------

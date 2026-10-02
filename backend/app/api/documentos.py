@@ -17,6 +17,7 @@ from app.schemas.request import CanalOrigen, CoberturaPaciente, DocumentoRequest
 from app.services.archivos import MIME, ArchivoInvalido, contar_paginas, renderizar_pagina
 from app.schemas.resultado import EstadoDocumento as E
 from app.services.ingesta import ResultadoIngesta, ServicioIngesta
+from app.services.limites import LimiteIngesta
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
 from app.services.storage import Storage
@@ -31,6 +32,9 @@ def _orquestador(session: Session, storage: Storage, llm: ClienteLLM) -> Orquest
 
 def _ingesta(session: Session, storage: Storage) -> ServicioIngesta:
     settings = get_settings()
+    # RN-T2: límite de documentos por minuto. Se comprueba antes de recibir: lo que no entró no se pierde.
+    if LimiteIngesta(settings.limite_documentos_por_minuto).excedido(RepositorioDocumentos(session)):
+        raise HTTPException(status_code=429, detail=f"RN-T2: límite de {settings.limite_documentos_por_minuto} documentos por minuto; reintente en un momento")
     return ServicioIngesta(RepositorioDocumentos(session), storage, tamano_maximo_bytes=settings.tamano_maximo_bytes,
                            max_paginas_pdf=settings.max_paginas_pdf)
 
