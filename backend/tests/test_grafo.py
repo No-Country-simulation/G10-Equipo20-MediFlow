@@ -191,6 +191,23 @@ def test_respuesta_fuera_de_esquema_es_fallo_tecnico_RN_P3(repo, storage):
     assert len(cliente.llamadas) == 1
 
 
+def test_superar_el_tiempo_maximo_por_documento_es_fallo_tecnico_con_su_regla_RN_P5(repo, storage):
+    tiempo = {"ahora": 0.0}
+    reloj = lambda: tiempo["ahora"]  # noqa: E731
+
+    class Lento:
+        def completar_estructurado(self, llamada):
+            tiempo["ahora"] += 500
+            return ClienteFalso(respuestas=[propuesta_caso_1()]).completar_estructurado(llamada)
+
+    doc = ingresar(repo, storage)
+    orq = Orquestador(repo, storage, ServicioExtraccion(Lento(), max_intentos=1, tiempo_maximo_s=120, reloj=reloj))
+    r = orq.procesar(doc)
+    assert doc.estado == E.EN_REVISION_HUMANA
+    assert r.evaluacion.motivo_auditoria is M.FALLO_TECNICO
+    assert any("RN-P5" in d.evidencia for d in r.historial_decisiones)
+
+
 # --- Validación dentro del grafo (sección 3.3, RN-I5) ---------------------------------------------
 
 

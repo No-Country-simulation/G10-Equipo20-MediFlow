@@ -178,6 +178,47 @@ def test_reintentos_agotados_es_fallo_RN_P2(entrada):
     assert len(cliente.llamadas) == 3
 
 
+class Reloj:
+    """Reloj inyectable: cada llamada al LLM y cada espera consumen el tiempo que se les asigne."""
+
+    def __init__(self):
+        self.ahora = 0.0
+
+    def __call__(self) -> float:
+        return self.ahora
+
+    def avanzar(self, segundos: float) -> None:
+        self.ahora += segundos
+
+
+def test_el_tiempo_maximo_por_documento_corta_los_reintentos_RN_P5(entrada):
+    reloj = Reloj()
+    cliente = ClienteFalso(respuestas=[ErrorTransitorioLLM("timeout")] * 5)
+    # Cada intento tarda 50 s. El tercero arranca a los 102 s, dentro del máximo de 120 s, y termina fuera:
+    # cuenta como fallo y no hay cuarto intento aunque queden intentos permitidos.
+    cliente_lento = type("Lento", (), {"completar_estructurado": lambda self, llamada: (reloj.avanzar(50), cliente.completar_estructurado(llamada))[1]})()
+    servicio = ServicioExtraccion(cliente_lento, max_intentos=5, espera_base_s=1, dormir=reloj.avanzar, tiempo_maximo_s=120, reloj=reloj)
+    with pytest.raises(FalloLLM, match="RN-P5"):
+        servicio.procesar(entrada)
+    assert len(cliente.llamadas) == 3
+
+
+def test_una_respuesta_que_llega_fuera_del_tiempo_maximo_cuenta_como_fallo_RN_P5(entrada):
+    reloj = Reloj()
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1()])
+    cliente_lento = type("Lento", (), {"completar_estructurado": lambda self, llamada: (reloj.avanzar(130), cliente.completar_estructurado(llamada))[1]})()
+    servicio = ServicioExtraccion(cliente_lento, max_intentos=3, espera_base_s=0, dormir=lambda s: None, tiempo_maximo_s=120, reloj=reloj)
+    with pytest.raises(FalloLLM, match="RN-P5"):
+        servicio.procesar(entrada)
+
+
+def test_dentro_del_tiempo_maximo_los_reintentos_siguen_como_siempre_RN_P2_RN_P5(entrada):
+    reloj = Reloj()
+    cliente = ClienteFalso(respuestas=[ErrorTransitorioLLM("429"), propuesta_caso_1()])
+    servicio = ServicioExtraccion(cliente, max_intentos=3, espera_base_s=1, dormir=reloj.avanzar, tiempo_maximo_s=120, reloj=reloj)
+    assert servicio.procesar(entrada).intentos == 2
+
+
 def test_imagenes_van_como_partes_de_imagen_en_orden_RN_M2():
     entrada = EntradaLLM(documento_id="DOC-IMG", texto="", imagenes=[("aGVsbG8=", "image/png"), ("bW9u", "image/jpeg")], canal_origen="Externo", pais="CO")
     cliente = ClienteFalso(respuestas=[propuesta_caso_1()])

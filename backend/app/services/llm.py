@@ -275,12 +275,17 @@ class ServicioExtraccion:
         max_intentos: int = 3,
         espera_base_s: float = 1.0,
         dormir: Callable[[float], None] = time.sleep,
+        tiempo_maximo_s: float | None = None,
+        reloj: Callable[[], float] = time.monotonic,
     ):
         self.cliente = cliente
         self.prompt = prompt or cargar_prompt()
         self.max_intentos = max_intentos
         self.espera_base_s = espera_base_s
         self.dormir = dormir
+        # RN-P5: tiempo máximo por documento, contando llamadas y esperas. Superado, cuenta como fallo.
+        self.tiempo_maximo_s = tiempo_maximo_s if tiempo_maximo_s is not None else get_settings().tiempo_maximo_documento_s
+        self.reloj = reloj
         self._esquema = esquema_json_estricto(PropuestaLLM)
 
     def procesar(self, entrada: EntradaLLM) -> ResultadoLLM:
@@ -291,14 +296,21 @@ class ServicioExtraccion:
             imagenes=list(entrada.imagenes),
         )
         ultimo_error: Exception | None = None
+        inicio = self.reloj()
+        transcurrido = lambda: self.reloj() - inicio  # noqa: E731
         for intento in range(1, self.max_intentos + 1):
             try:
                 respuesta = self.cliente.completar_estructurado(llamada)
             except ErrorTransitorioLLM as error:
                 ultimo_error = error
                 if intento < self.max_intentos:
-                    self.dormir(self.espera_base_s * 2 ** (intento - 1))
+                    espera = self.espera_base_s * 2 ** (intento - 1)
+                    if transcurrido() + espera >= self.tiempo_maximo_s:
+                        raise FalloLLM(f"RN-P5: tiempo máximo por documento ({self.tiempo_maximo_s:.0f} s) superado tras {intento} intentos: {error}") from error
+                    self.dormir(espera)
                 continue
+            if transcurrido() > self.tiempo_maximo_s:
+                raise FalloLLM(f"RN-P5: la respuesta llegó a los {transcurrido():.0f} s, fuera del tiempo máximo por documento ({self.tiempo_maximo_s:.0f} s)")
             try:
                 propuesta = PropuestaLLM.model_validate(respuesta.contenido)
             except ValidationError as error:

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1-mini"
     openai_timeout_s: float = 60.0
     llm_max_intentos: int = 3  # RN-P2
+    tiempo_maximo_documento_s: float = 180.0  # RN-P5: superado, el documento cuenta como fallo técnico
     prompt_version: str = "triaje_v1"  # RN-R5
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8
