@@ -38,6 +38,7 @@ from app.services.enrutamiento import ContextoEnrutamiento, enrutar
 from app.services.errores import ErrorDeRevision
 from app.services.evaluacion import ContextoEvaluacion, Evaluado, agregar_motivo, evaluar
 from app.services.hallazgos import detectar_en_texto
+from app.services.ingesta import ServicioIngesta
 from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, ServicioExtraccion
 from app.services.pacientes import ServicioPacientes
 from app.services.prioridad_declarada import prioridad_declarada
@@ -80,22 +81,39 @@ class Orquestador:
         self.pacientes = ServicioPacientes(repositorio.session)
         self.url_base = url_base or settings.url_base_documentos
         self.version_reglas = settings.version_reglas
+        self.ingesta = ServicioIngesta(repositorio, storage, tamano_maximo_bytes=settings.tamano_maximo_bytes, max_paginas_pdf=settings.max_paginas_pdf)
         from app.graph.grafo import construir_grafo  # noqa: PLC0415 - evita import circular
 
         self._grafo = construir_grafo(self)
 
     # --- entrada principal -----------------------------------------------------------
 
-    def procesar(self, documento: Documento) -> ResultadoTriaje:
-        if documento.estado != E.VALIDADO:
-            raise ValueError(f"solo se procesa un documento VALIDADO; está en {documento.estado}")
+    def procesar(self, documento: Documento) -> ResultadoTriaje | None:
+        """Corre el grafo desde la etapa en que está el documento. Devuelve None si validar lo rechazó (RN-I5)."""
+        if documento.estado not in (E.RECIBIDO, E.VALIDADO):
+            raise ValueError(f"solo se procesa un documento RECIBIDO o VALIDADO; está en {documento.estado}")
         final = self._grafo.invoke({"documento_pk": documento.id})
-        return final["resultado"]
+        return final.get("resultado")
 
     def _doc(self, estado: EstadoGrafo) -> Documento:
         return self.repo.session.get(Documento, estado["documento_pk"])
 
+    def etapa_de_entrada(self, estado: EstadoGrafo) -> str:
+        """El grafo entra por la etapa del documento: RECIBIDO valida primero; VALIDADO va directo al LLM."""
+        return "validar" if self._doc(estado).estado == E.RECIBIDO else "clasificar_extraer"
+
     # --- nodos del grafo -----------------------------------------------------------------
+
+    def nodo_validar(self, estado: EstadoGrafo) -> EstadoGrafo:
+        """Sección 3.3: la validación barata, sin LLM. Único punto donde el sistema rechaza (RN-I5)."""
+        doc = self._doc(estado)
+        try:
+            codigo_error = self.ingesta.validar(doc)
+        except (FileNotFoundError, OSError) as error:
+            motivo = f"fallo_tecnico: {type(error).__name__}: {str(error)[:300]}"
+            self.repo.transicionar(doc, E.FALLO_TECNICO, actor=ACTOR_SISTEMA, motivo=motivo)
+            return {"error": motivo, "codigo_error": None}
+        return {"codigo_error": codigo_error, "error": None}
 
     def nodo_clasificar_extraer(self, estado: EstadoGrafo) -> EstadoGrafo:
         doc = self._doc(estado)

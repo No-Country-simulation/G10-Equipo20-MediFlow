@@ -191,6 +191,38 @@ def test_respuesta_fuera_de_esquema_es_fallo_tecnico_RN_P3(repo, storage):
     assert len(cliente.llamadas) == 1
 
 
+# --- Validación dentro del grafo (sección 3.3, RN-I5) ---------------------------------------------
+
+
+def test_el_grafo_recibe_en_RECIBIDO_valida_sin_LLM_y_rechaza_con_codigo_RN_I5_RN_A1(repo, storage):
+    cliente = ClienteFalso(respuestas=[propuesta_caso_1()])
+    doc = ingresar(repo, storage, request_caso_1(tipo_contenido="pdf", contenido_texto=None, archivo_base64="no-es-base64!!"))
+    assert doc.estado == E.RECIBIDO
+    r = orquestador(repo, storage, cliente).procesar(doc)
+    assert r is None
+    assert doc.estado == E.RECHAZADO
+    assert doc.codigo_error == "archivo_invalido"
+    assert cliente.llamadas == []  # validar es la validación barata: no gasta una llamada al LLM
+    assert [t.a_estado for t in doc.transiciones] == [E.RECIBIDO, E.RECHAZADO]
+
+
+def test_un_documento_ya_VALIDADO_entra_al_grafo_por_su_etapa_sin_volver_a_validar(repo, storage):
+    doc = ingresar(repo, storage)
+    ServicioIngesta(repo, storage).validar(doc)
+    assert doc.estado == E.VALIDADO
+    orquestador(repo, storage, ClienteFalso(respuestas=[propuesta_caso_1()])).procesar(doc)
+    assert [t.a_estado for t in doc.transiciones] == [E.RECIBIDO, E.VALIDADO, E.CLASIFICADO, E.EXTRAIDO, E.EVALUADO, E.ENRUTADO]
+
+
+def test_si_el_original_no_esta_en_memoria_validar_lo_relee_del_storage(repo, storage):
+    """Reanudar el grafo en otro proceso (reintentos, trabajador) no depende de la memoria de la petición."""
+    doc = ingresar(repo, storage)
+    del doc.contenido_recibido
+    r = orquestador(repo, storage, ClienteFalso(respuestas=[propuesta_caso_1()])).procesar(doc)
+    assert doc.estado == E.ENRUTADO
+    assert r.extraccion.paciente.nombre == "Carlos Eduardo Mendes"
+
+
 # --- Versiones y duplicados (RN-O2, RN-O3) ----------------------------------------------------
 
 

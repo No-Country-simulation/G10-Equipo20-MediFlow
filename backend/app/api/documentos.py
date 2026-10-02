@@ -15,6 +15,7 @@ from app.services.usuarios import ServicioUsuarios
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import CanalOrigen, CoberturaPaciente, DocumentoRequest
 from app.services.archivos import MIME, ArchivoInvalido, contar_paginas, renderizar_pagina
+from app.schemas.resultado import EstadoDocumento as E
 from app.services.ingesta import ResultadoIngesta, ServicioIngesta
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
@@ -63,9 +64,9 @@ def _responder_ingesta(ingesta: ResultadoIngesta, session: Session, storage: Sto
     doc = ingesta.documento
     if ingesta.duplicado_exacto:
         return JSONResponse({**_resumen(doc), "duplicado": True}, status_code=200)  # RN-O1
-    if ingesta.codigo_error:
-        return JSONResponse({**_resumen(doc), "codigo_error": ingesta.codigo_error}, status_code=400)  # RN-A1, RN-O5
     _orquestador(session, storage, llm).procesar(doc)
+    if doc.estado == E.RECHAZADO:
+        return JSONResponse({**_resumen(doc), "codigo_error": doc.codigo_error}, status_code=400)  # RN-A1, RN-O5, RN-I5
     return _resumen(doc)
 
 

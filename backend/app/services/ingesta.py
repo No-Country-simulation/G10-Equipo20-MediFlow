@@ -1,10 +1,17 @@
 """Ingesta y validación sin LLM: RECIBIDO -> VALIDADO o RECHAZADO (sección 3.3).
 
-Orden fijo:
+Son dos pasos distintos, porque el ciclo de vida es el grafo (decisión 6 de la sección 2.1):
+
+recibir (fuera del grafo, antes de tocar nada):
 1. Calcular el hash del contenido y resolver duplicados (RN-O1, RN-O2, RN-O3).
 2. Persistir como RECIBIDO y guardar el original antes de tocarlo (RN-P1, RN-G3).
+
+validar (primer nodo del grafo):
 3. Validar formato por contenido, tamaño y campos obligatorios (RN-A1, RN-O5). Único punto de rechazo (RN-I5).
 4. Preparar el contenido para el LLM: texto seudonimizado (RN-M1) y páginas escaneadas como PNG (RN-M2).
+
+El contenido analizado viaja en memoria pegado al documento (`contenido_recibido`) dentro de la misma
+petición. Si el grafo se reanuda en otro proceso, validar lo relee del original guardado.
 """
 import base64
 import binascii
@@ -159,20 +166,42 @@ class ServicioIngesta:
             posible_duplicado_de=otro.documento_id if otro is not None else None,  # RN-O3
         )
         self._respaldar(documento, contenido, E.RECIBIDO)
+        contenido.nombres_conocidos = datos.nombres_conocidos
+        documento.contenido_recibido = contenido  # transitorio: el grafo lo valida en esta misma petición
+        self.repositorio.guardar()
+        return ResultadoIngesta(documento, codigo_error=contenido.codigo_error)
 
+    def validar(self, documento: Documento) -> str | None:
+        """Primer nodo del grafo: RECIBIDO -> VALIDADO o RECHAZADO (sección 3.3, RN-I5). Devuelve el código de rechazo."""
+        if documento.estado != E.RECIBIDO:
+            raise ValueError(f"solo se valida un documento RECIBIDO; está en {documento.estado}")
+        contenido = self._contenido_de(documento)
         codigo_error = self._validar(contenido)
         if codigo_error is None:
             self.repositorio.transicionar(
                 documento, E.VALIDADO, actor=ACTOR_SISTEMA, motivo="formato, tamaño, id y duplicados verificados"
             )
-            self._preparar_contenido(documento, contenido, datos.nombres_conocidos)
+            self._preparar_contenido(documento, contenido, contenido.nombres_conocidos)
         else:
             documento.codigo_error = codigo_error
             self.repositorio.transicionar(documento, E.RECHAZADO, actor=ACTOR_SISTEMA, motivo=codigo_error)
             self._respaldar(documento, contenido, E.RECHAZADO)  # RN-M9
-
         self.repositorio.guardar()
-        return ResultadoIngesta(documento, codigo_error=codigo_error)
+        return codigo_error
+
+    def _contenido_de(self, documento: Documento) -> ContenidoRecibido:
+        """El contenido analizado al recibir o, si el grafo se reanuda en otro proceso, el original releído del storage."""
+        contenido = getattr(documento, "contenido_recibido", None)
+        if contenido is not None:
+            return contenido
+        if not documento.ruta_storage:
+            raise FileNotFoundError(f"{documento.documento_id}: no hay original guardado que validar")
+        datos = self.storage.leer(documento.ruta_storage)
+        if documento.tipo_contenido == "texto":
+            texto = datos.decode("utf-8")
+            return ContenidoRecibido(datos, "txt", "txt", "texto", texto=texto)
+        nombre = documento.nombre_archivo or f"{documento.documento_id}.{documento.formato or 'bin'}"
+        return self._analizar_archivo(nombre, datos)
 
     def _validar(self, contenido: ContenidoRecibido) -> str | None:
         if contenido.codigo_error:
