@@ -51,8 +51,13 @@ def abrir_sesion(usuario: Usuario, session: Session, response: Response, request
     token = secrets.token_urlsafe(32)
     session.add(SesionUsuario(token_hash=_hash_token(token), usuario_id=usuario.id, expira_en=_ahora() + timedelta(seconds=DURACION_S)))
     session.commit()
-    response.set_cookie(COOKIE, token, max_age=DURACION_S, httponly=True, samesite="lax", secure=request.url.scheme == "https", path="/")
+    response.set_cookie(COOKIE, token, max_age=DURACION_S, httponly=True, samesite="lax", secure=_es_https(request), path="/")
     response.headers["Cache-Control"] = "no-store"
+
+
+def _es_https(request: Request) -> bool:
+    """Detrás de un proxy (nginx, balanceador) la API ve http; el proxy declara el esquema real."""
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower() == "https"
 
 
 def cerrar_sesion(session: Session, response: Response, request: Request) -> None:

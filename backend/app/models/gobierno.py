@@ -79,6 +79,10 @@ class Usuario(Base):
     # Hash PBKDF2 de la clave. Sin clave la cuenta no inicia sesión; con clave nadie firma en su nombre sin sesión (RN-K5).
     clave_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ultimo_ingreso_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Una clave puesta por otra persona (administrador o instalación) se cambia en el primer ingreso.
+    debe_cambiar_clave: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SesionUsuario(Base):
@@ -101,4 +105,16 @@ class AccesoDocumento(Base):
     documento_id: Mapped[str] = mapped_column(String(128), index=True)
     usuario: Mapped[str] = mapped_column(String(128), index=True)
     accion: Mapped[str] = mapped_column(String(32))  # detalle | original | vista_previa
+    fecha_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
+
+
+class EventoSesion(Base):
+    """RN-K3, RN-G4: ingresos, salidas, fallos, bloqueos y cambios de clave, con quién y cuándo. Nunca la clave."""
+
+    __tablename__ = "eventos_sesion"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    usuario: Mapped[str] = mapped_column(String(128), index=True)
+    evento: Mapped[str] = mapped_column(String(32))  # ingreso | salida | fallo | bloqueo | bloqueada | cambio_clave | primer_administrador
+    detalle: Mapped[str] = mapped_column(String(256), default="")
     fecha_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)

@@ -63,20 +63,21 @@ def test_get_auth_roles_es_publico_y_describe_cada_rol_para_el_frontend(client):
 
 
 def test_las_cuentas_de_demostracion_se_generan_con_todos_sus_atributos_y_clave(session):
-    creadas = sembrar_cuentas_demo(session, clave="Demo.2026")
+    creadas = sembrar_cuentas_demo(session, clave="Demo.2026.inicial")
     assert sorted(creadas) == sorted(u for u, _ in CUENTAS_DEMO)
     assert len(CUENTAS_DEMO) == 6 and {rol for _, rol in CUENTAS_DEMO} == set(IDS)  # una por rol
     for cuenta in session.scalars(select(Usuario)).all():
-        assert cuenta.clave_hash and sesiones.clave_coincide("Demo.2026", cuenta.clave_hash)
+        assert cuenta.clave_hash and sesiones.clave_coincide("Demo.2026.inicial", cuenta.clave_hash)
         assert cuenta.activo and cuenta.tipo == "persona" and cuenta.nombre and cuenta.creado_por == "instalacion"
         assert cuenta.rol in IDS and cuenta.ultimo_ingreso_en is None
-    assert sembrar_cuentas_demo(session, clave="Demo.2026") == []  # idempotente: no pisa claves cambiadas
+        assert cuenta.debe_cambiar_clave is True  # la clave la puso la instalación: se cambia en el primer ingreso
+    assert sembrar_cuentas_demo(session, clave="Demo.2026.inicial") == []  # idempotente: no pisa claves cambiadas
 
 
 def test_cada_cuenta_generada_inicia_sesion_en_la_api_y_recibe_su_rol(client, session):
-    sembrar_cuentas_demo(session, clave="Demo.2026")
+    sembrar_cuentas_demo(session, clave="Demo.2026.inicial")
     for usuario, rol in CUENTAS_DEMO:
-        r = client.post("/auth/ingresar", json={"usuario": usuario, "clave": "Demo.2026"})
+        r = client.post("/auth/ingresar", json={"usuario": usuario, "clave": "Demo.2026.inicial"})
         assert r.status_code == 200, usuario
         assert r.json()["rol"] == rol and r.json()["usuario"] == usuario and r.json()["nombre"]
         assert client.get("/auth/estado").json()["sesion"]["rol"] == rol
@@ -90,12 +91,12 @@ def test_el_arranque_siembra_roles_y_cuentas_cuando_la_instalacion_lo_pide(sessi
     from app.core.arranque import preparar_instalacion
 
     monkeypatch.setattr(get_settings(), "cuentas_demo", True)
-    monkeypatch.setattr(get_settings(), "cuentas_demo_clave", "Demo.2026")
+    monkeypatch.setattr(get_settings(), "cuentas_demo_clave", "Demo.2026.inicial")
     informe = preparar_instalacion(session)
-    assert informe == {"roles": 6, "cuentas": 6}
-    assert preparar_instalacion(session) == {"roles": 0, "cuentas": 0}
+    assert informe == {"roles": 6, "cuentas": 6, "tipos_completados": 0}
+    assert preparar_instalacion(session) == {"roles": 0, "cuentas": 0, "tipos_completados": 0}
     monkeypatch.setattr(get_settings(), "cuentas_demo", False)
-    assert preparar_instalacion(session) == {"roles": 0, "cuentas": 0}
+    assert preparar_instalacion(session) == {"roles": 0, "cuentas": 0, "tipos_completados": 0}
 
 
 def test_crear_un_usuario_exige_un_rol_de_la_tabla(client):

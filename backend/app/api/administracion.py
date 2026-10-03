@@ -12,7 +12,7 @@ from app.models.alerta import Alerta
 from app.models.gobierno import Usuario
 from app.services.configuracion import ServicioConfiguracion
 from app.services.errores import ErrorDeRevision
-from app.services.usuarios import TIPOS, ServicioUsuarios
+from app.services.usuarios import TIPOS, ServicioUsuarios, validar_clave
 
 router = APIRouter(prefix="/administracion", tags=["administracion"])
 
@@ -23,7 +23,7 @@ class UsuarioRequest(BaseModel):
     rol: str
     tipo: str = "persona"
     actor: str = Field(..., min_length=1)
-    clave: str | None = Field(default=None, min_length=8, max_length=128)  # sin clave la cuenta no inicia sesión
+    clave: str | None = Field(default=None, min_length=1, max_length=128)  # inicial: su dueño la cambia al entrar
 
 
 class ActorRequest(BaseModel):
@@ -31,7 +31,7 @@ class ActorRequest(BaseModel):
 
 
 class ClaveRequest(ActorRequest):
-    clave: str = Field(..., min_length=8, max_length=128)
+    clave: str = Field(..., min_length=1, max_length=128)
 
 
 def _usuario(u: Usuario) -> dict:
@@ -40,6 +40,9 @@ def _usuario(u: Usuario) -> dict:
         "creado_por": u.creado_por, "creado_en": u.creado_en.isoformat() if u.creado_en else None,
         "desactivado_en": u.desactivado_en.isoformat() if u.desactivado_en else None,
         "con_clave": bool(u.clave_hash),  # nunca el hash
+        "debe_cambiar_clave": bool(u.debe_cambiar_clave),
+        "ultimo_ingreso_en": u.ultimo_ingreso_en.isoformat() if u.ultimo_ingreso_en else None,
+        "bloqueado_hasta": u.bloqueado_hasta.isoformat() if u.bloqueado_hasta else None,
     }
 
 
@@ -66,11 +69,14 @@ def roles(session: Session = Depends(get_session)):
 def crear_usuario(cuerpo: UsuarioRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
     actor = _administrador(session, cuerpo.actor, cuenta)
     try:
+        if cuerpo.clave:
+            validar_clave(cuerpo.clave, cuerpo.usuario)
         u = ServicioUsuarios(session).crear(usuario=cuerpo.usuario, nombre=cuerpo.nombre, rol=cuerpo.rol, tipo=cuerpo.tipo, actor=actor)
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
     if cuerpo.clave:
         u.clave_hash = hash_clave(cuerpo.clave)
+        u.debe_cambiar_clave = True  # la puso otra persona: se cambia en el primer ingreso
         session.commit()
     return _usuario(u)
 
@@ -82,7 +88,12 @@ def definir_clave(usuario: str, cuerpo: ClaveRequest, session: Session = Depends
     u = ServicioUsuarios(session).buscar(usuario)
     if u is None:
         raise HTTPException(status_code=404, detail="usuario no encontrado")
+    try:
+        validar_clave(cuerpo.clave, usuario)
+    except ErrorDeRevision as error:
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
     u.clave_hash = hash_clave(cuerpo.clave)
+    u.debe_cambiar_clave = True
     cerrar_sesiones_de(u, session)
     session.commit()
     return _usuario(u)
@@ -107,6 +118,13 @@ def activar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_s
         return _usuario(ServicioUsuarios(session).cambiar_estado(usuario, activo=True))
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+
+
+@router.get("/eventos_sesion")
+def eventos_sesion(limit: int = Query(default=200, ge=1, le=1000), session: Session = Depends(get_session)):
+    """RN-K3, RN-G4: ingresos, salidas, fallos y bloqueos. Nunca la clave."""
+    return [{"usuario": e.usuario, "evento": e.evento, "detalle": e.detalle, "fecha_hora": e.fecha_hora.isoformat()}
+            for e in ServicioUsuarios(session).eventos_sesion(limit)]
 
 
 @router.get("/accesos")

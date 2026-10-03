@@ -73,6 +73,8 @@ def acceso(*roles: str) -> Callable[..., None]:
             if get_settings().exigir_sesion:
                 raise HTTPException(status_code=401, detail="sesion_requerida")
             return
+        if cuenta.debe_cambiar_clave:
+            raise HTTPException(status_code=403, detail="cambio_de_clave_requerido")
         if roles and cuenta.rol not in roles:
             raise HTTPException(status_code=403, detail=f"RN-K2: el rol {cuenta.rol} no accede a esta sección. "
                                                         "Quien configura no revisa; quien administra no ve datos clínicos")

@@ -20,6 +20,18 @@ from app.services.llm import ClienteFalso  # noqa: E402
 from app.services.storage import StorageLocal  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def entorno_de_desarrollo():
+    """El producto exige sesión por defecto. La suite de reglas corre como un entorno de desarrollo, sin esa puerta,
+    y las pruebas de sesión la vuelven a cerrar a propósito."""
+    from app.core.config import get_settings
+
+    anterior = get_settings().exigir_sesion
+    get_settings().exigir_sesion = False
+    yield
+    get_settings().exigir_sesion = anterior
+
+
 @pytest.fixture
 def engine():
     motor = crear_engine(URL_BD_TESTS)

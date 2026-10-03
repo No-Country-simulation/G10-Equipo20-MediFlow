@@ -30,8 +30,8 @@ async def ciclo_de_vida(_: FastAPI):
     crear_tablas()
     with Session(get_engine()) as sesion:
         informe = preparar_instalacion(sesion)  # roles de la tabla K y, si la instalación lo pide, cuentas de demostración
-    if informe["roles"] or informe["cuentas"]:
-        logger.info("Instalación preparada: %d roles y %d cuentas de demostración creados", informe["roles"], informe["cuentas"])
+    if any(informe.values()):
+        logger.info("Instalación preparada: %s", informe)
     get_memoria()  # la memoria del grafo abre su conexión y crea sus tablas al arrancar, no en la primera petición
     cada_s = get_settings().escalamiento_cada_s
     tarea = asyncio.create_task(_bucle_de_escalamiento(cada_s)) if cada_s > 0 else None

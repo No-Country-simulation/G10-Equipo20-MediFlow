@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.gobierno import AccesoDocumento, Rol, Usuario
+from app.core.config import get_settings
+from app.models.gobierno import AccesoDocumento, EventoSesion, Rol, Usuario
 from app.services.errores import ErrorDeRevision
 from app.services.roles_base import ROLES_BASE
 
@@ -20,9 +21,31 @@ TIPOS = ("persona", "servicio")
 ACCIONES_CLINICAS = {"resolver_revision", "acusar_alerta", "verificar_receta", "resolver_autorizacion", "editar_paciente"}
 
 
+def validar_clave(clave: str, usuario: str = "") -> None:
+    """Política mínima de claves: largo configurable, letras y números o símbolos, y distinta del usuario."""
+    minima = get_settings().clave_minima
+    if len(clave) < minima:
+        raise ErrorDeRevision(422, f"la clave necesita al menos {minima} caracteres")
+    if not any(c.isdigit() for c in clave) or not any(c.isalpha() for c in clave):
+        raise ErrorDeRevision(422, "la clave debe combinar letras y números")
+    if usuario and clave.strip().lower() == usuario.strip().lower():
+        raise ErrorDeRevision(422, "la clave no puede ser el nombre de usuario")
+
+
 class ServicioUsuarios:
     def __init__(self, session: Session):
         self.session = session
+
+    def hay_cuentas(self) -> bool:
+        return self.session.scalars(select(Usuario.id).limit(1)).first() is not None
+
+    # --- eventos de sesión (RN-K3, RN-G4) ---------------------------------------------------------
+
+    def registrar_evento(self, usuario: str, evento: str, detalle: str = "") -> None:
+        self.session.add(EventoSesion(usuario=usuario, evento=evento, detalle=detalle[:256]))
+
+    def eventos_sesion(self, limit: int = 200) -> list[EventoSesion]:
+        return list(self.session.scalars(select(EventoSesion).order_by(EventoSesion.id.desc()).limit(limit)))
 
     def buscar(self, usuario: str) -> Usuario | None:
         return self.session.scalars(select(Usuario).where(Usuario.usuario == usuario.strip())).first()

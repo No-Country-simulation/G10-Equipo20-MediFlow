@@ -112,8 +112,10 @@ def listar_documentos(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     session: Session = Depends(get_session),
+    cuenta=Depends(cuenta_actual),
 ):
-    documentos, total = RepositorioDocumentos(session).listar(estado=estado, nivel=nivel, q=q, limit=limit, offset=offset)
+    documentos, total = RepositorioDocumentos(session).listar(estado=estado, nivel=nivel, q=q, limit=limit, offset=offset,
+                                                              tipos=_tipos_visibles(session, cuenta))
     return {"items": [_resumen(d, con_resultado=False) for d in documentos], "total": total, "limit": limit, "offset": offset}
 
 
@@ -122,17 +124,28 @@ def _quien_accede(cuenta, declarado: str | None) -> str | None:
     return cuenta.usuario if cuenta is not None else declarado
 
 
-def _documento_o_404(session: Session, documento_id: str) -> Documento:
+def _tipos_visibles(session: Session, cuenta) -> list[str] | None:
+    """RN-J9: un revisor ve solo los tipos de documento de su rol; solo el rol de auditoría ve todo. Sin sesión, sin acotar."""
+    if cuenta is None:
+        return None
+    rol = ServicioUsuarios(session).rol(cuenta.rol)
+    return list(rol.tipos_documento) if rol is not None and rol.tipos_documento else None
+
+
+def _documento_o_404(session: Session, documento_id: str, cuenta=None) -> Documento:
     doc = RepositorioDocumentos(session).ultima_version(documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="documento no encontrado")
+    tipos = _tipos_visibles(session, cuenta)
+    if tipos is not None and doc.tipo not in tipos:
+        raise HTTPException(status_code=403, detail=f"RN-J9: el rol {cuenta.rol} solo ve {', '.join(tipos)}")
     return doc
 
 
 @router.get("/{documento_id}")
 def consultar_documento(documento_id: str, session: Session = Depends(get_session), x_usuario: str | None = Header(default=None),
                         cuenta=Depends(cuenta_actual)):
-    doc = _documento_o_404(session, documento_id)
+    doc = _documento_o_404(session, documento_id, cuenta)
     ServicioUsuarios(session).registrar_acceso(doc.documento_id, _quien_accede(cuenta, x_usuario), "detalle")  # RN-K3
     return {
         **_resumen(doc),
@@ -170,7 +183,7 @@ def _alerta(doc: Documento) -> dict | None:
 def descargar_original(documento_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage),
                        x_usuario: str | None = Header(default=None), cuenta=Depends(cuenta_actual)):
     """El original tal como llegó (RN-P1). Solo para revisores con acceso al documento (RN-K3)."""
-    doc = _documento_o_404(session, documento_id)
+    doc = _documento_o_404(session, documento_id, cuenta)
     ServicioUsuarios(session).registrar_acceso(doc.documento_id, _quien_accede(cuenta, x_usuario), "original")  # RN-K3
     if not doc.ruta_storage:
         raise HTTPException(status_code=404, detail="original no respaldado")
@@ -194,7 +207,7 @@ def vista_previa(
     cuenta=Depends(cuenta_actual),
 ):
     """PNG de una página del PDF original para la pantalla de revisión."""
-    doc = _documento_o_404(session, documento_id)
+    doc = _documento_o_404(session, documento_id, cuenta)
     if pagina == 1:
         ServicioUsuarios(session).registrar_acceso(doc.documento_id, _quien_accede(cuenta, x_usuario), "vista_previa")  # RN-K3
     if doc.formato != "pdf":

@@ -40,6 +40,7 @@ class Documento(Base):
     # Propuesta del LLM ya re-identificada: base para re-ejecutar reglas tras una corrección (RN-J4).
     propuesta_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     nivel_prioridad: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    tipo: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # RN-J9: cada rol lista solo sus tipos
     entregas_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # destino -> confirmado
     verificaciones_json: Mapped[list | None] = mapped_column(JSON, nullable=True)  # RN-J6: [{orden, usuario, fecha_hora}]
     autorizacion_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # RN-E5/RN-E9: {estado, usuario, motivo, fecha_hora}

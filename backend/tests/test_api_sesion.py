@@ -43,8 +43,15 @@ def crear(client, usuario, rol, clave=CLAVE, tipo="persona"):
     return r.json()
 
 
+CLAVE_DEFINITIVA = "turno-noche-definitiva-2026"
+
+
 def ingresar(client, usuario, clave=CLAVE):
-    return client.post("/auth/ingresar", json={"usuario": usuario, "clave": clave})
+    r = client.post("/auth/ingresar", json={"usuario": usuario, "clave": clave})
+    if r.status_code == 200 and r.json().get("debe_cambiar_clave"):
+        # Producto: una clave puesta por el administrador se cambia en el primer ingreso; aquí la persona elige la suya.
+        assert client.post("/auth/clave", json={"clave_actual": clave, "clave_nueva": CLAVE_DEFINITIVA}).status_code == 200
+    return r
 
 
 def enviar_tep(client, llm_falso, documento_id):
@@ -79,10 +86,11 @@ def test_la_api_nunca_devuelve_la_clave_ni_su_hash(client):
 
 def test_ingresar_abre_una_sesion_en_cookie_httponly(client):
     crear(client, "aud.ana", "auditor_clinico")
-    assert client.get("/auth/estado").json() == {"exigir_sesion": False, "sesion": None}
+    estado = client.get("/auth/estado").json()
+    assert (estado["exigir_sesion"], estado["sesion"]) == (False, None)
     r = ingresar(client, "aud.ana")
     assert r.status_code == 200, r.text
-    assert r.json() == {"usuario": "aud.ana", "nombre": "Aud.Ana", "rol": "auditor_clinico"}
+    assert r.json() == {"usuario": "aud.ana", "nombre": "Aud.Ana", "rol": "auditor_clinico", "debe_cambiar_clave": True}
     cookie = r.headers["set-cookie"]
     assert COOKIE in cookie and "HttpOnly" in cookie and "samesite=lax" in cookie.lower()
     assert client.get("/auth/estado").json()["sesion"]["usuario"] == "aud.ana"
@@ -193,7 +201,8 @@ def test_EXIGIR_SESION_nada_se_consulta_ni_se_firma_sin_sesion(client, anonimo, 
     assert anonimo.post("/documentos", json={"documento_id": "X", "canal_origen": "Externo", "tipo_contenido": "texto", "contenido_texto": "hola"}).status_code == 401
     assert anonimo.post("/farmacia/REC-1/verificar", json={"usuario": "cualquiera"}).status_code == 401
     assert anonimo.get("/health").status_code == 200
-    assert anonimo.get("/auth/estado").json() == {"exigir_sesion": True, "sesion": None}
+    estado = anonimo.get("/auth/estado").json()
+    assert (estado["exigir_sesion"], estado["sesion"]) == (True, None)
 
     assert ingresar(anonimo, "aud.ana").status_code == 200
     assert anonimo.get("/documentos/REC-1").status_code == 200
@@ -251,14 +260,14 @@ def test_con_sesion_solo_un_administrador_crea_cuentas(client):
 
 
 def test_crear_administrador_crea_la_primera_cuenta_y_no_pisa_una_existente(client, session):
-    assert crear_administrador(session, "admin", "clave-inicial-larga") == "creada"
+    assert crear_administrador(session, "admin", "clave-inicial-2026") == "creada"
     cuenta = session.query(Usuario).filter_by(usuario="admin").one()
-    assert cuenta.rol == "administrador" and clave_coincide("clave-inicial-larga", cuenta.clave_hash)
-    assert crear_administrador(session, "admin", "otra-clave-distinta") == "ya_existe"
-    assert clave_coincide("clave-inicial-larga", cuenta.clave_hash)  # no se cambia la clave en silencio
-    assert ingresar(client, "admin", "clave-inicial-larga").status_code == 200
+    assert cuenta.rol == "administrador" and clave_coincide("clave-inicial-2026", cuenta.clave_hash)
+    assert crear_administrador(session, "admin", "otra-clave-2027") == "ya_existe"
+    assert clave_coincide("clave-inicial-2026", cuenta.clave_hash)  # no se cambia la clave en silencio
+    assert ingresar(client, "admin", "clave-inicial-2026").status_code == 200
     with pytest.raises(ValueError, match="al menos"):
         crear_administrador(session, "otro", "corta")
     crear(client, "aud.ana", "auditor_clinico")
     with pytest.raises(ValueError, match="ya existe con el rol"):
-        crear_administrador(session, "aud.ana", "clave-inicial-larga")
+        crear_administrador(session, "aud.ana", "clave-inicial-2026")

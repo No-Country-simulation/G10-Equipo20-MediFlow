@@ -55,8 +55,9 @@ class RepositorioDocumentos:
         self.session.flush()
         return transicion
 
-    def listar(self, *, estado: str | None = None, nivel: str | None = None, q: str = "", limit: int = 20, offset: int = 0) -> tuple[list[Documento], int]:
-        """Última versión de cada documento, más reciente primero, con filtros y paginación."""
+    def listar(self, *, estado: str | None = None, nivel: str | None = None, q: str = "", limit: int = 20, offset: int = 0,
+               tipos: list[str] | None = None) -> tuple[list[Documento], int]:
+        """Última versión de cada documento, más reciente primero, con filtros y paginación. `tipos` acota lo que ve un rol (RN-J9)."""
         ultima = (
             select(Documento.documento_id, func.max(Documento.version).label("version"))
             .group_by(Documento.documento_id)
@@ -67,6 +68,8 @@ class RepositorioDocumentos:
             consulta = consulta.where(Documento.estado == estado)
         if nivel:
             consulta = consulta.where(Documento.nivel_prioridad == nivel)
+        if tipos is not None:
+            consulta = consulta.where(Documento.tipo.in_(tipos))
         if q.strip():
             patron = f"%{q.strip()}%"
             consulta = consulta.where(Documento.documento_id.ilike(patron) | Documento.nombre_archivo.ilike(patron))

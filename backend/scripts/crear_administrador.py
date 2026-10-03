@@ -13,15 +13,16 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.sesiones import hash_clave
-from app.services.usuarios import ServicioUsuarios
-
-CLAVE_MINIMA = 8
+from app.services.errores import ErrorDeRevision
+from app.services.usuarios import ServicioUsuarios, validar_clave
 
 
 def crear_administrador(session: Session, usuario: str, clave: str) -> str:
     """Devuelve "creada" o "ya_existe". Falla si la clave es corta o el usuario ya existe con otro rol."""
-    if len(clave) < CLAVE_MINIMA:
-        raise ValueError(f"ADMIN_CLAVE_INICIAL necesita al menos {CLAVE_MINIMA} caracteres")
+    try:
+        validar_clave(clave, usuario)
+    except ErrorDeRevision as error:
+        raise ValueError(f"ADMIN_CLAVE_INICIAL: {error.detalle}") from error
     servicio = ServicioUsuarios(session)
     existente = servicio.buscar(usuario)
     if existente is not None:

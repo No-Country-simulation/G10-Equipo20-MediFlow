@@ -51,7 +51,7 @@ def sembrar_cuentas_demo(session: Session, *, clave: str) -> list[str]:
         if usuario in existentes:
             continue
         session.add(Usuario(usuario=usuario, nombre=NOMBRES_DEMO[usuario], rol=rol, tipo="persona",
-                            creado_por="instalacion", clave_hash=hash_clave(clave)))
+                            creado_por="instalacion", clave_hash=hash_clave(clave), debe_cambiar_clave=True))
         creados.append(usuario)
     if creados:
         session.commit()
