@@ -48,27 +48,26 @@ afterEach(() => vi.restoreAllMocks());
 describe("Farmacia (RN-E6, RN-J6)", () => {
   it("lista recetas con sus marcas y bloquea la segunda verificación a la misma persona", async () => {
     const verificar = vi.spyOn(api, "verificarReceta").mockResolvedValue({ documento_id: "REC-2", verificaciones: [{ orden: 1, usuario: "qf.maria" }, { orden: 2, usuario: "qf.pedro" }], requeridas: 2, completa: true, estado: "ENTREGADO", pendientes: [] });
-    render(<AppRouter rutaInicial="/farmacia" rolInicial="quimico_farmaceutico" />);
+    const { unmount } = render(<AppRouter rutaInicial="/farmacia" rolInicial="quimico_farmaceutico" />);  // sesión de qf.maria
     const filas = await screen.findAllByTestId("fila-receta");
     expect(filas).toHaveLength(2);
     expect(filas[0]).toHaveTextContent("apixaban");
     expect(filas[0]).toHaveTextContent(/alto riesgo/i);
     expect(filas[0]).toHaveTextContent("1 de 2");
     // la misma persona que hizo la primera no puede hacer la segunda
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "qf.maria");
-    const boton = within(filas[0]).getByRole("button", { name: /segunda verificación/i });
-    expect(boton).toBeDisabled();
+    expect(within(filas[0]).getByRole("button", { name: /segunda verificación/i })).toBeDisabled();
     expect(filas[0]).toHaveTextContent(/requiere otra persona/i);
-    // otra persona sí
-    await userEvent.clear(screen.getByLabelText(/firmo como/i));
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "qf.pedro");
-    await userEvent.click(within(filas[0]).getByRole("button", { name: /segunda verificación/i }));
-    expect(verificar).not.toHaveBeenCalled();  // igual que en el detalle: primero se confirma
-    await userEvent.click(within(filas[0]).getByRole("button", { name: /confirmar verificación/i }));
-    await waitFor(() => expect(verificar).toHaveBeenCalledWith("REC-2", "qf.pedro"));
-    expect(await screen.findByRole("status")).toHaveTextContent(/REC-2.*verificada/i);
     expect(filas[1]).toHaveTextContent("0 de 1");
     expect(within(filas[1]).getByRole("button", { name: /primera verificación/i })).toBeInTheDocument();
+    unmount();
+    // otra persona, con su propia sesión, sí
+    render(<AppRouter rutaInicial="/farmacia" cuentaInicial={{ usuario: "qf.pedro", nombre: "Pedro Gil", rol: "quimico_farmaceutico" }} />);
+    const otras = await screen.findAllByTestId("fila-receta");
+    await userEvent.click(within(otras[0]).getByRole("button", { name: /segunda verificación/i }));
+    expect(verificar).not.toHaveBeenCalled();  // igual que en el detalle: primero se confirma
+    await userEvent.click(within(otras[0]).getByRole("button", { name: /confirmar verificación/i }));
+    await waitFor(() => expect(verificar).toHaveBeenCalledWith("REC-2"));
+    expect(await screen.findByRole("status")).toHaveTextContent(/REC-2.*verificada/i);
   });
 });
 
@@ -85,7 +84,6 @@ describe("Autorizaciones (RN-E5, RN-E9, RN-CO13)", () => {
     expect(avisos[0]).toHaveTextContent("ORD-URG");
     expect(avisos[0]).toHaveTextContent(/sin autorización previa/i);
     await userEvent.click(screen.getByRole("tab", { name: /por autorizar/i }));
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "aut.luis");
     const filaInc = (await screen.findAllByTestId("fila-orden"))[1];
     expect(within(filaInc).getByRole("button", { name: /devolver/i })).toBeDisabled();
     await userEvent.type(within(filaInc).getByLabelText(/motivo/i), "falta justificación clínica");
@@ -93,7 +91,7 @@ describe("Autorizaciones (RN-E5, RN-E9, RN-CO13)", () => {
     expect(resolver).not.toHaveBeenCalled();
     expect(within(filaInc).getByTestId("confirmacion")).toHaveTextContent(/falta justificación clínica/);
     await userEvent.click(within(filaInc).getByRole("button", { name: /confirmar devolución/i }));
-    await waitFor(() => expect(resolver).toHaveBeenCalledWith("ORD-INC", { accion: "devolver", usuario: "aut.luis", motivo: "falta justificación clínica" }));
+    await waitFor(() => expect(resolver).toHaveBeenCalledWith("ORD-INC", { accion: "devolver", motivo: "falta justificación clínica" }));
   });
 });
 

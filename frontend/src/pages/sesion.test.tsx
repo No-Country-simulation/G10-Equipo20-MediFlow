@@ -1,6 +1,5 @@
 /**
- * Sesión del personal (RN-K5): con sesión, el rol y la firma son los de la cuenta; sin ella la aplicación
- * sigue en modo demostración, y una instalación con sesión obligatoria no muestra nada antes del ingreso.
+ * Sesión del personal (RN-K5): el rol y la firma son los de la cuenta, y sin sesión no se muestra nada antes del ingreso.
  */
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,8 +15,8 @@ const USUARIOS = [
   { usuario: "qf.maria", nombre: "María Gil", rol: "quimico_farmaceutico", tipo: "persona", activo: true, creado_por: "admin.root", creado_en: new Date().toISOString(), desactivado_en: null, con_clave: false },
 ];
 
-function conSesion(cuenta: typeof ANA | null, exigir = false) {
-  return vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: exigir, sesion: cuenta });
+function conSesion(cuenta: typeof ANA | null) {
+  return vi.spyOn(api, "estadoSesion").mockResolvedValue({ sesion: cuenta, sin_cuentas: false });
 }
 
 beforeEach(() => {
@@ -32,20 +31,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe("sin sesión (modo demostración)", () => {
-  it("se elige el rol, se firma con el nombre escrito y se ofrece iniciar sesión", async () => {
-    render(<AppRouter rutaInicial="/revision" rolInicial="auditor_clinico" />);
-    expect(await screen.findByLabelText(/firmo como/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("Rol")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /iniciar sesión/i })).toHaveAttribute("href", "/ingresar");
-    expect(screen.queryByTestId("sesion-activa")).toBeNull();
-  });
-});
-
 describe("con sesión (RN-K5)", () => {
-  it("el rol es el de la cuenta, aunque el navegador recuerde otro, y no se puede cambiar ni escribir otra firma", async () => {
+  it("el rol es el de la cuenta y no se puede cambiar ni escribir otra firma", async () => {
     conSesion(ANA);
-    render(<AppRouter rutaInicial="/revision" rolInicial="gestor" />);
+    try { localStorage.setItem("mediflow.rol", "gestor"); } catch { /* sin storage */ }  // nada que el navegador recuerde cambia el rol
+    render(<AppRouter rutaInicial="/revision" />);
     const sesion = await screen.findByTestId("sesion-activa");
     expect(sesion).toHaveTextContent("Ana Torres");
     expect(sesion).toHaveTextContent("Auditor clínico · aud.ana");
@@ -59,13 +49,13 @@ describe("con sesión (RN-K5)", () => {
   it("las acciones se firman con la cuenta sin escribir el nombre", async () => {
     conSesion(ADMIN);
     const crear = vi.spyOn(api, "crearUsuario").mockResolvedValue({ ...USUARIOS[0], usuario: "jefe.rojas", rol: "jefe_urgencias" } as never);
-    render(<AppRouter rutaInicial="/administracion" rolInicial="auditor_clinico" />);
+    render(<AppRouter rutaInicial="/administracion" />);
     await screen.findByTestId("sesion-activa");
     await userEvent.type(await screen.findByLabelText(/nombre de usuario/i), "jefe.rojas");
     await userEvent.type(screen.getByLabelText(/nombre completo/i), "Andrés Rojas");
     await userEvent.type(screen.getByLabelText(/clave inicial/i), "turno-noche-2026");
     await userEvent.click(screen.getByRole("button", { name: /crear usuario/i }));
-    await waitFor(() => expect(crear).toHaveBeenCalledWith({ usuario: "jefe.rojas", nombre: "Andrés Rojas", rol: "auditor_clinico", tipo: "persona", actor: "admin.root", clave: "turno-noche-2026" }));
+    await waitFor(() => expect(crear).toHaveBeenCalledWith({ usuario: "jefe.rojas", nombre: "Andrés Rojas", rol: "auditor_clinico", tipo: "persona", clave: "turno-noche-2026" }));
   });
 
   it("cerrar sesión la cierra en el servidor y lleva al ingreso", async () => {
@@ -75,23 +65,23 @@ describe("con sesión (RN-K5)", () => {
     await userEvent.click(await screen.findByRole("button", { name: /cerrar sesión/i }));
     await waitFor(() => expect(cerrar).toHaveBeenCalled());
     expect(await screen.findByRole("heading", { name: /iniciar sesión en mediflow/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /seguir sin sesión/i })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).toBeNull();  // sin sesión no queda nada a la vista
   });
 
   it("si la sesión termina a mitad de trabajo, vuelve a pedirla", async () => {
-    const estado = conSesion(ANA, true);
+    const estado = conSesion(ANA);
     render(<AppRouter rutaInicial="/revision" />);
     await screen.findByTestId("sesion-activa");
-    estado.mockResolvedValue({ exigir_sesion: true, sesion: null });
+    estado.mockResolvedValue({ sesion: null });
     act(() => { window.dispatchEvent(new Event(api.EVENTO_SESION)); });
     expect(await screen.findByRole("heading", { name: /iniciar sesión en mediflow/i })).toBeInTheDocument();
     expect(screen.queryByRole("navigation")).toBeNull();
   });
 });
 
-describe("instalación con sesión obligatoria", () => {
+describe("sin sesión solo se ve el ingreso (RN-K5)", () => {
   it("sin sesión solo se ve el ingreso; al ingresar se abre el inicio del rol de la cuenta", async () => {
-    conSesion(null, true);
+    conSesion(null);
     const iniciar = vi.spyOn(api, "iniciarSesion").mockResolvedValue(ANA);
     render(<AppRouter rutaInicial="/documentos" />);
     expect(await screen.findByRole("heading", { name: /iniciar sesión en mediflow/i })).toBeInTheDocument();
@@ -108,7 +98,7 @@ describe("instalación con sesión obligatoria", () => {
   });
 
   it("con credenciales malas avisa, borra la clave y no entra", async () => {
-    conSesion(null, true);
+    conSesion(null);
     vi.spyOn(api, "iniciarSesion").mockRejectedValue(new api.ErrorApi(401, "Usuario o clave incorrectos"));
     render(<AppRouter rutaInicial="/documentos" />);
     await userEvent.type(await screen.findByLabelText("Usuario"), "aud.ana");
@@ -127,7 +117,6 @@ describe("Administración: clave de las cuentas", () => {
     const filas = await screen.findAllByTestId("fila-usuario");
     expect(filas[0]).toHaveTextContent(/con clave/i);
     expect(filas[1]).toHaveTextContent(/sin clave/i);
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "admin.root");
     await userEvent.click(within(filas[1]).getByRole("button", { name: /definir la clave de qf\.maria/i }));
     const formulario = screen.getByTestId("cambio-de-clave");
     const guardar = within(formulario).getByRole("button", { name: /guardar clave/i });
@@ -135,7 +124,7 @@ describe("Administración: clave de las cuentas", () => {
     expect(guardar).toBeDisabled();
     await userEvent.type(within(formulario).getByLabelText(/clave nueva de qf\.maria/i), "-pero-ya-no");
     await userEvent.click(guardar);
-    await waitFor(() => expect(definir).toHaveBeenCalledWith("qf.maria", "corta-pero-ya-no", "admin.root"));
+    await waitFor(() => expect(definir).toHaveBeenCalledWith("qf.maria", "corta-pero-ya-no"));
     expect(await screen.findByText(/sus sesiones abiertas se cerraron/i)).toBeInTheDocument();
   });
 });
@@ -143,7 +132,7 @@ describe("Administración: clave de las cuentas", () => {
 
 describe("producto: primer administrador y clave inicial", () => {
   it("sin cuentas, la pantalla de ingreso crea el primer administrador y entra con él (RN-S3)", async () => {
-    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: null, sin_cuentas: true, nombre_sede: "Sede Norte" });
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ sesion: null, sin_cuentas: true, nombre_sede: "Sede Norte" });
     const crear = vi.spyOn(api, "crearPrimerAdministrador").mockResolvedValue({ usuario: "admin", nombre: "TI", rol: "administrador", debe_cambiar_clave: false });
     render(<AppRouter rutaInicial="/" />);
     const formulario = await screen.findByTestId("primer-administrador");
@@ -158,7 +147,7 @@ describe("producto: primer administrador y clave inicial", () => {
   });
 
   it("si la confirmación no coincide no llama a la API", async () => {
-    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: null, sin_cuentas: true });
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ sesion: null, sin_cuentas: true });
     const crear = vi.spyOn(api, "crearPrimerAdministrador").mockResolvedValue(ADMIN);
     render(<AppRouter rutaInicial="/" />);
     const formulario = await screen.findByTestId("primer-administrador");
@@ -172,7 +161,7 @@ describe("producto: primer administrador y clave inicial", () => {
   });
 
   it("una clave puesta por otra persona se cambia antes de ver nada", async () => {
-    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: { ...ANA, debe_cambiar_clave: true } });
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ sesion: { ...ANA, debe_cambiar_clave: true } });
     const cambiar = vi.spyOn(api, "cambiarMiClave").mockResolvedValue({ ...ANA, debe_cambiar_clave: false });
     render(<AppRouter rutaInicial="/revision" />);
     const pantalla = await screen.findByTestId("cambiar-clave");
@@ -185,12 +174,11 @@ describe("producto: primer administrador y clave inicial", () => {
     expect(await screen.findByRole("heading", { level: 1, name: /cola de revisión/i })).toBeInTheDocument();
   });
 
-  it("con sesión se puede cambiar la clave desde la barra lateral, y en producto no se ofrece la demostración", async () => {
-    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: ANA, nombre_sede: "Sede Norte" });
+  it("con sesión se puede cambiar la clave desde la barra lateral", async () => {
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ sesion: ANA, nombre_sede: "Sede Norte" });
     render(<AppRouter rutaInicial="/revision" />);
     await screen.findByTestId("sesion-activa");
     expect(screen.getByRole("link", { name: /cambiar mi clave/i })).toHaveAttribute("href", "/cambiar-clave");
-    expect(screen.queryByRole("link", { name: /modo demostración/i })).toBeNull();
-    expect(screen.getByText(/Sede Norte/)).toBeInTheDocument();
+        expect(screen.getByText(/Sede Norte/)).toBeInTheDocument();
   });
 });

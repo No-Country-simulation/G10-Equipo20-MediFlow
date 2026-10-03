@@ -127,7 +127,6 @@ export function ConfiguracionPage() {
     return r && (v < r.min || v > r.max || (r.solo_a_la_baja && v > r.base));
   }).map(([k]) => k);
   const yo = usuario.trim();
-  const actor = { usuario: yo, rol: "gestor" };
 
   function informar(e: unknown) {
     setMensaje({ texto: textoDeError(e), error: true });
@@ -148,7 +147,7 @@ export function ConfiguracionPage() {
   async function proponer() {
     setMensaje(null);
     try {
-      const v = await proponerConfiguracion({ cambios, usuario: yo, rol: "gestor", motivo: motivo.trim() });
+      const v = await proponerConfiguracion({ cambios, motivo: motivo.trim() });
       setMensaje({ texto: `Propuesta #${v.id} creada. ${v.toca_seguridad ? "Toca seguridad: necesita dos aprobadores." : "Necesita una aprobación."}` });
       setMotivo("");
       setAltoRiesgo("");
@@ -166,7 +165,7 @@ export function ConfiguracionPage() {
     if (v.id == null) return;
     setMensaje(null);
     try {
-      const r = await aprobarConfiguracion(v.id, actor);
+      const r = await aprobarConfiguracion(v.id);
       setMensaje({ texto: r.estado === "vigente" ? `Versión ${r.numero} vigente desde ahora. No es retroactiva.` : `Aprobación registrada: ${r.aprobaciones?.length ?? 0} de ${r.aprobaciones_requeridas}.` });
       cargar();
     } catch (e) {
@@ -178,7 +177,7 @@ export function ConfiguracionPage() {
     if (v.id == null) return;
     setMensaje(null);
     try {
-      await rechazarConfiguracion(v.id, { ...actor, motivo: motivosRechazo[v.id] ?? "" });
+      await rechazarConfiguracion(v.id, { motivo: motivosRechazo[v.id] ?? "" });
       setMensaje({ texto: `Propuesta #${v.id} rechazada.` });
       cargar();
     } catch (e) {

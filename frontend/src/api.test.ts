@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { acusarAlerta, colaRevision, confirmarEntrega, enviarDocumento, ErrorApi, resolverRevision } from "./api";
+import { colaRevision, confirmarEntrega, enviarDocumento, resolverRevision } from "./api";
 import { detalleCaso1 } from "./test/fixtures";
 
 function respuesta(cuerpo: unknown, status = 200) {
@@ -27,13 +27,7 @@ describe("cliente de la API", () => {
 
   it("un error 409 lanza ErrorApi con el detalle del backend", async () => {
     vi.spyOn(globalThis, "fetch").mockReturnValue(respuesta({ detail: "RN-I4: no está en revisión" }, 409));
-    await expect(resolverRevision("DOC-1", { accion: "aprobar", usuario: "ana", rol: "auditor_clinico", motivo: "x" })).rejects.toMatchObject({ status: 409, detalle: "RN-I4: no está en revisión" });
-  });
-
-  it("el acuse sin usuario se rechaza en el cliente sin llamar al backend (RN-Q5)", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    await expect(acusarAlerta("DOC-1", "   ")).rejects.toBeInstanceOf(ErrorApi);
-    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(resolverRevision("DOC-1", { accion: "aprobar", motivo: "x" })).rejects.toMatchObject({ status: 409, detalle: "RN-I4: no está en revisión" });
   });
 
   it("consulta la cola y confirma entregas en las rutas correctas", async () => {

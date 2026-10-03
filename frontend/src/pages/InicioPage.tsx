@@ -155,7 +155,6 @@ export function InicioPage() {
             {Object.entries(r?.por_estado ?? {}).map(([k, v]) => <li key={k}><span className="muted">{etiquetaEstado(k)}</span> <strong>{v}</strong></li>)}
             {r && Object.keys(r.por_estado).length === 0 && <li className="muted">—</li>}
           </ul>
-          <p className="muted" style={{ marginTop: 12 }}><Link to="/demo">Modo demostración ›</Link> recorrido guiado con casos sintéticos</p>
         </section>
       </div>
     </>

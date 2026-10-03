@@ -1,4 +1,4 @@
-import { KeyRound, BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, LogIn, LogOut, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
+import { KeyRound, BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, LogOut, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -6,9 +6,8 @@ import { colaRevision, listarAlertas } from "../../api";
 import { useAltoContraste } from "../../app/contraste";
 import { ProveedorPared, useEstadoPared } from "../../app/pared";
 import { useRol } from "../../app/RolContext";
-import { ROLES, rolPuedeVer, type RolId } from "../../app/roles";
+import { rolPuedeVer } from "../../app/roles";
 import { useSesion } from "../../app/sesion";
-import { useUsuario } from "../../app/usuario";
 import { BannerAlertas } from "./BannerAlertas";
 
 const INTERVALO_MS = 30_000;
@@ -28,9 +27,8 @@ const ICONOS: Record<string, LucideIcon> = {
 };
 
 export function AppShell() {
-  const { rol, cambiarRol } = useRol();
-  const { cuenta, salir, exigida, nombreSede } = useSesion();
-  const [usuario, setUsuario] = useUsuario();
+  const { rol } = useRol();
+  const { cuenta, salir, nombreSede } = useSesion();
   const navigate = useNavigate();
   const location = useLocation();
   const [contadores, setContadores] = useState({ revision: 0, alertas: 0 });
@@ -55,12 +53,6 @@ export function AppShell() {
 
   // En pantallas angostas el menú se cierra al navegar.
   useEffect(() => { setMenuAbierto(false); }, [location.pathname]);
-
-  function alCambiarRol(id: RolId) {
-    cambiarRol(id);
-    const destino = ROLES.find((r) => r.id === id)?.rutaInicial ?? "/documentos";
-    navigate(destino);
-  }
 
   async function alSalir() {
     await salir();
@@ -123,30 +115,13 @@ export function AppShell() {
             </div>
           ) : (
             <>
-              {!exigida && <NavLink to="/demo" className="demo">Modo demostración ›</NavLink>}
               <div className="usuario">
-                {cuenta ? (
-                  <div className="sesion-activa" data-testid="sesion-activa">
-                    <strong>{cuenta.nombre}</strong>
-                    <small>{rol.nombre} · {cuenta.usuario}</small>
-                    <NavLink to="/cambiar-clave" className="enlace-sesion"><KeyRound size={16} aria-hidden="true" />Cambiar mi clave</NavLink>
-                    <button type="button" className="boton-lateral" onClick={alSalir}><LogOut size={16} aria-hidden="true" />Cerrar sesión</button>
-                  </div>
-                ) : (
-                  <>
-                    <label>
-                      Rol
-                      <select id="selector-rol" value={rol.id} onChange={(e) => alCambiarRol(e.target.value as RolId)}>
-                        {ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                      </select>
-                    </label>
-                    <label>
-                      Firmo como
-                      <input id="firmo-como" value={usuario} onChange={(e) => setUsuario(e.target.value)} placeholder="nombre.apellido" autoComplete="off" />
-                    </label>
-                    <NavLink to="/ingresar" className="enlace-sesion"><LogIn size={16} aria-hidden="true" />Iniciar sesión</NavLink>
-                  </>
-                )}
+                <div className="sesion-activa" data-testid="sesion-activa">
+                  <strong>{cuenta?.nombre}</strong>
+                  <small>{rol.nombre} · {cuenta?.usuario}</small>
+                  <NavLink to="/cambiar-clave" className="enlace-sesion"><KeyRound size={16} aria-hidden="true" />Cambiar mi clave</NavLink>
+                  <button type="button" className="boton-lateral" onClick={alSalir}><LogOut size={16} aria-hidden="true" />Cerrar sesión</button>
+                </div>
                 {interruptorContraste}
                 {rol.pantallaCompartida && (
                   <button type="button" className="boton-lateral" onClick={pared.alternar}><Monitor size={16} aria-hidden="true" />Vista de pared</button>
@@ -163,7 +138,7 @@ export function AppShell() {
             <section className="tarjeta" style={{ marginTop: 16 }}>
               <h1>Sin acceso para este rol</h1>
               <p className="muted">
-                {rol.nombre} no ve esta sección. Quien configura no revisa y quien administra no ve datos clínicos. Elige otra opción de la barra lateral{cuenta ? "" : " o cambia de rol"}.
+                {rol.nombre} no ve esta sección. Quien configura no revisa y quien administra no ve datos clínicos. Elige otra opción de la barra lateral.
               </p>
             </section>
           )}

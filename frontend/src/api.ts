@@ -40,19 +40,9 @@ export class ErrorApi extends Error {
   }
 }
 
-/** RN-K3: sin sesión, el acceso se atribuye al usuario que firma en este navegador. Con sesión, el servidor usa la cuenta. */
-function usuarioActual(): string | null {
-  try {
-    return localStorage.getItem("mediflow.usuario");
-  } catch {
-    return null;
-  }
-}
-
 async function llamar<T>(ruta: string, init?: RequestInit): Promise<T> {
+  // RN-K5, RN-K3: la cuenta de la sesión (cookie) es quien consulta y firma; no viaja ningún nombre.
   const cabeceras: Record<string, string> = { "Content-Type": "application/json" };
-  const usuario = usuarioActual();
-  if (usuario && usuario.trim()) cabeceras["X-Usuario"] = usuario.trim();
   const respuesta = await fetch(`${BASE_URL}${ruta}`, {
     ...init,
     headers: { ...cabeceras, ...((init?.headers as Record<string, string> | undefined) ?? {}) },
@@ -117,12 +107,9 @@ export function resolverRevision(
   return llamar(`/revision/${encodeURIComponent(documentoId)}/resolver`, { method: "POST", body: JSON.stringify(cuerpo) });
 }
 
-export function acusarAlerta(documentoId: string, usuario: string): Promise<{ estado_acuse: string; acusado_por: string; estado: string }> {
-  if (!usuario.trim()) {
-    // RN-Q5: el acuse lo da un usuario identificado; un "leído" automático no cuenta.
-    return Promise.reject(new ErrorApi(422, "RN-Q5: el acuse exige un usuario identificado"));
-  }
-  return llamar(`/alertas/${encodeURIComponent(documentoId)}/acuse`, { method: "POST", body: JSON.stringify({ usuario }) });
+/** RN-Q5: el acuse lo da la cuenta de la sesión; un "leído" automático no cuenta. */
+export function acusarAlerta(documentoId: string): Promise<{ estado_acuse: string; acusado_por: string; estado: string }> {
+  return llamar(`/alertas/${encodeURIComponent(documentoId)}/acuse`, { method: "POST" });
 }
 
 export function confirmarEntrega(documentoId: string, destino: string): Promise<RespuestaEntrega> {
@@ -172,8 +159,8 @@ export function colaFarmacia(): Promise<RecetaPorVerificar[]> {
   return llamar<RecetaPorVerificar[]>("/farmacia");
 }
 
-export function verificarReceta(documentoId: string, usuario: string): Promise<RespuestaVerificacion> {
-  return llamar(`/farmacia/${encodeURIComponent(documentoId)}/verificar`, { method: "POST", body: JSON.stringify({ usuario }) });
+export function verificarReceta(documentoId: string): Promise<RespuestaVerificacion> {
+  return llamar(`/farmacia/${encodeURIComponent(documentoId)}/verificar`, { method: "POST" });
 }
 
 export function bandejaAutorizaciones(): Promise<BandejaAutorizaciones> {
@@ -182,7 +169,7 @@ export function bandejaAutorizaciones(): Promise<BandejaAutorizaciones> {
 
 export function resolverAutorizacion(
   documentoId: string,
-  cuerpo: { accion: "aprobar" | "devolver"; usuario: string; motivo: string },
+  cuerpo: { accion: "aprobar" | "devolver"; motivo: string },
 ): Promise<{ documento_id: string; autorizacion: Autorizacion; estado: string; pendientes: string[] }> {
   return llamar(`/autorizaciones/${encodeURIComponent(documentoId)}/resolver`, { method: "POST", body: JSON.stringify(cuerpo) });
 }
@@ -201,15 +188,15 @@ export function simularConfiguracion(cambios: CambiosConfiguracion, ultimos?: nu
   return llamar("/configuracion/simular", { method: "POST", body: JSON.stringify({ cambios, ultimos }) });
 }
 
-export function proponerConfiguracion(cuerpo: { cambios: CambiosConfiguracion; usuario: string; rol: string; motivo: string }): Promise<VersionConfiguracion> {
+export function proponerConfiguracion(cuerpo: { cambios: CambiosConfiguracion; motivo: string }): Promise<VersionConfiguracion> {
   return llamar("/configuracion/propuestas", { method: "POST", body: JSON.stringify(cuerpo) });
 }
 
-export function aprobarConfiguracion(id: number, actor: { usuario: string; rol: string }): Promise<VersionConfiguracion> {
-  return llamar(`/configuracion/propuestas/${id}/aprobar`, { method: "POST", body: JSON.stringify(actor) });
+export function aprobarConfiguracion(id: number): Promise<VersionConfiguracion> {
+  return llamar(`/configuracion/propuestas/${id}/aprobar`, { method: "POST" });
 }
 
-export function rechazarConfiguracion(id: number, cuerpo: { usuario: string; rol: string; motivo: string }): Promise<VersionConfiguracion> {
+export function rechazarConfiguracion(id: number, cuerpo: { motivo: string }): Promise<VersionConfiguracion> {
   return llamar(`/configuracion/propuestas/${id}/rechazar`, { method: "POST", body: JSON.stringify(cuerpo) });
 }
 
@@ -225,16 +212,16 @@ export function listarUsuarios(): Promise<UsuarioAdmin[]> {
   return llamar<UsuarioAdmin[]>("/administracion/usuarios");
 }
 
-export function crearUsuario(cuerpo: { usuario: string; nombre: string; rol: string; tipo: string; actor: string; clave?: string }): Promise<UsuarioAdmin> {
+export function crearUsuario(cuerpo: { usuario: string; nombre: string; rol: string; tipo: string; clave?: string }): Promise<UsuarioAdmin> {
   return llamar("/administracion/usuarios", { method: "POST", body: JSON.stringify(cuerpo) });
 }
 
-export function cambiarEstadoUsuario(usuario: string, activo: boolean, actor: string): Promise<UsuarioAdmin> {
-  return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/${activo ? "activar" : "desactivar"}`, { method: "POST", body: JSON.stringify({ actor }) });
+export function cambiarEstadoUsuario(usuario: string, activo: boolean): Promise<UsuarioAdmin> {
+  return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/${activo ? "activar" : "desactivar"}`, { method: "POST" });
 }
 
-export function definirClave(usuario: string, clave: string, actor: string): Promise<UsuarioAdmin> {
-  return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/clave`, { method: "POST", body: JSON.stringify({ clave, actor }) });
+export function definirClave(usuario: string, clave: string): Promise<UsuarioAdmin> {
+  return llamar(`/administracion/usuarios/${encodeURIComponent(usuario)}/clave`, { method: "POST", body: JSON.stringify({ clave }) });
 }
 
 export function listarAccesos(documentoId?: string): Promise<Acceso[]> {
@@ -267,7 +254,7 @@ export function obtenerPaciente(id: number): Promise<PacienteDetalle> {
 
 export function editarPaciente(
   id: number,
-  cuerpo: { nombre?: string; edad?: number | null; usuario: string; rol: string; motivo: string },
+  cuerpo: { nombre?: string; edad?: number | null; motivo: string },
 ): Promise<PacienteFicha & { historial: CorreccionDePaciente[] }> {
   return llamar(`/pacientes/${id}`, { method: "PATCH", body: JSON.stringify(cuerpo) });
 }

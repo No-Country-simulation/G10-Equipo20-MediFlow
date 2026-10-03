@@ -229,7 +229,6 @@ export function Transcripcion({ habilitado, enviando, onEnviar, onCambio, priori
         <button type="submit" disabled={!c.tipo || !habilitado || enviando}><ClipboardPen size={16} aria-hidden="true" />{enviando ? "Aplicando reglas…" : "Guardar transcripción y aplicar reglas"}</button>
         {sucio && <button type="button" className="secundario" onClick={descartar}><Eraser size={16} aria-hidden="true" />Descartar transcripción</button>}
         {!c.tipo && <span className="muted">Elige el tipo de documento para continuar.</span>}
-        {c.tipo && !habilitado && <span className="muted">Escribe tu usuario en «Firmo como» para guardar.</span>}
       </div>
     </form>
   );

@@ -217,8 +217,6 @@ export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir"
 
 export interface ResolucionRequest {
   accion: AccionRevision;
-  usuario: string;
-  rol: string;
   motivo: string;
   correcciones?: Record<string, unknown> | null;
   /** Fallo técnico: la persona transcribe con la misma forma que la propuesta del LLM. */
@@ -445,7 +443,6 @@ export interface CuentaSesion {
 }
 
 export interface EstadoSesion {
-  exigir_sesion: boolean;
   sesion: CuentaSesion | null;
   /** La instalación no tiene ninguna cuenta: toca crear el primer administrador (RN-S3). */
   sin_cuentas?: boolean;

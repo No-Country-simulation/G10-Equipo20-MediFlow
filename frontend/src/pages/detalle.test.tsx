@@ -81,16 +81,15 @@ describe("banco de trabajo: tres paneles", () => {
     expect(await screen.findByText("Carlos Eduardo Mendes")).toBeInTheDocument();
   });
 
-  it("aprobar envía usuario y rol y recarga el documento (RN-J3, RN-G4)", async () => {
+  it("aprobar lo firma la cuenta de la sesión y recarga el documento (RN-J3, RN-G4)", async () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
     const aprobar = screen.getByRole("button", { name: /^aprobar/i });
-    expect(aprobar).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana.auditora");
+    expect(aprobar).toBeEnabled();  // la firma es la cuenta de la sesión: no hay nada que escribir antes
     await userEvent.click(aprobar);
     await userEvent.click(screen.getByRole("button", { name: /confirmar aprobación/i }));
-    await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar", usuario: "ana.auditora", rol: "auditor_clinico" })));
+    await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar" })));
     await waitFor(() => expect(api.consultarDocumento).toHaveBeenCalledTimes(2));
   });
 
@@ -98,7 +97,6 @@ describe("banco de trabajo: tres paneles", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     await userEvent.click(within(screen.getByTestId("campo-diagnostico_codigo")).getByRole("button", { name: /corregir/i }));
     const valor = screen.getByLabelText(/valor corregido/i);
     expect(screen.getByLabelText(/campo a corregir/i)).toHaveValue("extraccion.diagnosticos[0].cie10_sugerido");
@@ -115,7 +113,6 @@ describe("banco de trabajo: tres paneles", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "RECHAZADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     expect(screen.getByRole("button", { name: /^rechazar/i })).toBeDisabled();
     fireEvent.keyDown(document.body, { key: "r" });
     expect(resolver).not.toHaveBeenCalled();
@@ -130,7 +127,6 @@ describe("banco de trabajo: tres paneles", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial={RUTA} rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     fireEvent.keyDown(document.body, { key: "a" });
     await userEvent.click(screen.getByRole("button", { name: /confirmar aprobación/i }));
     await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar" })));
@@ -153,9 +149,8 @@ describe("banco de trabajo: tres paneles", () => {
     expect(alerta).toHaveTextContent(/restantes|vencido/);
     expect(alerta).not.toHaveTextContent("Mendes");
     await userEvent.click(within(alerta).getByRole("button", { name: /dar acuse/i }));
-    await userEvent.type(within(alerta).getByLabelText(/quién da el acuse/i), "jefe.urgencias");
     await userEvent.click(within(alerta).getByRole("button", { name: /confirmar acuse/i }));
-    await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-CLIN-2026-8942", "jefe.urgencias"));
+    await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-CLIN-2026-8942"));
   });
 
   it("un documento enrutado muestra el plan de entrega y confirma destinos", async () => {

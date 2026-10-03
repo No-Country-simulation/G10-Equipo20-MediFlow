@@ -115,7 +115,6 @@ export function rolPorId(id: string | null | undefined): Rol {
 }
 
 export function rolPuedeVer(rol: Rol, ruta: string): boolean {
-  if (ruta === "/demo") return true;
   if (ruta.startsWith("/documentos/")) return rol.veDocumentos;
   return rol.navegacion.some((item) => ruta === item.ruta || ruta.startsWith(item.ruta + "/"));
 }

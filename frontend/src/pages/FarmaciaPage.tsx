@@ -30,7 +30,7 @@ export function FarmaciaPage() {
     setPorConfirmar(null);
     setMensaje(null);
     try {
-      const r = await verificarReceta(documentoId, usuario.trim());
+      const r = await verificarReceta(documentoId);
       setMensaje({ texto: r.completa ? `${documentoId} verificada (${r.verificaciones.length} de ${r.requeridas}). Queda ${r.estado === "ENTREGADO" ? "entregada" : "en curso"}.` : `${documentoId}: primera verificación registrada; falta la segunda por otra persona` });
       cargar();
     } catch (e) {

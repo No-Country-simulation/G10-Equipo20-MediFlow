@@ -1,11 +1,10 @@
-import { FlaskConical, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { enviarArchivo, enviarDocumento, ErrorApi, listarDocumentos } from "../api";
 import { ETIQUETA_ESTADO, etiquetaMotivo, mensajeDeRechazo } from "../app/mensajes";
 import { plazoDeRevision } from "../app/plazos";
-import { CASOS } from "../data/casos";
 import { ChipPlazo, TagEstado, TagPrioridad } from "../components/Tags";
 import type { CanalOrigen, Cobertura, DocumentoDetalle, EstadoDocumento, Listado, NivelPrioridad } from "../types";
 
@@ -83,17 +82,6 @@ export function DocumentosPage() {
     elegirArchivo(e.dataTransfer.files?.[0] ?? null);
   }
 
-  function cargarCaso(id: string) {
-    const caso = CASOS.find((c) => c.id === id);
-    if (!caso) return;
-    setModoTexto(true);
-    setArchivo(null);
-    setDocumentoId(caso.documento_id);
-    setCanal(caso.canal_origen);
-    setCobertura(caso.cobertura_paciente ?? "");
-    setTexto(caso.texto);
-  }
-
   async function cargar() {
     setEnviando(true);
     setErrorCarga(null);
@@ -131,14 +119,6 @@ export function DocumentosPage() {
           <h1>Documentos</h1>
           <p className="sub">Carga, consulta y estado del procesamiento. Las listas no muestran datos del paciente.</p>
         </div>
-        <details className="menu">
-          <summary><FlaskConical size={16} aria-hidden="true" />Cargar un caso de ejemplo</summary>
-          <ul role="menu" aria-label="Casos sintéticos">
-            {CASOS.map((c) => (
-              <li key={c.id}><button type="button" role="menuitem" className="enlace" title={c.descripcion} onClick={() => cargarCaso(c.id)}>{c.nombre}<span className="secundaria">{c.descripcion}</span></button></li>
-            ))}
-          </ul>
-        </details>
       </header>
 
       <section className="carga" aria-labelledby="titulo-carga">

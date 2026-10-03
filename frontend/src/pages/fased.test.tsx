@@ -133,12 +133,11 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     // proponer exige usuario y motivo (RN-L4)
     const boton = screen.getByRole("button", { name: /proponer versión/i });
     expect(boton).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "gestor.ana");
     await userEvent.type(screen.getByLabelText(/motivo de la versión/i), "cero errores de dosis");
     await userEvent.click(boton);
     await waitFor(() => expect(proponer).toHaveBeenCalledWith({
       cambios: { umbrales: { "confianza.medicamento_dosis": 0.98 }, ampliaciones: { alto_riesgo: [], control_especial: [], hallazgos_criticos: [] } },
-      usuario: "gestor.ana", rol: "gestor", motivo: "cero errores de dosis",
+      motivo: "cero errores de dosis",
     }));
   }, 15_000);
 
@@ -150,9 +149,8 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     expect(propuesta).toHaveTextContent("1 de 2");
     expect(propuesta).toHaveTextContent(/toca seguridad/i);
     expect(propuesta).toHaveTextContent("gestor.luis");
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "gestor.ana");
     await userEvent.click(within(propuesta).getByRole("button", { name: /aprobar/i }));
-    await waitFor(() => expect(aprobar).toHaveBeenCalledWith(7, { usuario: "gestor.ana", rol: "gestor" }));
+    await waitFor(() => expect(aprobar).toHaveBeenCalledWith(7));
     expect(screen.getByTestId("historial")).toHaveTextContent("reemplazada");
   });
 
@@ -173,12 +171,11 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     await userEvent.click(farmacia);
     expect(screen.getByTestId("barra-proponer")).toHaveTextContent(/sin cambios/i);
     await userEvent.click(farmacia);
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "gestor.ana");
     await userEvent.type(screen.getByLabelText(/motivo de la versión/i), "la sede no tiene farmacia");
     await userEvent.click(screen.getByRole("button", { name: /proponer versión/i }));
     await waitFor(() => expect(proponer).toHaveBeenCalledWith({
       cambios: { umbrales: {}, ampliaciones: { alto_riesgo: [], control_especial: [], hallazgos_criticos: [] }, destinos_inactivos: ["Farmacia_Hospitalaria"] },
-      usuario: "gestor.ana", rol: "gestor", motivo: "la sede no tiene farmacia",
+      motivo: "la sede no tiene farmacia",
     }));
     expect(await screen.findByText(/toca seguridad: necesita dos aprobadores/i)).toBeInTheDocument();
   }, 15_000);
@@ -207,14 +204,13 @@ describe("Administración (RN-K, RN-S3)", () => {
     expect(filas).toHaveLength(2);
     expect(filas[1]).toHaveTextContent(/servicio/i);
     expect(filas[1]).toHaveTextContent(/inactivo/i);
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "admin.root");
     await userEvent.type(screen.getByLabelText(/nombre de usuario/i), "jefe.rojas");
     await userEvent.type(screen.getByLabelText(/nombre completo/i), "Andrés Rojas");
     await userEvent.selectOptions(screen.getByLabelText(/rol del usuario/i), "jefe_urgencias");
     await userEvent.click(screen.getByRole("button", { name: /crear usuario/i }));
-    await waitFor(() => expect(crear).toHaveBeenCalledWith({ usuario: "jefe.rojas", nombre: "Andrés Rojas", rol: "jefe_urgencias", tipo: "persona", actor: "admin.root" }));
+    await waitFor(() => expect(crear).toHaveBeenCalledWith({ usuario: "jefe.rojas", nombre: "Andrés Rojas", rol: "jefe_urgencias", tipo: "persona" }));
     await userEvent.click(within(filas[0]).getByRole("button", { name: /desactivar/i }));
-    await waitFor(() => expect(cambiar).toHaveBeenCalledWith("aud.ana", false, "admin.root"));
+    await waitFor(() => expect(cambiar).toHaveBeenCalledWith("aud.ana", false));
   });
 
   it("muestra la lista de puesta en marcha, la ficha del pack y los accesos", async () => {

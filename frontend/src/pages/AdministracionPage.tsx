@@ -45,7 +45,7 @@ export function AdministracionPage() {
   async function crear() {
     setMensaje(null);
     try {
-      const u = await crearUsuario({ ...form, usuario: form.usuario.trim(), nombre: form.nombre.trim(), actor: actor.trim(), ...(claveInicial ? { clave: claveInicial } : {}) });
+      const u = await crearUsuario({ ...form, usuario: form.usuario.trim(), nombre: form.nombre.trim(), ...(claveInicial ? { clave: claveInicial } : {}) });
       setMensaje({ texto: `Usuario ${u.usuario} creado como ${nombreRol(u.rol)}${claveInicial ? ", con clave para iniciar sesión" : ""}.` });
       setForm(FORMULARIO_VACIO);
       setClaveInicial("");
@@ -59,7 +59,7 @@ export function AdministracionPage() {
     if (!cambioDeClave) return;
     setMensaje(null);
     try {
-      const u = await definirClave(cambioDeClave.usuario, cambioDeClave.clave, actor.trim());
+      const u = await definirClave(cambioDeClave.usuario, cambioDeClave.clave);
       setMensaje({ texto: `Clave de ${u.usuario} definida. Sus sesiones abiertas se cerraron.` });
       setCambioDeClave(null);
       cargar();
@@ -71,7 +71,7 @@ export function AdministracionPage() {
   async function cambiarEstado(u: UsuarioAdmin) {
     setMensaje(null);
     try {
-      const r = await cambiarEstadoUsuario(u.usuario, !u.activo, actor.trim());
+      const r = await cambiarEstadoUsuario(u.usuario, !u.activo);
       setMensaje({ texto: r.activo ? `${r.usuario} reactivado.` : `${r.usuario} desactivado: pierde acceso de inmediato; su historial permanece.` });
       cargar();
     } catch (e) {

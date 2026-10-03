@@ -76,7 +76,7 @@ describe("plazos (RN-J2, RN-F2)", () => {
 
 describe("shell de la aplicación", () => {
   it("muestra el logo, la navegación del rol y el banner de alertas sin datos del paciente (RN-Q4)", async () => {
-    render(<AppRouter rutaInicial="/documentos" />);
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
     expect(screen.getByRole("img", { name: /mediflow/i })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: /principal/i });
     expect(within(nav).getByRole("link", { name: /cola de revisión/i })).toBeInTheDocument();
@@ -84,15 +84,6 @@ describe("shell de la aplicación", () => {
     expect(banner).toHaveTextContent("1 alerta crítica sin acuse");
     expect(banner).toHaveTextContent("DOC-CLIN-2026-8942");
     expect(banner).not.toHaveTextContent("Mendes");
-  });
-
-  it("cambiar de rol cambia la navegación y lleva a su inicio", async () => {
-    render(<AppRouter rutaInicial="/documentos" />);
-    await userEvent.selectOptions(screen.getByLabelText(/rol/i), "quimico_farmaceutico");
-    const nav = screen.getByRole("navigation", { name: /principal/i });
-    expect(within(nav).getByRole("link", { name: /farmacia/i })).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: /cola de revisión/i })).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: /farmacia/i })).toBeInTheDocument();
   });
 
   it("un rol sin acceso a una ruta ve el aviso de acceso restringido (RN-K2)", async () => {
@@ -104,7 +95,7 @@ describe("shell de la aplicación", () => {
 
 describe("página Documentos", () => {
   it("lista los documentos con prioridad, estado, plazo y enlace al detalle", async () => {
-    render(<AppRouter rutaInicial="/documentos" />);
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
     const filas = await screen.findAllByTestId("fila-documento");
     expect(filas).toHaveLength(2);
     expect(filas[0]).toHaveTextContent("DOC-CLIN-2026-8942");
@@ -117,7 +108,7 @@ describe("página Documentos", () => {
   });
 
   it("los filtros consultan la API con sus parámetros", async () => {
-    render(<AppRouter rutaInicial="/documentos" />);
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
     await screen.findAllByTestId("fila-documento");
     await userEvent.selectOptions(screen.getByLabelText(/^estado/i), "EN_REVISION_HUMANA");
     await waitFor(() => expect(api.listarDocumentos).toHaveBeenLastCalledWith(expect.objectContaining({ estado: "EN_REVISION_HUMANA" })));
@@ -127,7 +118,7 @@ describe("página Documentos", () => {
 
   it("carga un archivo desde la zona de carga y refresca la tabla", async () => {
     const enviar = vi.spyOn(api, "enviarArchivo").mockResolvedValue(detalleCaso1());
-    render(<AppRouter rutaInicial="/documentos" />);
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
     await screen.findAllByTestId("fila-documento");
     await userEvent.type(screen.getByLabelText(/^id del documento/i), "DOC-NUEVO");
     const archivo = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "informe.pdf", { type: "application/pdf" });
@@ -140,7 +131,7 @@ describe("página Documentos", () => {
 
   it("permite pegar texto en lugar de un archivo", async () => {
     const enviarTexto = vi.spyOn(api, "enviarDocumento").mockResolvedValue(detalleCaso1());
-    render(<AppRouter rutaInicial="/documentos" />);
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
     await screen.findAllByTestId("fila-documento");
     await userEvent.click(screen.getByRole("button", { name: /pegar texto/i }));
     await userEvent.type(screen.getByLabelText(/^id del documento/i), "DOC-TXT");
@@ -151,7 +142,7 @@ describe("página Documentos", () => {
 
   it("traduce el código de rechazo a un mensaje legible", async () => {
     vi.spyOn(api, "enviarArchivo").mockResolvedValue({ ...detalleCaso1(), estado: "RECHAZADO", codigo_error: "extension_no_coincide", resultado: null });
-    render(<AppRouter rutaInicial="/documentos" />);
+    render(<AppRouter rutaInicial="/documentos" rolInicial="auditor_clinico" />);
     await screen.findAllByTestId("fila-documento");
     await userEvent.type(screen.getByLabelText(/^id del documento/i), "DOC-X");
     await userEvent.upload(screen.getByLabelText(/elegir archivo/i), new File([new Uint8Array([1])], "x.png", { type: "image/png" }));

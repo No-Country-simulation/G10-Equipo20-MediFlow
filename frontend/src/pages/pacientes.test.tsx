@@ -62,7 +62,7 @@ describe("Directorio de pacientes (RN-M6)", () => {
     expect(screen.getByTestId("historial-paciente")).toHaveTextContent(/sin correcciones/i);
   });
 
-  it("corregir un dato exige usuario y motivo, y deja el cambio en el historial (RN-G4)", async () => {
+  it("corregir un dato exige motivo, lo firma la cuenta y deja el cambio en el historial (RN-G4)", async () => {
     const corregido = { ...ANA, nombre: "Ana María Pérez", historial: [{ fecha_hora: AHORA, usuario: "aud.ana", motivo: "apellido mal digitado", anterior: { nombre: "Ana Maria Peres" }, nuevo: { nombre: "Ana María Pérez" } }] };
     const editar = vi.spyOn(api, "editarPaciente").mockResolvedValue(corregido as never);
     render(<AppRouter rutaInicial="/pacientes/4" rolInicial="auditor_clinico" />);
@@ -73,12 +73,10 @@ describe("Directorio de pacientes (RN-M6)", () => {
     await userEvent.clear(nombre);
     await userEvent.type(nombre, "Ana María Pérez");
     expect(guardar).toBeDisabled();
-    expect(formulario).toHaveTextContent(/escribe tu usuario/i);
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "aud.ana");
     expect(formulario).toHaveTextContent(/falta el motivo/i);
     await userEvent.type(within(formulario).getByLabelText(/motivo de la corrección/i), "apellido mal digitado");
     await userEvent.click(guardar);
-    await waitFor(() => expect(editar).toHaveBeenCalledWith(4, { nombre: "Ana María Pérez", usuario: "aud.ana", rol: "auditor_clinico", motivo: "apellido mal digitado" }));
+    await waitFor(() => expect(editar).toHaveBeenCalledWith(4, { nombre: "Ana María Pérez", motivo: "apellido mal digitado" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Ana María Pérez" })).toBeInTheDocument();
     expect(screen.getByTestId("historial-paciente")).toHaveTextContent("apellido mal digitado");
     expect(screen.getByTestId("historial-paciente")).toHaveTextContent("Ana Maria Peres → Ana María Pérez");

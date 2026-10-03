@@ -2,7 +2,7 @@
  * Señal clínica: la señal clínica primero, una transcripción que no induce a error
  * y acciones repetidas que no pierden el contexto ni el foco.
  */
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,8 +89,7 @@ describe("transcripción que no induce a error", () => {
     vi.spyOn(api, "consultarDocumento").mockResolvedValue(enFalloTecnico());
     vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial="/documentos/DOC-CLIN-2026-8942" rolInicial="auditor_clinico" />);
-    await userEvent.type(await screen.findByLabelText(/firmo como/i), "ana");
-    const panel = screen.getByTestId("transcripcion");
+    const panel = await screen.findByTestId("transcripcion");
     await userEvent.selectOptions(within(panel).getByLabelText(/tipo de documento$/i), "Informe de Imágenes");
     await userEvent.click(within(panel).getByRole("button", { name: /guardar transcripción/i }));
     const cierre = await screen.findByTestId("cierre-caso");
@@ -114,20 +113,8 @@ describe("acciones repetidas con contexto y foco", () => {
     vi.spyOn(api, "acusarAlerta").mockResolvedValue({ estado_acuse: "acusado", acusado_por: "ana", estado: "EN_REVISION_HUMANA" });
     render(<AppRouter rutaInicial="/alertas" rolInicial="auditor_clinico" />);
     await userEvent.click(await screen.findByRole("button", { name: /dar acuse: infarto con elevación del st, DOC-A/i }));
-    await userEvent.type(screen.getByLabelText(/quién da el acuse/i), "ana");
     await userEvent.click(screen.getByRole("button", { name: /confirmar acuse/i }));
     await waitFor(() => expect(screen.getByText(/circuito cerrado/i)).toHaveFocus());
   });
 
-  it("sin firma, A avisa en vez de no hacer nada, y un enlace lleva directo a Firmo como", async () => {
-    vi.spyOn(api, "consultarDocumento").mockResolvedValue(detalleCaso1({ estado: "EN_REVISION_HUMANA", resultado: resultadoCaso1({ estado: "EN_REVISION_HUMANA",
-      evaluacion: { requiere_auditoria_humana: true, motivo_auditoria: "campo_dudoso", campos_dudosos: [] },
-      enrutamiento: { ...resultadoCaso1().enrutamiento, destinos_tras_revision: ["Cola_Emergencia_Medica"] } }), alerta: null }));
-    render(<AppRouter rutaInicial="/documentos/DOC-CLIN-2026-8942" rolInicial="auditor_clinico" />);
-    await screen.findByRole("heading", { name: /^decisión/i });
-    fireEvent.keyDown(document.body, { key: "a" });
-    expect(await screen.findByRole("alert")).toHaveTextContent(/firmo como/i);
-    await userEvent.click(screen.getByRole("button", { name: /escribir mi usuario/i }));
-    expect(screen.getByLabelText(/firmo como/i)).toHaveFocus();
-  });
 });

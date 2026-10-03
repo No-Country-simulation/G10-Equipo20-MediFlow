@@ -1,6 +1,5 @@
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import App from "../App";
 import { AppShell } from "../components/shell/AppShell";
 import { AdministracionPage } from "../pages/AdministracionPage";
 import { AutorizacionesPage } from "../pages/AutorizacionesPage";
@@ -18,14 +17,14 @@ import { PacientesPage } from "../pages/PacientesPage";
 import { AlertasPage } from "../pages/Placeholders";
 import { RevisionPage } from "../pages/RevisionPage";
 import { RolProvider } from "./RolContext";
-import type { RolId } from "./roles";
+import { ROLES, type RolId } from "./roles";
 import { SesionProvider, useSesion } from "./sesion";
-import { UsuarioProvider } from "./usuario";
+import type { CuentaSesion } from "../types";
 
 function Rutas() {
-  const { cuenta, exigida, sinCuentas } = useSesion();
-  // Instalación sin cuentas (RN-S3) o con sesión obligatoria (RN-K5): sin sesión no se muestra nada más que el ingreso.
-  if ((exigida || sinCuentas) && !cuenta) return <IngresarPage />;
+  const { cuenta } = useSesion();
+  // RN-K5: sin sesión no se muestra nada más que el ingreso (y, sin cuentas, la creación del primer administrador, RN-S3).
+  if (!cuenta) return <IngresarPage />;
   // Una clave puesta por otra persona se cambia antes de ver nada.
   if (cuenta?.debe_cambiar_clave) return <CambiarClavePage obligatorio />;
   return (
@@ -48,20 +47,27 @@ function Rutas() {
         <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Route>
       <Route path="/cambiar-clave" element={<CambiarClavePage />} />
-      <Route path="/demo" element={<App />} />
       <Route path="/ingresar" element={<IngresarPage />} />
     </Routes>
   );
 }
 
-/** `rutaInicial` activa un router en memoria (tests); sin ella se usa la URL del navegador. */
-export function AppRouter({ rutaInicial, rolInicial }: { rutaInicial?: string; rolInicial?: RolId }) {
+/** Sesión de prueba para un rol: una cuenta ficticia con el nombre que usan las pruebas. */
+export function cuentaDePrueba(rol: RolId): CuentaSesion {
+  const usuarios: Record<RolId, string> = {
+    auditor_clinico: "aud.ana", quimico_farmaceutico: "qf.maria", auditor_autorizaciones: "aut.luis",
+    jefe_urgencias: "jefe.rojas", gestor: "gestor.paz", administrador: "admin",
+  };
+  return { usuario: usuarios[rol], nombre: ROLES.find((r) => r.id === rol)?.nombre ?? rol, rol };
+}
+
+/** `rutaInicial` activa un router en memoria (pruebas); sin ella se usa la URL del navegador.
+ * `rolInicial` da por abierta la sesión de una cuenta de prueba de ese rol; `cuentaInicial` la fija tal cual. */
+export function AppRouter({ rutaInicial, rolInicial, cuentaInicial }: { rutaInicial?: string; rolInicial?: RolId; cuentaInicial?: CuentaSesion }) {
   const contenido = (
-    <SesionProvider>
-      <RolProvider rolInicial={rolInicial}>
-        <UsuarioProvider>
-          <Rutas />
-        </UsuarioProvider>
+    <SesionProvider cuentaInicial={cuentaInicial ?? (rolInicial ? cuentaDePrueba(rolInicial) : undefined)}>
+      <RolProvider>
+        <Rutas />
       </RolProvider>
     </SesionProvider>
   );

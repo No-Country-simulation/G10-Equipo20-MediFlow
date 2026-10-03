@@ -45,10 +45,9 @@ afterEach(() => vi.restoreAllMocks());
 
 const RUTA = "/documentos/DOC-CLIN-2026-8942";
 
-async function abrir(ruta = RUTA, firma = "ana") {
+async function abrir(ruta = RUTA) {
   render(<AppRouter rutaInicial={ruta} rolInicial="auditor_clinico" />);
   await screen.findByRole("heading", { name: /^decisión/i });
-  if (firma) await userEvent.type(screen.getByLabelText(/firmo como/i), firma);
 }
 
 describe("decisiones con confirmación", () => {
@@ -63,7 +62,7 @@ describe("decisiones con confirmación", () => {
     expect(screen.queryByTestId("confirmacion")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /^aprobar/i }));
     await userEvent.click(within(screen.getByTestId("confirmacion")).getByRole("button", { name: /confirmar aprobación/i }));
-    await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar", usuario: "ana" })));
+    await waitFor(() => expect(resolver).toHaveBeenCalledWith("DOC-CLIN-2026-8942", expect.objectContaining({ accion: "aprobar" })));
   });
 
   it("la tecla A abre la confirmación, Enter confirma y Escape cancela", async () => {

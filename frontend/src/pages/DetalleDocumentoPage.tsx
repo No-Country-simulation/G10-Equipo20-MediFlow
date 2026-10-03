@@ -110,10 +110,6 @@ export function DetalleDocumentoPage() {
   const r = detalle?.resultado ?? null;
   const enRevision = detalle?.estado === "EN_REVISION_HUMANA";
   const transcribiendo = enRevision && r?.evaluacion.motivo_auditoria === "fallo_tecnico";
-  function irAFirma() {
-    const enfocar = () => document.getElementById("firmo-como")?.focus();
-    if (pared) { alternarPared(); setTimeout(enfocar, 0); } else enfocar();
-  }
   const posicionCola = useMemo(() => cola.findIndex((c) => c.documento_id === id), [cola, id]);
   const siguiente = posicionCola >= 0 ? cola[posicionCola + 1] : undefined;
   const firma = usuario.trim();
@@ -132,7 +128,7 @@ export function DetalleDocumentoPage() {
     setConfirmacion(null);
     try {
       const resp = await resolverRevision(detalle.documento_id, {
-        accion, usuario: firma, rol: rol.id, motivo: motivo || (accion === "transcribir" ? "transcrito desde el original" : ""),
+        accion, motivo: motivo || (accion === "transcribir" ? "transcrito desde el original" : ""),
         correcciones: extra.correcciones ?? null, transcripcion: extra.transcripcion ?? null,
       });
       setCorreccion(null);
@@ -150,7 +146,6 @@ export function DetalleDocumentoPage() {
   const pedir = useCallback((decision: Decision) => {
     if (!enRevision || enviando) return;
     // Un atajo que no puede actuar lo dice, en vez de no hacer nada.
-    if (!firma) { setMensaje({ texto: "Para decidir, escribe tu usuario en «Firmo como».", error: true }); return; }
     if (transcribiendo && decision === "aprobar") { setMensaje({ texto: "Este documento no tiene lectura que aprobar: completa la transcripción.", error: true }); return; }
     if (decision === "rechazar" && !motivo.trim()) { setMensaje({ texto: "Rechazar exige escribir el motivo.", error: true }); return; }
     setConfirmacion(decision);
@@ -375,7 +370,7 @@ export function DetalleDocumentoPage() {
             </div>
           )}
 
-          <p className="muted firma" id="firma-decision">{firma ? <>Firmas como <strong>{firma}</strong> · {rol.nombre}</> : <>{pared ? "Para decidir, sal de la vista de pared y escribe tu usuario en Firmo como." : "Para decidir, escribe tu usuario en Firmo como, en la barra lateral."} <button type="button" className="enlace" onClick={irAFirma}>Escribir mi usuario</button></>}</p>
+          <p className="muted firma" id="firma-decision">Firmas como <strong>{firma}</strong> · {rol.nombre}</p>
 
           {enRevision && r && (
             <>

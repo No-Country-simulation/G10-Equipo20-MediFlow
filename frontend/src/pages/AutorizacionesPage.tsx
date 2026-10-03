@@ -38,7 +38,7 @@ export function AutorizacionesPage() {
     setPorConfirmar(null);
     setMensaje(null);
     try {
-      const r = await resolverAutorizacion(orden.documento_id, { accion, usuario: usuario.trim(), motivo: (motivos[orden.documento_id] ?? "").trim() });
+      const r = await resolverAutorizacion(orden.documento_id, { accion, motivo: (motivos[orden.documento_id] ?? "").trim() });
       setMensaje({ texto: `${orden.documento_id}: ${r.autorizacion.estado === "aprobada" ? "aprobada" : "devuelta al solicitante"} por ${r.autorizacion.usuario}.` });
       cargar();
     } catch (e) {

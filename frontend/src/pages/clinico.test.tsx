@@ -35,56 +35,40 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe("acuse con firma en el momento (RN-Q5)", () => {
-  it("Dar acuse siempre responde: pregunta quién da el acuse y confirma con ese nombre", async () => {
-    const acusar = vi.spyOn(api, "acusarAlerta").mockResolvedValue({ estado_acuse: "acusado", acusado_por: "ana.torres", estado: "EN_REVISION_HUMANA" });
+describe("acuse con la cuenta de la sesión (RN-Q5)", () => {
+  it("Dar acuse confirma con el nombre de la cuenta y recién entonces registra", async () => {
+    const acusar = vi.spyOn(api, "acusarAlerta").mockResolvedValue({ estado_acuse: "acusado", acusado_por: "aud.ana", estado: "EN_REVISION_HUMANA" });
     render(<AppRouter rutaInicial="/alertas" rolInicial="auditor_clinico" />);
     const filas = await screen.findAllByTestId("fila-alerta");
     const boton = within(filas[0]).getByRole("button", { name: /dar acuse/i });
     expect(boton).toBeEnabled();
     await userEvent.click(boton);
-    const quien = within(filas[0]).getByLabelText(/quién da el acuse/i);
-    expect(quien).toHaveValue("");
-    expect(within(filas[0]).getByRole("button", { name: /confirmar acuse/i })).toBeDisabled();
-    await userEvent.type(quien, "ana.torres");
-    await userEvent.click(within(filas[0]).getByRole("button", { name: /confirmar acuse/i }));
-    await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-VIEJA", "ana.torres"));
+    const grupo = within(filas[0]).getByRole("group", { name: /confirmar acuse/i });
+    expect(grupo).toHaveTextContent("aud.ana");  // quien firma: la cuenta, nunca un nombre escrito
+    expect(acusar).not.toHaveBeenCalled();
+    await userEvent.click(within(grupo).getByRole("button", { name: /confirmar acuse/i }));
+    await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-VIEJA"));
   });
 
-  it("fuera de la pantalla compartida la firma de la barra lateral se propone, y se puede cancelar", async () => {
+  it("se puede cancelar sin registrar nada", async () => {
     const acusar = vi.spyOn(api, "acusarAlerta");
     render(<AppRouter rutaInicial="/alertas" rolInicial="auditor_clinico" />);
-    await userEvent.type(await screen.findByLabelText(/firmo como/i), "ana.torres");
     const fila = (await screen.findAllByTestId("fila-alerta"))[0];
     await userEvent.click(within(fila).getByRole("button", { name: /dar acuse/i }));
-    expect(within(fila).getByLabelText(/quién da el acuse/i)).toHaveValue("ana.torres");
     await userEvent.click(within(fila).getByRole("button", { name: /cancelar/i }));
-    expect(within(fila).queryByLabelText(/quién da el acuse/i)).not.toBeInTheDocument();
+    expect(within(fila).queryByRole("group", { name: /confirmar acuse/i })).not.toBeInTheDocument();
     expect(acusar).not.toHaveBeenCalled();
   });
 
-  it("en la pantalla compartida de urgencias la firma no se guarda ni se propone", async () => {
-    try { localStorage.setItem("mediflow.pared.jefe_urgencias", "no"); } catch { /* sin storage */ }  // fuera de la vista de pared se ve la firma
-    const { unmount } = render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
-    await userEvent.type(await screen.findByLabelText(/firmo como/i), "dr.perez");
-    const fila = (await screen.findAllByTestId("fila-alerta"))[0];
-    await userEvent.click(within(fila).getByRole("button", { name: /dar acuse/i }));
-    expect(within(fila).getByLabelText(/quién da el acuse/i)).toHaveValue("");
-    unmount();
-    expect(localStorage.getItem("mediflow.usuario")).toBeNull();
-    render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
-    expect(await screen.findByLabelText(/firmo como/i)).toHaveValue("");
-  });
-
-  it("en el detalle, el acuse también pregunta quién lo da", async () => {
+  it("en el detalle, el acuse también se confirma con la cuenta", async () => {
     vi.spyOn(api, "consultarDocumento").mockResolvedValue(detalleCaso1({ estado: "EN_REVISION_HUMANA" }));
     const acusar = vi.spyOn(api, "acusarAlerta").mockResolvedValue({ estado_acuse: "acusado", acusado_por: "jefe.rojas", estado: "EN_REVISION_HUMANA" });
     render(<AppRouter rutaInicial="/documentos/DOC-CLIN-2026-8942" rolInicial="jefe_urgencias" />);
     const alerta = await screen.findByTestId("alerta-documento");
     await userEvent.click(within(alerta).getByRole("button", { name: /dar acuse/i }));
-    await userEvent.type(within(alerta).getByLabelText(/quién da el acuse/i), "jefe.rojas");
+    expect(within(alerta).getByRole("group", { name: /confirmar acuse/i })).toHaveTextContent("jefe.rojas");
     await userEvent.click(within(alerta).getByRole("button", { name: /confirmar acuse/i }));
-    await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-CLIN-2026-8942", "jefe.rojas"));
+    await waitFor(() => expect(acusar).toHaveBeenCalledWith("DOC-CLIN-2026-8942"));
   });
 });
 
@@ -209,7 +193,6 @@ describe("lenguaje clínico", () => {
     const resolver = vi.spyOn(api, "resolverRevision").mockResolvedValue({ documento_id: "DOC-CLIN-2026-8942", estado: "ENRUTADO", resultado: resultadoCaso1() });
     render(<AppRouter rutaInicial="/documentos/DOC-CLIN-2026-8942" rolInicial="auditor_clinico" />);
     await screen.findByRole("heading", { name: /^decisión/i });
-    await userEvent.type(screen.getByLabelText(/firmo como/i), "ana");
     await userEvent.click(screen.getByRole("button", { name: /^corregir/i }));
     const campo = screen.getByLabelText(/campo a corregir/i);
     expect(within(campo).getByRole("option", { name: /registro del profesional/i })).toBeInTheDocument();
@@ -247,7 +230,7 @@ describe("vista de pared (pantalla compartida de urgencias)", () => {
     const { unmount } = render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
     await userEvent.click(await screen.findByRole("button", { name: /salir de la vista de pared/i }));
     expect(document.querySelector(".shell")).not.toHaveClass("pared");
-    expect(screen.getByLabelText(/^rol$/i)).toBeInTheDocument();
+    expect(screen.getByTestId("sesion-activa")).toBeInTheDocument();
     unmount();
     render(<AppRouter rutaInicial="/alertas" rolInicial="jefe_urgencias" />);
     await screen.findAllByTestId("fila-alerta");

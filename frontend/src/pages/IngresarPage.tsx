@@ -8,7 +8,7 @@ import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoM
 
 /** Inicio de sesión del personal (RN-K5). Las cuentas y sus claves las crea el administrador. */
 export function IngresarPage() {
-  const { cuenta, exigida, sinCuentas, ingresar, crearPrimerAdministrador } = useSesion();
+  const { cuenta, sinCuentas, ingresar, crearPrimerAdministrador } = useSesion();
   const navigate = useNavigate();
   const [usuario, setUsuario] = useState("");
   const [nombre, setNombre] = useState("");
@@ -82,10 +82,7 @@ export function IngresarPage() {
               <button type="submit" disabled={enviando || !usuario.trim() || !clave}><LogIn size={16} aria-hidden="true" />{enviando ? "Ingresando…" : "Ingresar"}</button>
             </form>
             <EstadoMensaje mensaje={mensaje} />
-            <p className="muted pie-ingreso">
-              ¿Sin cuenta o sin clave? La define el administrador del sistema.
-              {!exigida && <> <Link to="/inicio">Seguir sin sesión (demostración) ›</Link></>}
-            </p>
+            <p className="muted pie-ingreso">¿Sin cuenta o sin clave? La define el administrador del sistema.</p>
           </>
         )}
       </section>

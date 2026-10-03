@@ -72,7 +72,7 @@ export function PacienteDetallePage() {
   async function guardar() {
     if (!paciente) return;
     try {
-      const actualizado = await editarPaciente(paciente.id, { ...cambios, usuario: yo, rol: rol.id, motivo: motivo.trim() });
+      const actualizado = await editarPaciente(paciente.id, { ...cambios, motivo: motivo.trim() });
       setPaciente({ ...paciente, ...actualizado });
       setEditando(false);
       setMensaje({ texto: "Datos corregidos. El cambio quedó en el historial de la ficha." });
