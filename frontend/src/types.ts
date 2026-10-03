@@ -440,6 +440,16 @@ export interface CuentaSesion {
   usuario: string;
   nombre: string;
   rol: string;
+  /** La clave la puso otra persona: hay que cambiarla antes de seguir. */
+  debe_cambiar_clave?: boolean;
+}
+
+export interface EstadoSesion {
+  exigir_sesion: boolean;
+  sesion: CuentaSesion | null;
+  /** La instalación no tiene ninguna cuenta: toca crear el primer administrador (RN-S3). */
+  sin_cuentas?: boolean;
+  nombre_sede?: string;
 }
 
 /** Un rol tal como lo describe el backend (tabla K como datos, GET /auth/roles). */

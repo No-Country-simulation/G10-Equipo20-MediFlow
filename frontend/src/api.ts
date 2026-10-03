@@ -28,7 +28,7 @@ import type {
   Simulacion,
   UsuarioAdmin,
   VersionConfiguracion,
-RolApi } from "./types";
+RolApi, EstadoSesion } from "./types";
 
 export const BASE_URL = "/api";
 /** Se emite cuando una petición llega sin sesión válida, para que la interfaz vuelva a pedirla. */
@@ -71,8 +71,18 @@ async function llamar<T>(ruta: string, init?: RequestInit): Promise<T> {
 
 // --- Sesión (RN-K5) ---------------------------------------------------------------------------------
 
-export function estadoSesion(): Promise<{ exigir_sesion: boolean; sesion: CuentaSesion | null }> {
+export function estadoSesion(): Promise<EstadoSesion> {
   return llamar("/auth/estado");
+}
+
+/** RN-S3: la primera cuenta de la instalación, de administrador. Solo mientras no exista ninguna. */
+export function crearPrimerAdministrador(usuario: string, nombre: string, clave: string): Promise<CuentaSesion> {
+  return llamar<CuentaSesion>("/auth/primer_administrador", { method: "POST", body: JSON.stringify({ usuario, nombre, clave }) });
+}
+
+/** La propia clave, con la actual en mano. */
+export function cambiarMiClave(claveActual: string, claveNueva: string): Promise<CuentaSesion> {
+  return llamar<CuentaSesion>("/auth/clave", { method: "POST", body: JSON.stringify({ clave_actual: claveActual, clave_nueva: claveNueva }) });
 }
 
 /** Tabla K como datos: el menú y el comportamiento de cada rol salen del backend (RN-K1). */

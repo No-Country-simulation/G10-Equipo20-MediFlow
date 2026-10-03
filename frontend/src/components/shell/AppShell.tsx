@@ -1,4 +1,4 @@
-import { BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, LogIn, LogOut, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
+import { KeyRound, BarChart3, BellRing, ClipboardCheck, Contact, Contrast, FileCheck2, FileText, Home, LogIn, LogOut, Menu, Monitor, PanelLeftOpen, Pill, Send, SlidersHorizontal, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -29,7 +29,7 @@ const ICONOS: Record<string, LucideIcon> = {
 
 export function AppShell() {
   const { rol, cambiarRol } = useRol();
-  const { cuenta, salir } = useSesion();
+  const { cuenta, salir, exigida, nombreSede } = useSesion();
   const [usuario, setUsuario] = useUsuario();
   const navigate = useNavigate();
   const location = useLocation();
@@ -94,7 +94,7 @@ export function AppShell() {
             <img src="/logo.jpg" alt="MediFlow" />
             <div className="texto-lateral">
               <strong>Medi<span>Flow</span></strong>
-              <small>Pack Colombia · Sede demo</small>
+              <small>Pack Colombia · {nombreSede || "Sede principal"}</small>
             </div>
             <button type="button" className="hamburguesa" aria-label={nombreMenu} aria-expanded={menuAbierto} aria-controls="menu-principal" onClick={() => setMenuAbierto((v) => !v)}>
               {menuAbierto ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
@@ -123,12 +123,13 @@ export function AppShell() {
             </div>
           ) : (
             <>
-              <NavLink to="/demo" className="demo">Modo demostración ›</NavLink>
+              {!exigida && <NavLink to="/demo" className="demo">Modo demostración ›</NavLink>}
               <div className="usuario">
                 {cuenta ? (
                   <div className="sesion-activa" data-testid="sesion-activa">
                     <strong>{cuenta.nombre}</strong>
                     <small>{rol.nombre} · {cuenta.usuario}</small>
+                    <NavLink to="/cambiar-clave" className="enlace-sesion"><KeyRound size={16} aria-hidden="true" />Cambiar mi clave</NavLink>
                     <button type="button" className="boton-lateral" onClick={alSalir}><LogOut size={16} aria-hidden="true" />Cerrar sesión</button>
                   </div>
                 ) : (

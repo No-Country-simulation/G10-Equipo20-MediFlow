@@ -24,7 +24,7 @@ services:
       STORAGE_LOCAL_DIR: /srv/storage
       # RN-K5: nada se consulta ni se firma sin iniciar sesión. Las cuentas las genera el backend al arrancar (una por rol).
       EXIGIR_SESION: ${EXIGIR_SESION:-true}
-      CUENTAS_DEMO: ${CUENTAS_DEMO:-true}
+      CUENTAS_DEMO: ${CUENTAS_DEMO:-false}
       CUENTAS_DEMO_CLAVE: ${CUENTAS_DEMO_CLAVE:-MediFlow.2026}
     volumes:
       - documentos:/srv/storage          # respaldo local de originales y JSON cuando OCI no está configurado

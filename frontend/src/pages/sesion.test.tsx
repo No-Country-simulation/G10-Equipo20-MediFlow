@@ -139,3 +139,58 @@ describe("Administración: clave de las cuentas", () => {
     expect(await screen.findByText(/sus sesiones abiertas se cerraron/i)).toBeInTheDocument();
   });
 });
+
+
+describe("producto: primer administrador y clave inicial", () => {
+  it("sin cuentas, la pantalla de ingreso crea el primer administrador y entra con él (RN-S3)", async () => {
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: null, sin_cuentas: true, nombre_sede: "Sede Norte" });
+    const crear = vi.spyOn(api, "crearPrimerAdministrador").mockResolvedValue({ usuario: "admin", nombre: "TI", rol: "administrador", debe_cambiar_clave: false });
+    render(<AppRouter rutaInicial="/" />);
+    const formulario = await screen.findByTestId("primer-administrador");
+    await userEvent.type(within(formulario).getByLabelText(/^usuario/i), "admin");
+    await userEvent.type(within(formulario).getByLabelText(/^nombre/i), "TI");
+    await userEvent.type(within(formulario).getByLabelText(/^clave$/i), "Clave.inicial.2026");
+    await userEvent.type(within(formulario).getByLabelText(/confirmar clave/i), "Clave.inicial.2026");
+    await userEvent.click(within(formulario).getByRole("button", { name: /crear la cuenta de administrador/i }));
+    await waitFor(() => expect(crear).toHaveBeenCalledWith("admin", "TI", "Clave.inicial.2026"));
+    expect(await screen.findByTestId("sesion-activa")).toHaveTextContent("TI");
+    expect(await screen.findByRole("heading", { level: 1, name: /administración/i })).toBeInTheDocument();
+  });
+
+  it("si la confirmación no coincide no llama a la API", async () => {
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: null, sin_cuentas: true });
+    const crear = vi.spyOn(api, "crearPrimerAdministrador").mockResolvedValue(ADMIN);
+    render(<AppRouter rutaInicial="/" />);
+    const formulario = await screen.findByTestId("primer-administrador");
+    await userEvent.type(within(formulario).getByLabelText(/^usuario/i), "admin");
+    await userEvent.type(within(formulario).getByLabelText(/^nombre/i), "TI");
+    await userEvent.type(within(formulario).getByLabelText(/^clave$/i), "Clave.inicial.2026");
+    await userEvent.type(within(formulario).getByLabelText(/confirmar clave/i), "otra.cosa.2026");
+    await userEvent.click(within(formulario).getByRole("button", { name: /crear la cuenta/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no coincide/i);
+    expect(crear).not.toHaveBeenCalled();
+  });
+
+  it("una clave puesta por otra persona se cambia antes de ver nada", async () => {
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: { ...ANA, debe_cambiar_clave: true } });
+    const cambiar = vi.spyOn(api, "cambiarMiClave").mockResolvedValue({ ...ANA, debe_cambiar_clave: false });
+    render(<AppRouter rutaInicial="/revision" />);
+    const pantalla = await screen.findByTestId("cambiar-clave");
+    expect(screen.queryByRole("navigation", { name: /principal/i })).toBeNull();  // nada más a la vista
+    await userEvent.type(within(pantalla).getByLabelText(/clave actual/i), "turno-noche-2026");
+    await userEvent.type(within(pantalla).getByLabelText(/^clave nueva/i), "Nueva.clave.2026");
+    await userEvent.type(within(pantalla).getByLabelText(/confirmar clave nueva/i), "Nueva.clave.2026");
+    await userEvent.click(within(pantalla).getByRole("button", { name: /guardar clave/i }));
+    await waitFor(() => expect(cambiar).toHaveBeenCalledWith("turno-noche-2026", "Nueva.clave.2026"));
+    expect(await screen.findByRole("heading", { level: 1, name: /cola de revisión/i })).toBeInTheDocument();
+  });
+
+  it("con sesión se puede cambiar la clave desde la barra lateral, y en producto no se ofrece la demostración", async () => {
+    vi.spyOn(api, "estadoSesion").mockResolvedValue({ exigir_sesion: true, sesion: ANA, nombre_sede: "Sede Norte" });
+    render(<AppRouter rutaInicial="/revision" />);
+    await screen.findByTestId("sesion-activa");
+    expect(screen.getByRole("link", { name: /cambiar mi clave/i })).toHaveAttribute("href", "/cambiar-clave");
+    expect(screen.queryByRole("link", { name: /modo demostración/i })).toBeNull();
+    expect(screen.getByText(/Sede Norte/)).toBeInTheDocument();
+  });
+});

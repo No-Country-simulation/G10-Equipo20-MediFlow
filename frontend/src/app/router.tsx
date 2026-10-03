@@ -4,6 +4,7 @@ import App from "../App";
 import { AppShell } from "../components/shell/AppShell";
 import { AdministracionPage } from "../pages/AdministracionPage";
 import { AutorizacionesPage } from "../pages/AutorizacionesPage";
+import { CambiarClavePage } from "../pages/CambiarClavePage";
 import { ConfiguracionPage } from "../pages/ConfiguracionPage";
 import { DetalleDocumentoPage } from "../pages/DetalleDocumentoPage";
 import { DocumentosPage } from "../pages/DocumentosPage";
@@ -22,9 +23,11 @@ import { SesionProvider, useSesion } from "./sesion";
 import { UsuarioProvider } from "./usuario";
 
 function Rutas() {
-  const { cuenta, exigida } = useSesion();
-  // Instalación con sesión obligatoria (RN-K5): sin sesión no se muestra nada más que el ingreso.
-  if (exigida && !cuenta) return <IngresarPage />;
+  const { cuenta, exigida, sinCuentas } = useSesion();
+  // Instalación sin cuentas (RN-S3) o con sesión obligatoria (RN-K5): sin sesión no se muestra nada más que el ingreso.
+  if ((exigida || sinCuentas) && !cuenta) return <IngresarPage />;
+  // Una clave puesta por otra persona se cambia antes de ver nada.
+  if (cuenta?.debe_cambiar_clave) return <CambiarClavePage obligatorio />;
   return (
     <Routes>
       <Route element={<AppShell />}>
@@ -44,6 +47,7 @@ function Rutas() {
         <Route path="/administracion" element={<AdministracionPage />} />
         <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Route>
+      <Route path="/cambiar-clave" element={<CambiarClavePage />} />
       <Route path="/demo" element={<App />} />
       <Route path="/ingresar" element={<IngresarPage />} />
     </Routes>
