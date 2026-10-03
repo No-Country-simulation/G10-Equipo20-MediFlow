@@ -1,6 +1,5 @@
 """Cola de Farmacia y doble verificación (RN-E6, RN-J6, RN-CO9)."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import cuenta_actual, firmante, get_llm, get_session, get_storage
@@ -48,14 +47,10 @@ def cola_farmacia(session: Session = Depends(get_session), storage: Storage = De
     return filas
 
 
-class VerificacionRequest(BaseModel):
-    usuario: str
-
-
 @router.post("/{documento_id}/verificar")
-def verificar(documento_id: str, cuerpo: VerificacionRequest, session: Session = Depends(get_session),
+def verificar(documento_id: str, session: Session = Depends(get_session),
               storage: Storage = Depends(get_storage), llm: ClienteLLM = Depends(get_llm), cuenta=Depends(cuenta_actual)):
-    quien = firmante(session, cuenta, cuerpo.usuario)
+    quien = firmante(session, cuenta, "verificar_receta")
     orq = _orquestador(session, storage, llm)
     doc = orq.repo.ultima_version(documento_id)
     if doc is None:

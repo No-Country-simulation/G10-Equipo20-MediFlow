@@ -8,7 +8,6 @@ y cada dato transcrito queda registrado como corrección (RN-J8).
 from app.services.llm import ErrorTransitorioLLM
 from tests.test_aceptacion import TEXTO_RECETA, med, receta
 
-AUDITOR = {"usuario": "aud.ana", "rol": "auditor_clinico"}
 TEXTO_TEP = ("TC de tórax. Fecha: 03/04/2026. Paciente: Carlos Eduardo Mendes, 52 años. Hallazgo: tromboembolismo pulmonar agudo "
              "bilateral. Dr. Andrés Rojas, RM 45678.")
 
@@ -35,7 +34,7 @@ def transcripcion_receta() -> dict:
 
 
 def transcribir(client, documento_id, transcripcion, motivo="transcrito desde el original"):
-    return client.post(f"/revision/{documento_id}/resolver", json={**AUDITOR, "accion": "transcribir", "motivo": motivo, "transcripcion": transcripcion})
+    return client.post(f"/revision/{documento_id}/resolver", json={"accion": "transcribir", "motivo": motivo, "transcripcion": transcripcion})
 
 
 def test_una_receta_en_fallo_tecnico_se_transcribe_y_se_enruta_como_si_la_hubiera_leido_el_llm(client, llm_falso):
@@ -88,8 +87,7 @@ def test_solo_se_transcribe_lo_que_no_tiene_lectura_del_llm(client, llm_falso):
     assert r.status_code == 409 and "corregir" in r.json()["detail"]
 
 
-def test_transcribir_respeta_la_separacion_de_funciones_RN_K2(client, llm_falso):
+def test_transcribir_respeta_la_separacion_de_funciones_RN_K2(client, llm_falso, gestor):
     enviar_con_fallo(client, llm_falso, "FT-2", TEXTO_RECETA)
-    client.post("/administracion/usuarios", json={"usuario": "gestor.ana", "nombre": "Ana", "rol": "gestor", "tipo": "persona", "actor": "admin"})
-    r = client.post("/revision/FT-2/resolver", json={"usuario": "gestor.ana", "rol": "gestor", "accion": "transcribir", "motivo": "x", "transcripcion": transcripcion_receta()})
+    r = gestor.post("/revision/FT-2/resolver", json={"accion": "transcribir", "motivo": "x", "transcripcion": transcripcion_receta()})
     assert r.status_code == 403

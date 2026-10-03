@@ -10,12 +10,9 @@ from app.services.configuracion import acumular, validar_destinos
 from tests.test_aceptacion import med, receta, TEXTO_RECETA
 from tests.test_api_farmacia_autorizaciones import enviar
 
-GESTOR = {"usuario": "gestor.ana", "rol": "gestor"}
-
-
-def proponer(client, cambios, motivo="ajuste", **actor):
-    cuerpo = {"cambios": cambios, "motivo": motivo, **(GESTOR | actor)}
-    return client.post("/configuracion/propuestas", json=cuerpo)
+def proponer(gestor, cambios, motivo="ajuste"):
+    """Propone con la sesión que se le pase: normalmente la del gestor; otra sesión prueba la separación de funciones (RN-K2)."""
+    return gestor.post("/configuracion/propuestas", json={"cambios": cambios, "motivo": motivo})
 
 
 # --- Reglas puras: rangos, no configurables, solo ampliables ---------------------------------
@@ -31,9 +28,9 @@ def test_RN_L1_umbral_dentro_de_rango_se_aplica_y_fuera_de_rango_se_rechaza():
     assert "RN-L1" in str(error.value)
 
 
-def test_RN_L1_bordes_del_rango(client):
+def test_RN_L1_bordes_del_rango(client, gestor):
     """RN-U3: el valor que pasa y el inmediato que no."""
-    rangos = client.get("/configuracion").json()["rangos"]
+    rangos = gestor.get("/configuracion").json()["rangos"]
     r = rangos["confianza.medicamento_dosis"]
     base = cargar_umbrales()
     assert aplicar_umbrales(base, CambiosConfiguracion(umbrales={"confianza.medicamento_dosis": r["max"]})).confianza.medicamento_dosis == r["max"]
@@ -85,8 +82,8 @@ def test_RN_L5_bajar_confianza_o_alargar_tiempos_toca_seguridad():
 # --- API -----------------------------------------------------------------------------------------
 
 
-def test_configuracion_expone_vigente_base_rangos_y_listas(client):
-    r = client.get("/configuracion")
+def test_configuracion_expone_vigente_base_rangos_y_listas(client, gestor):
+    r = gestor.get("/configuracion")
     assert r.status_code == 200
     cuerpo = r.json()
     assert cuerpo["vigente"]["numero"] == 0 and cuerpo["vigente"]["autor"] == "sistema"
@@ -99,7 +96,7 @@ def test_configuracion_expone_vigente_base_rangos_y_listas(client):
     assert cuerpo["propuestas"] == [] and cuerpo["historial"] == []
 
 
-def test_RN_L6_simulacion_muestra_que_habria_cambiado_sobre_los_ultimos_documentos(client, llm_falso):
+def test_RN_L6_simulacion_muestra_que_habria_cambiado_sobre_los_ultimos_documentos(client, llm_falso, gestor):
     from app.services.llm import ErrorTransitorioLLM
 
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))  # confianza 0.97 -> ENRUTADO
@@ -107,7 +104,7 @@ def test_RN_L6_simulacion_muestra_que_habria_cambiado_sobre_los_ultimos_document
     client.post("/documentos", json={"documento_id": "FALLO-1", "canal_origen": "Consulta_Ambulatoria", "tipo_contenido": "texto",
                                      "contenido_texto": "Fecha: 03/04/2026. Texto sin propuesta. Dr. Rojas RM 1."})
     assert client.get("/documentos/REC-1").json()["estado"] == "ENRUTADO"
-    r = client.post("/configuracion/simular", json={"cambios": {"umbrales": {"confianza.medicamento_dosis": 0.98}}, "ultimos": 50})
+    r = gestor.post("/configuracion/simular", json={"cambios": {"umbrales": {"confianza.medicamento_dosis": 0.98}}, "ultimos": 50})
     assert r.status_code == 200, r.text
     sim = r.json()
     assert sim["documentos_evaluados"] == 1 and sim["sin_propuesta"] == 1 and sim["cambian"] == 1
@@ -118,21 +115,21 @@ def test_RN_L6_simulacion_muestra_que_habria_cambiado_sobre_los_ultimos_document
     assert "Pérez" not in r.text  # RN-M4
     # nada cambió de verdad
     assert client.get("/documentos/REC-1").json()["estado"] == "ENRUTADO"
-    assert client.get("/configuracion").json()["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.95
+    assert gestor.get("/configuracion").json()["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.95
 
 
-def test_RN_L4_una_propuesta_aprobada_es_version_nueva_con_autor_fecha_y_vigencia_y_no_es_retroactiva(client, llm_falso):
+def test_RN_L4_una_propuesta_aprobada_es_version_nueva_con_autor_fecha_y_vigencia_y_no_es_retroactiva(client, llm_falso, gestor):
     enviar(client, llm_falso, "REC-ANTES", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
-    r = proponer(client, {"umbrales": {"confianza.medicamento_dosis": 0.98}}, motivo="cero errores de dosis (sección 8)")
+    r = proponer(gestor, {"umbrales": {"confianza.medicamento_dosis": 0.98}}, motivo="cero errores de dosis (sección 8)")
     assert r.status_code == 201, r.text
     propuesta = r.json()
     assert propuesta["estado"] == "propuesta" and propuesta["toca_seguridad"] is False and propuesta["aprobaciones_requeridas"] == 1
     assert propuesta["simulacion"]["cambian"] == 1  # RN-L6: la simulación acompaña a la propuesta
-    aprobada = client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json=GESTOR)
+    aprobada = gestor.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar")
     assert aprobada.status_code == 200, aprobada.text
     assert aprobada.json()["estado"] == "vigente"
 
-    cfg = client.get("/configuracion").json()
+    cfg = gestor.get("/configuracion").json()
     assert cfg["vigente"]["numero"] == 1 and cfg["vigente"]["autor"] == "gestor.ana" and cfg["vigente"]["vigente_desde"]
     assert cfg["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.98
     assert cfg["historial"][0]["numero"] == 1 and cfg["historial"][0]["estado"] == "vigente"
@@ -146,52 +143,52 @@ def test_RN_L4_una_propuesta_aprobada_es_version_nueva_con_autor_fecha_y_vigenci
     assert despues["umbrales"]["medicamento_dosis"] == 0.98
 
 
-def test_RN_L5_un_cambio_que_toca_seguridad_exige_dos_aprobadores_distintos(client):
-    r = proponer(client, {"umbrales": {"confianza.medicamento_dosis": 0.90}}, motivo="menos revisión")
+def test_RN_L5_un_cambio_que_toca_seguridad_exige_dos_aprobadores_distintos(client, gestor2, gestor):
+    r = proponer(gestor, {"umbrales": {"confianza.medicamento_dosis": 0.90}}, motivo="menos revisión")
     assert r.status_code == 201, r.text
     propuesta = r.json()
     assert propuesta["toca_seguridad"] is True and propuesta["aprobaciones_requeridas"] == 2
-    primera = client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json=GESTOR)
+    primera = gestor.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar")
     assert primera.status_code == 200 and primera.json()["estado"] == "propuesta"
-    assert client.get("/configuracion").json()["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.95
-    repetida = client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json=GESTOR)
+    assert gestor.get("/configuracion").json()["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.95
+    repetida = gestor.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar")
     assert repetida.status_code == 409 and "RN-L5" in repetida.json()["detail"]
-    segunda = client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json={"usuario": "gestor.luis", "rol": "gestor"})
+    segunda = gestor2.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar")
     assert segunda.status_code == 200 and segunda.json()["estado"] == "vigente"
     assert [a["usuario"] for a in segunda.json()["aprobaciones"]] == ["gestor.ana", "gestor.luis"]
-    assert client.get("/configuracion").json()["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.90
+    assert gestor.get("/configuracion").json()["umbrales_efectivos"]["confianza"]["medicamento_dosis"] == 0.90
 
 
-def test_RN_L3_ampliar_alto_riesgo_cambia_la_doble_verificacion_de_las_recetas_nuevas(client, llm_falso):
-    r = proponer(client, {"ampliaciones": {"alto_riesgo": ["atorvastatina"]}}, motivo="protocolo interno")
+def test_RN_L3_ampliar_alto_riesgo_cambia_la_doble_verificacion_de_las_recetas_nuevas(client, llm_falso, gestor):
+    r = proponer(gestor, {"ampliaciones": {"alto_riesgo": ["atorvastatina"]}}, motivo="protocolo interno")
     assert r.status_code == 201, r.text
-    assert client.post(f"/configuracion/propuestas/{r.json()['id']}/aprobar", json=GESTOR).json()["estado"] == "vigente"
-    listas = client.get("/configuracion").json()["listas"]
+    assert gestor.post(f"/configuracion/propuestas/{r.json()['id']}/aprobar").json()["estado"] == "vigente"
+    listas = gestor.get("/configuracion").json()["listas"]
     assert listas["alto_riesgo"]["ampliadas"] == ["atorvastatina"] and "apixaban" in listas["alto_riesgo"]["base"]
     enviar(client, llm_falso, "REC-ATV", TEXTO_RECETA.replace("Losartán", "Atorvastatina"), receta([med("atorvastatina", "40 mg")]))
     cola = client.get("/farmacia").json()
     assert cola[0]["documento_id"] == "REC-ATV" and cola[0]["alto_riesgo"] is True and cola[0]["verificaciones_requeridas"] == 2
 
 
-def test_una_propuesta_reemplaza_a_la_vigente_y_queda_en_el_historial(client):
-    primera = proponer(client, {"umbrales": {"confianza.profesional": 0.90}}).json()
-    client.post(f"/configuracion/propuestas/{primera['id']}/aprobar", json=GESTOR)
-    segunda = proponer(client, {"umbrales": {"confianza.profesional": 0.92}}).json()
-    client.post(f"/configuracion/propuestas/{segunda['id']}/aprobar", json=GESTOR)
-    cfg = client.get("/configuracion").json()
+def test_una_propuesta_reemplaza_a_la_vigente_y_queda_en_el_historial(client, gestor):
+    primera = proponer(gestor, {"umbrales": {"confianza.profesional": 0.90}}).json()
+    gestor.post(f"/configuracion/propuestas/{primera['id']}/aprobar")
+    segunda = proponer(gestor, {"umbrales": {"confianza.profesional": 0.92}}).json()
+    gestor.post(f"/configuracion/propuestas/{segunda['id']}/aprobar")
+    cfg = gestor.get("/configuracion").json()
     assert cfg["vigente"]["numero"] == 2 and cfg["umbrales_efectivos"]["confianza"]["profesional"] == 0.92
     assert [(v["numero"], v["estado"]) for v in cfg["historial"]] == [(2, "vigente"), (1, "reemplazada")]
     assert cfg["historial"][1]["vigente_hasta"]
 
 
-def test_RN_L3_RN_L4_una_version_posterior_no_deshace_lo_que_cambiaron_las_anteriores(client):
-    primera = proponer(client, {"umbrales": {"confianza.medicamento_dosis": 0.98}, "ampliaciones": {"alto_riesgo": ["atorvastatina"]}}).json()
-    client.post(f"/configuracion/propuestas/{primera['id']}/aprobar", json=GESTOR)
-    segunda = proponer(client, {"umbrales": {"confianza.profesional": 0.92}, "ampliaciones": {"alto_riesgo": ["rosuvastatina"]}}).json()
-    client.post(f"/configuracion/propuestas/{segunda['id']}/aprobar", json=GESTOR)
-    rechazada = proponer(client, {"umbrales": {"confianza.resto": 0.90}}).json()
-    client.post(f"/configuracion/propuestas/{rechazada['id']}/rechazar", json=GESTOR | {"motivo": "no"})
-    cfg = client.get("/configuracion").json()
+def test_RN_L3_RN_L4_una_version_posterior_no_deshace_lo_que_cambiaron_las_anteriores(client, gestor):
+    primera = proponer(gestor, {"umbrales": {"confianza.medicamento_dosis": 0.98}, "ampliaciones": {"alto_riesgo": ["atorvastatina"]}}).json()
+    gestor.post(f"/configuracion/propuestas/{primera['id']}/aprobar")
+    segunda = proponer(gestor, {"umbrales": {"confianza.profesional": 0.92}, "ampliaciones": {"alto_riesgo": ["rosuvastatina"]}}).json()
+    gestor.post(f"/configuracion/propuestas/{segunda['id']}/aprobar")
+    rechazada = proponer(gestor, {"umbrales": {"confianza.resto": 0.90}}).json()
+    gestor.post(f"/configuracion/propuestas/{rechazada['id']}/rechazar", json={"motivo": "no"})
+    cfg = gestor.get("/configuracion").json()
     assert cfg["vigente"]["numero"] == 2
     assert cfg["vigente"]["cambios"]["umbrales"] == {"confianza.profesional": 0.92}  # cada versión guarda solo lo suyo
     efectivos = cfg["umbrales_efectivos"]["confianza"]
@@ -199,29 +196,29 @@ def test_RN_L3_RN_L4_una_version_posterior_no_deshace_lo_que_cambiaron_las_anter
     assert cfg["listas"]["alto_riesgo"]["ampliadas"] == ["atorvastatina", "rosuvastatina"]
 
 
-def test_rechazar_una_propuesta_la_saca_de_pendientes(client):
-    p = proponer(client, {"umbrales": {"confianza.profesional": 0.90}}).json()
-    assert client.get("/configuracion").json()["propuestas"][0]["id"] == p["id"]
-    r = client.post(f"/configuracion/propuestas/{p['id']}/rechazar", json=GESTOR | {"motivo": "sin datos que lo respalden"})
+def test_rechazar_una_propuesta_la_saca_de_pendientes(client, gestor):
+    p = proponer(gestor, {"umbrales": {"confianza.profesional": 0.90}}).json()
+    assert gestor.get("/configuracion").json()["propuestas"][0]["id"] == p["id"]
+    r = gestor.post(f"/configuracion/propuestas/{p['id']}/rechazar", json={"motivo": "sin datos que lo respalden"})
     assert r.status_code == 200 and r.json()["estado"] == "rechazada"
-    cfg = client.get("/configuracion").json()
+    cfg = gestor.get("/configuracion").json()
     assert cfg["propuestas"] == [] and cfg["historial"][0]["estado"] == "rechazada"
-    assert client.post(f"/configuracion/propuestas/{p['id']}/aprobar", json=GESTOR).status_code == 409
+    assert gestor.post(f"/configuracion/propuestas/{p['id']}/aprobar").status_code == 409
 
 
-def test_validaciones_de_la_api_citan_la_regla(client):
-    assert "RN-L1" in proponer(client, {"umbrales": {"confianza.medicamento_dosis": 0.5}}).json()["detail"]
-    assert "RN-L2" in proponer(client, {"umbrales": {"news2.total_critico": 5}}).json()["detail"]
-    assert proponer(client, {"umbrales": {}}).status_code == 422  # sin cambios no hay versión
-    assert proponer(client, {"umbrales": {"confianza.profesional": 0.9}}, motivo="").status_code == 422  # RN-L4: motivo
-    assert client.post("/configuracion/propuestas/999/aprobar", json=GESTOR).status_code == 404
+def test_validaciones_de_la_api_citan_la_regla(client, gestor):
+    assert "RN-L1" in proponer(gestor, {"umbrales": {"confianza.medicamento_dosis": 0.5}}).json()["detail"]
+    assert "RN-L2" in proponer(gestor, {"umbrales": {"news2.total_critico": 5}}).json()["detail"]
+    assert proponer(gestor, {"umbrales": {}}).status_code == 422  # sin cambios no hay versión
+    assert proponer(gestor, {"umbrales": {"confianza.profesional": 0.9}}, motivo="").status_code == 422  # RN-L4: motivo
+    assert gestor.post("/configuracion/propuestas/999/aprobar").status_code == 404
 
 
-def test_RN_K2_solo_el_gestor_configura(client):
-    r = proponer(client, {"umbrales": {"confianza.profesional": 0.9}}, usuario="aud.ana", rol="auditor_clinico")
+def test_RN_K2_solo_el_gestor_configura(client, gestor, admin):
+    r = proponer(client, {"umbrales": {"confianza.profesional": 0.9}})  # el auditor clínico no configura
     assert r.status_code == 403 and "RN-K2" in r.json()["detail"]
-    p = proponer(client, {"umbrales": {"confianza.profesional": 0.9}}).json()
-    r = client.post(f"/configuracion/propuestas/{p['id']}/aprobar", json={"usuario": "admin.root", "rol": "administrador"})
+    p = proponer(gestor, {"umbrales": {"confianza.profesional": 0.9}}).json()
+    r = admin.post(f"/configuracion/propuestas/{p['id']}/aprobar")  # el administrador tampoco: nada clínico ni de configuración
     assert r.status_code == 403 and "RN-K2" in r.json()["detail"]
 
 
@@ -252,44 +249,44 @@ def test_los_destinos_de_una_version_se_heredan_hasta_que_otra_los_cambia():
     assert aplicar_pack(cargar_pack("CO"), acumular(v1, v2)).destinos_inactivos == ["Farmacia_Hospitalaria"]
 
 
-def test_RN_L1_el_gestor_desactiva_un_destino_y_lo_nuevo_va_a_revision_humana(client, llm_falso):
+def test_RN_L1_el_gestor_desactiva_un_destino_y_lo_nuevo_va_a_revision_humana(client, llm_falso, gestor2, gestor, admin):
     enviar(client, llm_falso, "REC-ANTES", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
-    cfg = client.get("/configuracion").json()
+    cfg = gestor.get("/configuracion").json()
     assert {d["destino"]: (d["activo"], d["protegido"]) for d in cfg["destinos"]}["Cola_Emergencia_Medica"] == (True, True)
     assert all(d["activo"] for d in cfg["destinos"])
 
-    r = proponer(client, {"destinos_inactivos": ["Farmacia_Hospitalaria"]}, motivo="la sede no tiene farmacia propia")
+    r = proponer(gestor, {"destinos_inactivos": ["Farmacia_Hospitalaria"]}, motivo="la sede no tiene farmacia propia")
     assert r.status_code == 201, r.text
     propuesta = r.json()
     assert propuesta["toca_seguridad"] is True and propuesta["aprobaciones_requeridas"] == 2  # RN-L5
     assert propuesta["simulacion"]["mas_a_revision"] == 1  # RN-L6: la receta ya procesada cambiaría
-    client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json=GESTOR)
-    aprobada = client.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar", json={"usuario": "gestor.luis", "rol": "gestor"})
+    gestor.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar")
+    aprobada = gestor2.post(f"/configuracion/propuestas/{propuesta['id']}/aprobar")
     assert aprobada.json()["estado"] == "vigente"
 
-    destinos = {d["destino"]: d["activo"] for d in client.get("/configuracion").json()["destinos"]}
+    destinos = {d["destino"]: d["activo"] for d in gestor.get("/configuracion").json()["destinos"]}
     assert destinos["Farmacia_Hospitalaria"] is False and destinos["Historia_Clinica_Electronica"] is True
     assert client.get("/documentos/REC-ANTES").json()["estado"] == "ENRUTADO"  # RN-L4: no es retroactiva
     enviar(client, llm_falso, "REC-DESPUES", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
     despues = client.get("/documentos/REC-DESPUES").json()
     assert despues["estado"] == "EN_REVISION_HUMANA"
     assert despues["resultado"]["evaluacion"]["motivo_auditoria"] == "destino_inactivo"
-    assert "Farmacia_Hospitalaria" in next(r["detalle"] for r in client.get("/administracion/puesta_en_marcha").json()["requisitos"]
+    assert "Farmacia_Hospitalaria" in next(r["detalle"] for r in admin.get("/administracion/puesta_en_marcha").json()["requisitos"]
                                            if r["clave"] == "destinos_activos")
 
     # una versión posterior que no toca destinos los hereda; otra los reactiva con una sola aprobación
-    otra = proponer(client, {"umbrales": {"tiempos.escalamiento_sin_acuse_min": 10}}).json()
-    client.post(f"/configuracion/propuestas/{otra['id']}/aprobar", json=GESTOR)
-    assert {d["destino"]: d["activo"] for d in client.get("/configuracion").json()["destinos"]}["Farmacia_Hospitalaria"] is False
-    reactivar = proponer(client, {"destinos_inactivos": []}, motivo="farmacia habilitada").json()
+    otra = proponer(gestor, {"umbrales": {"tiempos.escalamiento_sin_acuse_min": 10}}).json()
+    gestor.post(f"/configuracion/propuestas/{otra['id']}/aprobar")
+    assert {d["destino"]: d["activo"] for d in gestor.get("/configuracion").json()["destinos"]}["Farmacia_Hospitalaria"] is False
+    reactivar = proponer(gestor, {"destinos_inactivos": []}, motivo="farmacia habilitada").json()
     assert reactivar["toca_seguridad"] is False
-    assert client.post(f"/configuracion/propuestas/{reactivar['id']}/aprobar", json=GESTOR).json()["estado"] == "vigente"
+    assert gestor.post(f"/configuracion/propuestas/{reactivar['id']}/aprobar").json()["estado"] == "vigente"
     enviar(client, llm_falso, "REC-FINAL", TEXTO_RECETA.replace("30 (treinta)", "60 (sesenta)"), receta([med("losartan", "50 mg", cantidad_numeros="60", cantidad_letras="sesenta")]))
     assert client.get("/documentos/REC-FINAL").json()["estado"] == "ENRUTADO"
 
 
-def test_RN_L2_la_api_rechaza_desactivar_un_destino_protegido_o_inexistente(client):
-    r = proponer(client, {"destinos_inactivos": ["Cola_Emergencia_Medica"]})
+def test_RN_L2_la_api_rechaza_desactivar_un_destino_protegido_o_inexistente(client, gestor):
+    r = proponer(gestor, {"destinos_inactivos": ["Cola_Emergencia_Medica"]})
     assert r.status_code == 422 and "RN-L2" in r.json()["detail"]
-    assert proponer(client, {"destinos_inactivos": ["Destino_Inventado"]}).status_code == 422
-    assert all(d["activo"] for d in client.get("/configuracion").json()["destinos"])
+    assert proponer(gestor, {"destinos_inactivos": ["Destino_Inventado"]}).status_code == 422
+    assert all(d["activo"] for d in gestor.get("/configuracion").json()["destinos"])

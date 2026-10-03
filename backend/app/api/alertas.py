@@ -1,6 +1,5 @@
 """Acuse de alertas críticas (RN-J7, RN-Q5)."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import cuenta_actual, firmante, get_llm, get_session, get_storage
@@ -12,10 +11,6 @@ from app.services.orquestador import ErrorDeRevision, Orquestador
 from app.services.storage import Storage
 
 router = APIRouter(prefix="/alertas", tags=["alertas"])
-
-
-class AcuseRequest(BaseModel):
-    usuario: str
 
 
 @router.get("")
@@ -48,13 +43,12 @@ def listar_alertas(estado_acuse: str | None = None, session: Session = Depends(g
 @router.post("/{documento_id}/acuse")
 def acusar(
     documento_id: str,
-    cuerpo: AcuseRequest,
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
     cuenta=Depends(cuenta_actual),
 ):
-    quien = firmante(session, cuenta, cuerpo.usuario)
+    quien = firmante(session, cuenta, "acusar_alerta")  # RN-Q5: el acuse lo da la cuenta de la sesión
     repo = RepositorioDocumentos(session)
     doc = repo.ultima_version(documento_id)
     if doc is None:

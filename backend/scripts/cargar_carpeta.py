@@ -5,10 +5,12 @@ Uso:
     python -m scripts.cargar_carpeta "C:/ruta/EPICRISIS" --canal Hospitalizado --url http://localhost:8000
 
 El documento_id sale del nombre del archivo (RN-A2). Volver a cargar la misma carpeta
-no reprocesa: la API devuelve el resultado previo (RN-O1).
+no reprocesa: la API devuelve el resultado previo (RN-O1). Se carga con una cuenta real:
+--usuario y la variable de entorno MEDIFLOW_CLAVE (RN-K5).
 """
 import argparse
 import json
+import os
 import re
 import sys
 from collections.abc import Callable
@@ -53,10 +55,14 @@ def cargar_carpeta(carpeta: Path, *, canal_origen: str, cobertura: str | None, e
     return resumen
 
 
-def _enviar_http(url_base: str) -> Callable:
+def _enviar_http(url_base: str, usuario: str, clave: str) -> Callable:
+    """Inicia sesión una vez (RN-K5) y envía con esa cookie. La clave viene de MEDIFLOW_CLAVE, nunca de la línea de órdenes."""
     import httpx  # noqa: PLC0415
 
     cliente = httpx.Client(base_url=url_base, timeout=180)
+    ingreso = cliente.post("/auth/ingresar", json={"usuario": usuario, "clave": clave})
+    if ingreso.status_code != 200:
+        raise SystemExit(f"no se pudo iniciar sesión como {usuario}: {ingreso.status_code} {ingreso.text}")
 
     def enviar(ruta: str, campos: dict, archivo: tuple):
         return cliente.post(ruta, data=campos, files={"archivo": archivo})
@@ -72,8 +78,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cobertura", default=None)
     parser.add_argument("--pais", default="CO")
     parser.add_argument("--json", dest="salida_json", default=None, help="ruta donde guardar el resumen en JSON")
+    parser.add_argument("--usuario", default=os.environ.get("MEDIFLOW_USUARIO", ""), help="cuenta con la que se cargan los documentos (o MEDIFLOW_USUARIO)")
     args = parser.parse_args(argv)
-    resumen = cargar_carpeta(Path(args.carpeta), canal_origen=args.canal, cobertura=args.cobertura, pais=args.pais, enviar=_enviar_http(args.url))
+    clave = os.environ.get("MEDIFLOW_CLAVE", "")
+    if not args.usuario or not clave:
+        parser.error("hace falta --usuario (o MEDIFLOW_USUARIO) y la variable MEDIFLOW_CLAVE: nada se carga sin sesión (RN-K5)")
+    resumen = cargar_carpeta(Path(args.carpeta), canal_origen=args.canal, cobertura=args.cobertura, pais=args.pais,
+                             enviar=_enviar_http(args.url, args.usuario, clave))
     if args.salida_json:
         Path(args.salida_json).write_text(json.dumps(resumen, ensure_ascii=False, indent=2), encoding="utf-8")
     por_estado: dict[str, int] = {}

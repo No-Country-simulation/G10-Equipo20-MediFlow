@@ -10,7 +10,6 @@ from app.models.documento import Documento
 from app.models.paciente import Paciente
 from app.services.errores import ErrorDeRevision
 from app.services.pacientes import ServicioPacientes
-from app.services.usuarios import ServicioUsuarios
 
 router = APIRouter(prefix="/pacientes", tags=["pacientes"])
 
@@ -59,9 +58,7 @@ def consultar_paciente(paciente_id: int, session: Session = Depends(get_session)
 class EdicionPaciente(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    usuario: str = Field(..., min_length=1)  # RN-G4
-    rol: str = Field(..., min_length=1)
-    motivo: str = ""
+    motivo: str = ""  # RN-G4: quién lo cambió sale de la sesión; aquí solo el porqué
     nombre: str | None = Field(default=None, max_length=255)
     edad: int | None = Field(default=None, ge=0, le=130)
     sexo: str | None = Field(default=None, max_length=16)
@@ -70,12 +67,9 @@ class EdicionPaciente(BaseModel):
 @router.patch("/{paciente_id}")
 def editar_paciente(paciente_id: int, cuerpo: EdicionPaciente, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
     """Corrige un dato mal registrado (por ejemplo, un nombre con error que genera conflictos). El número de documento no se edita."""
-    quien = firmante(session, cuenta, cuerpo.usuario, cuerpo.rol)
-    cambios = cuerpo.model_dump(exclude_unset=True, exclude={"usuario", "rol", "motivo"})
+    quien = firmante(session, cuenta, "editar_paciente")  # RN-K2: solo el auditor clínico
+    cambios = cuerpo.model_dump(exclude_unset=True, exclude={"motivo"})
     try:
-        if quien.rol != "auditor_clinico":
-            raise ErrorDeRevision(403, f"RN-K2: los datos de un paciente los corrige el auditor clínico, no el rol {quien.rol}")
-        ServicioUsuarios(session).validar_actor(quien.usuario, "editar_paciente", quien.rol)
         if not cambios:
             raise ErrorDeRevision(422, "no hay nada que cambiar")
         servicio = ServicioPacientes(session)

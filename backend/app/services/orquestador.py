@@ -269,7 +269,6 @@ class Orquestador:
 
     def resolver_revision(self, doc: Documento, *, accion: str, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any] | None = None,
                           transcripcion: dict[str, Any] | None = None) -> ResultadoTriaje:
-        self.usuarios.validar_actor(usuario, "resolver_revision", rol)
         if doc.estado != E.EN_REVISION_HUMANA:
             raise ErrorDeRevision(409, f"RN-I4: el documento está en {doc.estado}, no en revisión humana")
         if not usuario.strip():
@@ -460,7 +459,6 @@ class Orquestador:
     def acusar(self, doc: Documento, usuario: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-Q5: el acuse lo da un usuario identificado")
-        self.usuarios.validar_actor(usuario, "acusar_alerta")
         alerta = self.repo.alerta_activa(doc)
         if alerta is None:
             raise ErrorDeRevision(404, "el documento no tiene alerta crítica")
@@ -504,7 +502,6 @@ class Orquestador:
     def verificar_farmacia(self, doc: Documento, usuario: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-K5: la verificación exige un usuario identificado")
-        self.usuarios.validar_actor(usuario, "verificar_receta")
         if not self.es_receta_por_verificar(doc):
             raise ErrorDeRevision(409, "solo se verifican recetas enrutadas a Farmacia y aún no verificadas")
         resultado = ResultadoTriaje.model_validate(doc.resultado_json)
@@ -544,7 +541,6 @@ class Orquestador:
     def resolver_autorizacion(self, doc: Documento, *, accion: str, usuario: str, motivo: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-K5: la acción exige un usuario identificado")
-        self.usuarios.validar_actor(usuario, "resolver_autorizacion")
         if accion not in ("aprobar", "devolver"):
             raise ErrorDeRevision(422, f"acción desconocida: {accion}")
         if accion == "devolver" and not motivo.strip():

@@ -63,7 +63,6 @@ def estado(cuenta: Usuario | None = Depends(cuenta_actual), session: Session = D
     """Lo que la interfaz necesita para decidir qué mostrar: ingreso, primer administrador o cambio de clave."""
     settings = get_settings()
     return {
-        "exigir_sesion": settings.exigir_sesion,
         "sesion": _cuenta(cuenta) if cuenta else None,
         "sin_cuentas": not ServicioUsuarios(session).hay_cuentas(),
         "nombre_sede": settings.nombre_sede,

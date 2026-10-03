@@ -48,8 +48,6 @@ def cola_de_revision(session: Session = Depends(get_session)):
 
 class ResolucionRequest(BaseModel):
     accion: Literal["aprobar", "corregir", "rechazar", "transcribir"]  # RN-J3 (reasignar y escalar quedan para después)
-    usuario: str = Field(..., min_length=1)  # RN-G4, RN-K5
-    rol: str = Field(..., min_length=1)
     motivo: str = ""
     correcciones: dict[str, Any] | None = None
     # Fallo técnico (RN-P2): sin lectura del LLM, la persona transcribe con la misma forma de la propuesta.
@@ -65,7 +63,7 @@ def resolver(
     llm: ClienteLLM = Depends(get_llm),
     cuenta=Depends(cuenta_actual),
 ):
-    quien = firmante(session, cuenta, cuerpo.usuario, cuerpo.rol)
+    quien = firmante(session, cuenta, "resolver_revision")  # RN-G4, RN-K5: firma la cuenta de la sesión
     repo = RepositorioDocumentos(session)
     doc = repo.ultima_version(documento_id)
     if doc is None:

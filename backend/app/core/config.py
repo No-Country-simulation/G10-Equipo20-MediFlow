@@ -48,17 +48,12 @@ class Settings(BaseSettings):
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8
     contrato_transmision_internacional: bool = False  # RN-CO19
-    # RN-K5: nada se consulta ni se firma sin iniciar sesión. Solo un entorno de desarrollo lo pone en false:
-    # ahí quien no tiene cuenta con clave firma con su nombre, y una cuenta con clave solo firma con su sesión.
-    exigir_sesion: bool = True
+    # RN-K5: nada se consulta ni se firma sin iniciar sesión. No hay modo sin sesión.
     nombre_sede: str = "Sede principal"  # lo que la barra lateral muestra bajo el logo
     clave_minima: int = 10  # política de claves: largo mínimo; además letras y números, y distinta del usuario
     intentos_maximos: int = 5  # intentos fallidos seguidos antes de bloquear la cuenta
     bloqueo_min: int = 15  # minutos de bloqueo tras agotar los intentos
     admin_usuario: str = "admin"  # primera cuenta de administrador: python -m scripts.crear_administrador
-    # Cuentas de demostración (una persona por rol, con clave) que el backend genera al arrancar. Solo para el hackathon.
-    cuentas_demo: bool = False
-    cuentas_demo_clave: str = "MediFlow.2026"
     admin_clave_inicial: str = ""
 
 

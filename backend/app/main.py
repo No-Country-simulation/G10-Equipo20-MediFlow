@@ -29,7 +29,7 @@ async def _bucle_de_escalamiento(cada_s: int) -> None:
 async def ciclo_de_vida(_: FastAPI):
     crear_tablas()
     with Session(get_engine()) as sesion:
-        informe = preparar_instalacion(sesion)  # roles de la tabla K y, si la instalación lo pide, cuentas de demostración
+        informe = preparar_instalacion(sesion)  # roles de la tabla K y tipo de los documentos anteriores
     if any(informe.values()):
         logger.info("Instalación preparada: %s", informe)
     get_memoria()  # la memoria del grafo abre su conexión y crea sus tablas al arrancar, no en la primera petición
@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version=settings.version_reglas, lifespan=ciclo_de_vida)
     app.include_router(healthcheck.router)
     app.include_router(auth.router)
-    # RN-K2: con sesión, cada sección la ve solo el rol que la necesita. Sin sesión rige EXIGIR_SESION.
+    # RN-K5: nada sin sesión. RN-K2: cada sección la ve solo el rol que la necesita.
     clinico = [Depends(acceso(*ROLES_CLINICOS))]
     for seccion in (documentos, revision, alertas, farmacia, autorizaciones):
         app.include_router(seccion.router, dependencies=clinico)

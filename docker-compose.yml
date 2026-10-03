@@ -22,10 +22,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mediflow}:${POSTGRES_PASSWORD:-mediflow}@db:5432/${POSTGRES_DB:-mediflow}
       STORAGE_LOCAL_DIR: /srv/storage
-      # RN-K5: nada se consulta ni se firma sin iniciar sesión. Las cuentas las genera el backend al arrancar (una por rol).
-      EXIGIR_SESION: ${EXIGIR_SESION:-true}
-      CUENTAS_DEMO: ${CUENTAS_DEMO:-false}
-      CUENTAS_DEMO_CLAVE: ${CUENTAS_DEMO_CLAVE:-MediFlow.2026}
     volumes:
       - documentos:/srv/storage          # respaldo local de originales y JSON cuando OCI no está configurado
     ports:

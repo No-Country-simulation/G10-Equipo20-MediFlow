@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -12,7 +11,9 @@ from app.core.database import abrir_sesion
 from app.graph.memoria import crear_memoria
 from app.core.sesiones import cuenta_de_la_sesion
 from app.models.gobierno import Usuario
+from app.services.errores import ErrorDeRevision
 from app.services.llm import ClienteGemini, ClienteLLM, ClienteOpenAI, ErrorTransitorioLLM, LlamadaLLM, RespuestaLLM
+from app.services.usuarios import ServicioUsuarios
 from app.services.storage import Storage, StorageLocal, StorageOCI, StorageR2
 
 
@@ -66,13 +67,11 @@ def cuenta_actual(request: Request, session: Session = Depends(get_session)) -> 
 
 
 def acceso(*roles: str) -> Callable[..., None]:
-    """Dependencia de un router: exige sesión si la instalación lo pide y, con sesión, que el rol sea de los permitidos (RN-K2)."""
+    """Dependencia de un router: exige sesión (RN-K5) y que el rol de la cuenta sea de los permitidos (RN-K2)."""
 
     def verificar(cuenta: Usuario | None = Depends(cuenta_actual)) -> None:
         if cuenta is None:
-            if get_settings().exigir_sesion:
-                raise HTTPException(status_code=401, detail="sesion_requerida")
-            return
+            raise HTTPException(status_code=401, detail="sesion_requerida")
         if cuenta.debe_cambiar_clave:
             raise HTTPException(status_code=403, detail="cambio_de_clave_requerido")
         if roles and cuenta.rol not in roles:
@@ -85,17 +84,16 @@ def acceso(*roles: str) -> Callable[..., None]:
 @dataclass(frozen=True)
 class Firmante:
     usuario: str
-    rol: str | None
-    autenticado: bool
+    rol: str
 
 
-def firmante(session: Session, cuenta: Usuario | None, declarado: str | None, rol_declarado: str | None = None) -> Firmante:
-    """Quién firma la acción. Con sesión firma la cuenta, no lo que venga escrito en la petición (RN-G4, RN-Q5).
-    Sin sesión firma el nombre declarado, salvo que ese nombre sea una cuenta con clave: esa solo firma con su sesión (RN-K5)."""
-    if cuenta is not None:
-        return Firmante(cuenta.usuario, cuenta.rol, True)
-    nombre = (declarado or "").strip()
-    registrado = session.scalars(select(Usuario).where(Usuario.usuario == nombre)).first() if nombre else None
-    if registrado is not None and registrado.clave_hash:
-        raise HTTPException(status_code=401, detail=f"RN-K5: la cuenta {nombre} tiene clave; inicia sesión para firmar con ella")
-    return Firmante(nombre, rol_declarado, False)
+def firmante(session: Session, cuenta: Usuario | None, accion: str) -> Firmante:
+    """Quién firma la acción: siempre la cuenta de la sesión (RN-G4, RN-Q5), si su estado, su tipo y su rol se lo
+    permiten (RN-K4, RN-K5, RN-K2). No existe firma por nombre escrito."""
+    if cuenta is None:
+        raise HTTPException(status_code=401, detail="sesion_requerida")
+    try:
+        ServicioUsuarios(session).validar_cuenta(cuenta, accion)
+    except ErrorDeRevision as error:
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    return Firmante(cuenta.usuario, cuenta.rol)

@@ -2,7 +2,7 @@
 vista previa y entrega."""
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -119,11 +119,6 @@ def listar_documentos(
     return {"items": [_resumen(d, con_resultado=False) for d in documentos], "total": total, "limit": limit, "offset": offset}
 
 
-def _quien_accede(cuenta, declarado: str | None) -> str | None:
-    """RN-K3: con sesión, el acceso es de la cuenta; sin ella, del nombre que declara el navegador."""
-    return cuenta.usuario if cuenta is not None else declarado
-
-
 def _tipos_visibles(session: Session, cuenta) -> list[str] | None:
     """RN-J9: un revisor ve solo los tipos de documento de su rol; solo el rol de auditoría ve todo. Sin sesión, sin acotar."""
     if cuenta is None:
@@ -143,10 +138,10 @@ def _documento_o_404(session: Session, documento_id: str, cuenta=None) -> Docume
 
 
 @router.get("/{documento_id}")
-def consultar_documento(documento_id: str, session: Session = Depends(get_session), x_usuario: str | None = Header(default=None),
+def consultar_documento(documento_id: str, session: Session = Depends(get_session),
                         cuenta=Depends(cuenta_actual)):
     doc = _documento_o_404(session, documento_id, cuenta)
-    ServicioUsuarios(session).registrar_acceso(doc.documento_id, _quien_accede(cuenta, x_usuario), "detalle")  # RN-K3
+    ServicioUsuarios(session).registrar_acceso(doc.documento_id, cuenta.usuario, "detalle")  # RN-K3
     return {
         **_resumen(doc),
         "pais_origen": doc.pais_origen,
@@ -180,11 +175,10 @@ def _alerta(doc: Documento) -> dict | None:
 
 
 @router.get("/{documento_id}/original")
-def descargar_original(documento_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage),
-                       x_usuario: str | None = Header(default=None), cuenta=Depends(cuenta_actual)):
+def descargar_original(documento_id: str, session: Session = Depends(get_session), storage: Storage = Depends(get_storage), cuenta=Depends(cuenta_actual)):
     """El original tal como llegó (RN-P1). Solo para revisores con acceso al documento (RN-K3)."""
     doc = _documento_o_404(session, documento_id, cuenta)
-    ServicioUsuarios(session).registrar_acceso(doc.documento_id, _quien_accede(cuenta, x_usuario), "original")  # RN-K3
+    ServicioUsuarios(session).registrar_acceso(doc.documento_id, cuenta.usuario, "original")  # RN-K3
     if not doc.ruta_storage:
         raise HTTPException(status_code=404, detail="original no respaldado")
     try:
@@ -203,13 +197,12 @@ def vista_previa(
     pagina: Annotated[int, Query(ge=1)] = 1,
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
-    x_usuario: str | None = Header(default=None),
     cuenta=Depends(cuenta_actual),
 ):
     """PNG de una página del PDF original para la pantalla de revisión."""
     doc = _documento_o_404(session, documento_id, cuenta)
     if pagina == 1:
-        ServicioUsuarios(session).registrar_acceso(doc.documento_id, _quien_accede(cuenta, x_usuario), "vista_previa")  # RN-K3
+        ServicioUsuarios(session).registrar_acceso(doc.documento_id, cuenta.usuario, "vista_previa")  # RN-K3
     if doc.formato != "pdf":
         raise HTTPException(status_code=415, detail="la vista previa solo aplica a PDF")
     if not doc.ruta_storage:

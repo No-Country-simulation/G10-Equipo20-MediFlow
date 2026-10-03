@@ -1,7 +1,6 @@
 """Usuarios, roles y accesos (dominio K).
 
-En el modo de demostración (sin EXIGIR_SESION), quien no está registrado firma con su nombre.
-Quien sí está registrado queda sujeto a su rol (RN-K1, RN-K2), a su estado (RN-K4) y a su tipo (RN-K5).
+Toda acción la firma la cuenta de la sesión, sujeta a su rol (RN-K1, RN-K2), a su estado (RN-K4) y a su tipo (RN-K5).
 RN-K3: cada acceso a un documento se registra con quién, cuándo y qué vio.
 """
 from datetime import datetime, timezone
@@ -101,22 +100,14 @@ class ServicioUsuarios:
 
     # --- validación del actor -------------------------------------------------------------------
 
-    def validar_actor(self, usuario: str, accion: str, rol_declarado: str | None = None) -> None:
-        """Lanza 403 cuando un usuario registrado no puede ejecutar la acción. Un desconocido pasa (MVP)."""
-        u = self.buscar(usuario)
-        if u is None:
-            return
-        if not u.activo:
-            raise ErrorDeRevision(403, f"RN-K4: {u.usuario} está desactivado y perdió el acceso")
-        if u.tipo == "servicio" and accion in ACCIONES_CLINICAS:
+    def validar_cuenta(self, cuenta: Usuario, accion: str) -> None:
+        """Lanza 403 cuando la cuenta de la sesión no puede ejecutar la acción (RN-K2, RN-K4, RN-K5)."""
+        if not cuenta.activo:
+            raise ErrorDeRevision(403, f"RN-K4: {cuenta.usuario} está desactivado y perdió el acceso")
+        if cuenta.tipo == "servicio" and accion in ACCIONES_CLINICAS:
             raise ErrorDeRevision(403, "RN-K5: ninguna acción clínica la ejecuta una cuenta de servicio")
-        if rol_declarado and rol_declarado != u.rol:
-            raise ErrorDeRevision(403, f"RN-K1: {u.usuario} está registrado como {u.rol}, no como {rol_declarado}")
-        permitidos = self.roles_de_accion(accion)
-        if u.rol not in permitidos:
-            raise ErrorDeRevision(403, f"RN-K2: el rol {u.rol} no ejecuta {accion}. Quien configura no revisa; quien administra no ve datos clínicos")
-
-    # --- accesos (RN-K3) --------------------------------------------------------------------------
+        if cuenta.rol not in self.roles_de_accion(accion):
+            raise ErrorDeRevision(403, f"RN-K2: el rol {cuenta.rol} no ejecuta {accion}. Quien configura no revisa; quien administra no ve datos clínicos")
 
     def registrar_acceso(self, documento_id: str, usuario: str | None, accion: str) -> None:
         if not usuario or not usuario.strip():

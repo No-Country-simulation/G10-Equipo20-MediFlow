@@ -22,15 +22,10 @@ class UsuarioRequest(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=256)
     rol: str
     tipo: str = "persona"
-    actor: str = Field(..., min_length=1)
     clave: str | None = Field(default=None, min_length=1, max_length=128)  # inicial: su dueño la cambia al entrar
 
 
-class ActorRequest(BaseModel):
-    actor: str = Field(..., min_length=1)
-
-
-class ClaveRequest(ActorRequest):
+class ClaveRequest(BaseModel):
     clave: str = Field(..., min_length=1, max_length=128)
 
 
@@ -46,13 +41,9 @@ def _usuario(u: Usuario) -> dict:
     }
 
 
-def _administrador(session: Session, actor: str, cuenta) -> str:
-    quien = firmante(session, cuenta, actor)
-    try:
-        ServicioUsuarios(session).validar_actor(quien.usuario, "administrar")
-    except ErrorDeRevision as error:
-        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
-    return quien.usuario
+def _administrador(session: Session, cuenta) -> str:
+    """RN-K2: administra el administrador, y firma con su sesión."""
+    return firmante(session, cuenta, "administrar").usuario
 
 
 @router.get("/usuarios")
@@ -67,7 +58,7 @@ def roles(session: Session = Depends(get_session)):
 
 @router.post("/usuarios", status_code=201)
 def crear_usuario(cuerpo: UsuarioRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
-    actor = _administrador(session, cuerpo.actor, cuenta)
+    actor = _administrador(session, cuenta)
     try:
         if cuerpo.clave:
             validar_clave(cuerpo.clave, cuerpo.usuario)
@@ -84,7 +75,7 @@ def crear_usuario(cuerpo: UsuarioRequest, session: Session = Depends(get_session
 @router.post("/usuarios/{usuario}/clave")
 def definir_clave(usuario: str, cuerpo: ClaveRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
     """Define o cambia la clave de una cuenta. Sus sesiones abiertas se cierran."""
-    _administrador(session, cuerpo.actor, cuenta)
+    _administrador(session, cuenta)
     u = ServicioUsuarios(session).buscar(usuario)
     if u is None:
         raise HTTPException(status_code=404, detail="usuario no encontrado")
@@ -100,8 +91,8 @@ def definir_clave(usuario: str, cuerpo: ClaveRequest, session: Session = Depends
 
 
 @router.post("/usuarios/{usuario}/desactivar")
-def desactivar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
-    _administrador(session, cuerpo.actor, cuenta)
+def desactivar(usuario: str, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    _administrador(session, cuenta)
     try:
         u = ServicioUsuarios(session).cambiar_estado(usuario, activo=False)
     except ErrorDeRevision as error:
@@ -112,8 +103,8 @@ def desactivar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(ge
 
 
 @router.post("/usuarios/{usuario}/activar")
-def activar(usuario: str, cuerpo: ActorRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
-    _administrador(session, cuerpo.actor, cuenta)
+def activar(usuario: str, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    _administrador(session, cuenta)
     try:
         return _usuario(ServicioUsuarios(session).cambiar_estado(usuario, activo=True))
     except ErrorDeRevision as error:
@@ -182,6 +173,7 @@ def puesta_en_marcha(session: Session = Depends(get_session)):
     usuarios = ServicioUsuarios(session)
     p = ServicioConfiguracion(session).pack(settings.pais_instalacion)
     alerta_acusada = session.scalars(select(Alerta).where(Alerta.estado_acuse == "acusado")).first() is not None
+    con_clave_inicial = [u.usuario for u in usuarios.listar() if u.activo and u.debe_cambiar_clave]
     requisitos = [
         {"clave": "pais", "requisito": "País de la instalación con pack activo", "cumplido": bool(p.pais), "detalle": f"{p.pais} · pack {p.version_pack}"},
         {"clave": "base_legal", "requisito": "Base legal de tratamiento declarada (RN-M8)", "cumplido": bool(settings.base_legal_tratamiento),
@@ -196,7 +188,7 @@ def puesta_en_marcha(session: Session = Depends(get_session)):
          "detalle": f"{usuarios.activos_con_rol('jefe_urgencias')} activos"},
         {"clave": "alerta_prueba_con_acuse", "requisito": "Una alerta de prueba enviada y con acuse", "cumplido": alerta_acusada,
          "detalle": "hay al menos una alerta acusada" if alerta_acusada else "ninguna alerta acusada todavía"},
-        {"clave": "sesion_obligatoria", "requisito": "Inicio de sesión obligatorio (RN-K5)", "cumplido": settings.exigir_sesion,
-         "detalle": "nada se consulta ni se firma sin sesión" if settings.exigir_sesion else "pendiente: EXIGIR_SESION=true en .env"},
+        {"clave": "claves_definitivas", "requisito": "Ninguna cuenta activa con clave inicial sin cambiar (RN-K5)", "cumplido": not con_clave_inicial,
+         "detalle": "todas las cuentas eligieron su clave" if not con_clave_inicial else f"con clave inicial: {', '.join(con_clave_inicial)}"},
     ]
     return {"listo": all(r["cumplido"] for r in requisitos), "requisitos": requisitos}

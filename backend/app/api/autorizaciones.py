@@ -57,14 +57,13 @@ def bandeja(session: Session = Depends(get_session), storage: Storage = Depends(
 
 class ResolucionAutorizacion(BaseModel):
     accion: Literal["aprobar", "devolver"]
-    usuario: str
     motivo: str = ""
 
 
 @router.post("/{documento_id}/resolver")
 def resolver(documento_id: str, cuerpo: ResolucionAutorizacion, session: Session = Depends(get_session),
              storage: Storage = Depends(get_storage), llm: ClienteLLM = Depends(get_llm), cuenta=Depends(cuenta_actual)):
-    quien = firmante(session, cuenta, cuerpo.usuario)
+    quien = firmante(session, cuenta, "resolver_autorizacion")
     orq = _orquestador(session, storage, llm)
     doc = orq.repo.ultima_version(documento_id)
     if doc is None:

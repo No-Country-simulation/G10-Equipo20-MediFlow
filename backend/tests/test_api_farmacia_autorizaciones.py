@@ -33,9 +33,9 @@ def test_farmacia_lista_recetas_enrutadas_con_sus_marcas(client, llm_falso):
     assert "Mendes" not in client.get("/farmacia").text and "Pérez" not in client.get("/farmacia").text
 
 
-def test_receta_simple_se_verifica_con_una_firma_y_queda_entregada(client, llm_falso):
+def test_receta_simple_se_verifica_con_una_firma_y_queda_entregada(client, llm_falso, quimico):
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
-    r = client.post("/farmacia/REC-1/verificar", json={"usuario": "qf.maria"})
+    r = quimico.post("/farmacia/REC-1/verificar")
     assert r.status_code == 200, r.text
     assert r.json()["verificaciones"] == [{"orden": 1, "usuario": "qf.maria"}] or r.json()["verificaciones"][0]["usuario"] == "qf.maria"
     assert r.json()["completa"] is True
@@ -43,26 +43,27 @@ def test_receta_simple_se_verifica_con_una_firma_y_queda_entregada(client, llm_f
     assert client.get("/farmacia").json() == []
 
 
-def test_alto_riesgo_exige_dos_personas_distintas_RN_J6(client, llm_falso):
+def test_alto_riesgo_exige_dos_personas_distintas_RN_J6(client, llm_falso, quimico2, quimico):
     enviar(client, llm_falso, "REC-2", TEXTO_RECETA, receta([med("apixaban", "5 mg")]))
-    primera = client.post("/farmacia/REC-2/verificar", json={"usuario": "qf.maria"})
+    primera = quimico.post("/farmacia/REC-2/verificar")
     assert primera.status_code == 200 and primera.json()["completa"] is False
     assert client.get("/documentos/REC-2").json()["estado"] == "ENRUTADO"
-    repetida = client.post("/farmacia/REC-2/verificar", json={"usuario": "qf.maria"})
+    repetida = quimico.post("/farmacia/REC-2/verificar")
     assert repetida.status_code == 409
     assert "RN-J6" in repetida.json()["detail"]
-    segunda = client.post("/farmacia/REC-2/verificar", json={"usuario": "qf.pedro"})
+    segunda = quimico2.post("/farmacia/REC-2/verificar")
     assert segunda.status_code == 200 and segunda.json()["completa"] is True
     assert [v["usuario"] for v in segunda.json()["verificaciones"]] == ["qf.maria", "qf.pedro"]
     assert client.get("/documentos/REC-2").json()["estado"] == "ENTREGADO"
 
 
-def test_verificar_exige_usuario_y_solo_recetas_enrutadas(client, llm_falso):
+def test_verificar_exige_sesion_de_quimico_y_solo_recetas_enrutadas_RN_K2_RN_K5(client, llm_falso, quimico, anonimo):
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
-    assert client.post("/farmacia/REC-1/verificar", json={"usuario": " "}).status_code == 422
+    assert anonimo.post("/farmacia/REC-1/verificar").status_code == 401  # sin sesión no se firma nada
+    assert client.post("/farmacia/REC-1/verificar").status_code == 403  # el auditor clínico no verifica recetas
     enviar(client, llm_falso, "ORD-1", TEXTO_ORDEN, orden(), cobertura="contributivo")
-    assert client.post("/farmacia/ORD-1/verificar", json={"usuario": "qf.maria"}).status_code == 409
-    assert client.post("/farmacia/NO-EXISTE/verificar", json={"usuario": "qf.maria"}).status_code == 404
+    assert quimico.post("/farmacia/ORD-1/verificar").status_code == 409
+    assert quimico.post("/farmacia/NO-EXISTE/verificar").status_code == 404
 
 
 # --- Autorizaciones ------------------------------------------------------------------------
@@ -83,9 +84,9 @@ def test_autorizaciones_separa_por_autorizar_de_avisos_de_urgencias_RN_CO13(clie
     assert "Castro" not in client.get("/autorizaciones").text
 
 
-def test_aprobar_autorizacion_confirma_la_entrega_a_auditoria(client, llm_falso):
+def test_aprobar_autorizacion_confirma_la_entrega_a_auditoria(client, llm_falso, autorizador):
     enviar(client, llm_falso, "ORD-AMB", TEXTO_ORDEN, orden(), cobertura="contributivo")
-    r = client.post("/autorizaciones/ORD-AMB/resolver", json={"accion": "aprobar", "usuario": "aut.luis", "motivo": "cumple justificación"})
+    r = autorizador.post("/autorizaciones/ORD-AMB/resolver", json={"accion": "aprobar", "motivo": "cumple justificación"})
     assert r.status_code == 200, r.text
     assert r.json()["autorizacion"]["estado"] == "aprobada"
     detalle = client.get("/documentos/ORD-AMB").json()
@@ -94,10 +95,10 @@ def test_aprobar_autorizacion_confirma_la_entrega_a_auditoria(client, llm_falso)
     assert client.get("/autorizaciones").json()["por_autorizar"] == []
 
 
-def test_devolver_exige_motivo_y_registra_la_devolucion_RN_E5(client, llm_falso):
+def test_devolver_exige_motivo_y_registra_la_devolucion_RN_E5(client, llm_falso, autorizador):
     enviar(client, llm_falso, "ORD-INC", TEXTO_ORDEN, orden(justificacion=None), cobertura="contributivo")
-    assert client.post("/autorizaciones/ORD-INC/resolver", json={"accion": "devolver", "usuario": "aut.luis", "motivo": ""}).status_code == 422
-    r = client.post("/autorizaciones/ORD-INC/resolver", json={"accion": "devolver", "usuario": "aut.luis", "motivo": "falta justificación clínica"})
+    assert autorizador.post("/autorizaciones/ORD-INC/resolver", json={"accion": "devolver", "motivo": ""}).status_code == 422
+    r = autorizador.post("/autorizaciones/ORD-INC/resolver", json={"accion": "devolver", "motivo": "falta justificación clínica"})
     assert r.status_code == 200
     assert r.json()["autorizacion"] == {"estado": "devuelta", "usuario": "aut.luis", "motivo": "falta justificación clínica", "fecha_hora": r.json()["autorizacion"]["fecha_hora"]}
     detalle = client.get("/documentos/ORD-INC").json()
@@ -105,10 +106,10 @@ def test_devolver_exige_motivo_y_registra_la_devolucion_RN_E5(client, llm_falso)
     assert any(h["regla"] == "RN-E5" and h["decision"] == "devuelta_al_solicitante" for h in detalle["resultado"]["historial_decisiones"])
 
 
-def test_solo_ordenes_enrutadas_a_auditoria_se_resuelven(client, llm_falso):
+def test_solo_ordenes_enrutadas_a_auditoria_se_resuelven(client, llm_falso, autorizador):
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
-    assert client.post("/autorizaciones/REC-1/resolver", json={"accion": "aprobar", "usuario": "aut.luis", "motivo": "x"}).status_code == 409
-    assert client.post("/autorizaciones/NO/resolver", json={"accion": "aprobar", "usuario": "aut.luis", "motivo": "x"}).status_code == 404
+    assert autorizador.post("/autorizaciones/REC-1/resolver", json={"accion": "aprobar", "motivo": "x"}).status_code == 409
+    assert autorizador.post("/autorizaciones/NO/resolver", json={"accion": "aprobar", "motivo": "x"}).status_code == 404
 
 
 # --- Resumen para el inicio del rol --------------------------------------------------------------

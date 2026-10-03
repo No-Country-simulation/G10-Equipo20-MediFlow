@@ -11,7 +11,6 @@ from tests.test_aceptacion import orden
 from tests.test_api_farmacia_autorizaciones import enviar
 from tests.test_llm import propuesta_caso_1
 
-AUDITOR = {"usuario": "aud.ana", "rol": "auditor_clinico"}
 TEXTO_SIN_ID = "Fecha: 03/04/2026. Paciente: Carlos Eduardo Mendes, 52 años. TC de tórax normal. Dr. Andrés Rojas, RM 45678."
 
 
@@ -82,7 +81,7 @@ def test_RN_N5_al_resolver_la_revision_el_documento_queda_vinculado(client, llm_
     p = receta([med("losartan", "50 mg")])
     p["confianzas"]["medicamento_dosis"] = 0.5
     enviar(client, llm_falso, "REC-DUDA", TEXTO_RECETA, p)
-    r = client.post("/revision/REC-DUDA/resolver", json={"accion": "aprobar", "motivo": "dosis verificada con el original", **AUDITOR})
+    r = client.post("/revision/REC-DUDA/resolver", json={"accion": "aprobar", "motivo": "dosis verificada con el original"})
     assert r.status_code == 200, r.text
     paciente = client.get("/pacientes").json()["items"][0]
     assert paciente["nombre"] == "Ana María Pérez"
@@ -113,7 +112,7 @@ def test_RN_A4_corregir_el_numero_resuelve_el_conflicto_y_crea_la_ficha_correcta
     suplantado = TEXTO_RECETA.replace("Ana María Pérez", "Rosa Elena Vargas").replace("30 (treinta)", "60 (sesenta)")
     enviar(client, llm_falso, "REC-2", suplantado, receta([med("losartan", "50 mg", cantidad_numeros="60", cantidad_letras="sesenta")]))
     r = client.post("/revision/REC-2/resolver", json={"accion": "corregir", "motivo": "número mal digitado; el original dice 52.345.678",
-                                                      "correcciones": {"extraccion.paciente.documento.valor": "52345678"}, **AUDITOR})
+                                                      "correcciones": {"extraccion.paciente.documento.valor": "52345678"}})
     assert r.status_code == 200, r.text
     assert r.json()["estado"] == "ENRUTADO"
     nombres = {p["numero_documento"]: p["nombre"] for p in client.get("/pacientes").json()["items"]}
@@ -124,7 +123,7 @@ def test_RN_A4_aprobar_sin_resolver_el_conflicto_entrega_pero_no_vincula(client,
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
     suplantado = TEXTO_RECETA.replace("Ana María Pérez", "Rosa Elena Vargas").replace("30 (treinta)", "60 (sesenta)")
     enviar(client, llm_falso, "REC-2", suplantado, receta([med("losartan", "50 mg", cantidad_numeros="60", cantidad_letras="sesenta")]))
-    r = client.post("/revision/REC-2/resolver", json={"accion": "aprobar", "motivo": "se entrega; identidad por aclarar con admisiones", **AUDITOR})
+    r = client.post("/revision/REC-2/resolver", json={"accion": "aprobar", "motivo": "se entrega; identidad por aclarar con admisiones"})
     assert r.status_code == 200 and r.json()["estado"] == "ENRUTADO"
     doc = client.get("/documentos/REC-2").json()
     assert doc["paciente_id"] is None
@@ -143,35 +142,34 @@ def test_RN_G4_corregir_el_nombre_de_la_ficha_deja_rastro_y_destraba_el_conflict
     assert client.get("/documentos/REC-2").json()["resultado"]["evaluacion"]["motivo_auditoria"] == "identidad_en_conflicto"
     ficha = client.get("/pacientes").json()["items"][0]
 
-    r = client.patch(f"/pacientes/{ficha['id']}", json={"nombre": "Ana María Pérez", "motivo": "apellido mal digitado en admisión", **AUDITOR})
+    r = client.patch(f"/pacientes/{ficha['id']}", json={"nombre": "Ana María Pérez", "motivo": "apellido mal digitado en admisión"})
     assert r.status_code == 200, r.text
     rastro = r.json()["historial"]
     assert len(rastro) == 1 and rastro[0]["usuario"] == "aud.ana" and rastro[0]["motivo"] == "apellido mal digitado en admisión"
     assert rastro[0]["anterior"] == {"nombre": "Ana Maria Peres"} and rastro[0]["nuevo"] == {"nombre": "Ana María Pérez"}
 
-    client.post("/revision/REC-2/resolver", json={"accion": "aprobar", "motivo": "nombre corregido en la ficha", **AUDITOR})
+    client.post("/revision/REC-2/resolver", json={"accion": "aprobar", "motivo": "nombre corregido en la ficha"})
     assert client.get("/documentos/REC-2").json()["paciente_id"] == ficha["id"]
     assert client.get(f"/pacientes/{ficha['id']}").json()["documentos"] == 2
 
 
-def test_la_edicion_exige_motivo_rol_clinico_y_no_cambia_el_documento_de_identidad(client, llm_falso):
+def test_la_edicion_exige_motivo_rol_clinico_y_no_cambia_el_documento_de_identidad(client, llm_falso, gestor):
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
     pid = client.get("/pacientes").json()["items"][0]["id"]
-    sin_motivo = client.patch(f"/pacientes/{pid}", json={"edad": 59, **AUDITOR})
+    sin_motivo = client.patch(f"/pacientes/{pid}", json={"edad": 59})
     assert sin_motivo.status_code == 422 and "RN-G4" in sin_motivo.json()["detail"]
-    gestor = client.patch(f"/pacientes/{pid}", json={"edad": 59, "motivo": "x", "usuario": "gestor.ana", "rol": "gestor"})
-    assert gestor.status_code == 403 and "RN-K2" in gestor.json()["detail"]
-    assert client.patch(f"/pacientes/{pid}", json={"numero_documento": "1", "motivo": "x", **AUDITOR}).status_code == 422
-    assert client.patch(f"/pacientes/{pid}", json={"nombre": "  ", "motivo": "x", **AUDITOR}).status_code == 422
-    assert client.patch("/pacientes/9999", json={"edad": 59, "motivo": "x", **AUDITOR}).status_code == 404
-    ok = client.patch(f"/pacientes/{pid}", json={"edad": 59, "motivo": "cumplió años", **AUDITOR})
+    otro_rol = gestor.patch(f"/pacientes/{pid}", json={"edad": 59, "motivo": "x"})
+    assert otro_rol.status_code == 403 and "RN-K2" in otro_rol.json()["detail"]
+    assert client.patch(f"/pacientes/{pid}", json={"numero_documento": "1", "motivo": "x"}).status_code == 422
+    assert client.patch(f"/pacientes/{pid}", json={"nombre": "  ", "motivo": "x"}).status_code == 422
+    assert client.patch("/pacientes/9999", json={"edad": 59, "motivo": "x"}).status_code == 404
+    ok = client.patch(f"/pacientes/{pid}", json={"edad": 59, "motivo": "cumplió años"})
     assert ok.status_code == 200 and ok.json()["edad"] == 59
     assert client.get(f"/pacientes/{pid}").json()["historial"][0]["nuevo"] == {"edad": 59}
 
 
-def test_RN_K2_un_usuario_registrado_con_otro_rol_no_edita_pacientes(client, llm_falso):
-    client.post("/administracion/usuarios", json={"usuario": "qf.maria", "nombre": "María", "rol": "quimico_farmaceutico", "tipo": "persona", "actor": "admin.root"})
+def test_RN_K2_otro_rol_clinico_no_edita_pacientes(client, llm_falso, quimico):
     enviar(client, llm_falso, "REC-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
     pid = client.get("/pacientes").json()["items"][0]["id"]
-    r = client.patch(f"/pacientes/{pid}", json={"edad": 59, "motivo": "x", "usuario": "qf.maria", "rol": "auditor_clinico"})
-    assert r.status_code == 403 and "RN-K1" in r.json()["detail"]
+    r = quimico.patch(f"/pacientes/{pid}", json={"edad": 59, "motivo": "x"})
+    assert r.status_code == 403 and "RN-K2" in r.json()["detail"]
