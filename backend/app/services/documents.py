@@ -48,7 +48,7 @@ class DocumentService:
                 if self.storage.backend == "r2":
                     stem = unicodedata.normalize("NFKD", Path(name).stem).encode("ascii", "ignore").decode()
                     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", stem).strip("-_")[:100] or "documento"
-                    key = f"{self.country}/originals/{document_id}_{slug}.{extension}"
+                    key = self.storage.object_key(f"{self.country}/originals/{document_id}_{slug}.{extension}")
                 self.storage.put_file(key, path, self.max_bytes)
                 saved = True
             document.original_filename = name

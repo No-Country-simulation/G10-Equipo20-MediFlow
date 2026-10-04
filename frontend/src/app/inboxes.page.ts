@@ -9,7 +9,7 @@ import { Destination, DocumentRecord, label } from "./models";
   imports: [RouterLink, DatePipe],
   template: `
     <div class="page-heading"><div><h1>BANDEJAS LOCALES</h1>
-      <p class="subtitle">Documentos asignados al destino en {{ api.country() }}. La integración externa sigue pendiente.</p>
+      <p class="subtitle">Documentos asignados al destino en {{ api.country() }}.</p>
     </div></div>
     @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
     <section class="panel catalog-panel">

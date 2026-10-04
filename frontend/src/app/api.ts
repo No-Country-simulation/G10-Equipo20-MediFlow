@@ -1,5 +1,5 @@
 import { Injectable, signal } from "@angular/core";
-import { DocumentRecord, Result, StateEvent, ReviewAudit, label } from "./models";
+import { DocumentRecord, Result, StateEvent, ReviewAudit, label, DocumentCatalog, DocumentSummary, registerCatalog } from "./models";
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -7,15 +7,20 @@ export class ApiError extends Error {
   ) {
     super(
       typeof detail === "string"
-        ? detail.startsWith("REVIEW_HAS_UNRESOLVED_ISSUES:")
+        ? detail.startsWith("PERMISSION_DENIED:") ? "Tu cuenta no tiene permiso para realizar esta acción." : detail.startsWith("REVIEW_HAS_UNRESOLVED_ISSUES:")
           ? "La revisión conserva inconsistencias. Comprueba los campos y sus citas antes de resolver."
           : label(detail)
         : ((detail as { message?: string })?.message ?? "No se pudo completar la solicitud."),
     );
   }
 }
+export interface AccountInfo {id: number; role: string; country: string | null; email: string; name?: string; permissions?: string[]; denied_permissions?: string[];}
 @Injectable({ providedIn: "root" })
 export class Api {
+  account = signal<AccountInfo | null>(null);
+  can(code: string) { const a = this.account(); return a?.role === "SUPERADMIN" || (!!a?.permissions?.includes(code) && !a?.denied_permissions?.includes(code)); }
+  write<T = unknown>(path: string, method: string, body?: unknown) { return this.request<T>(path, {method, headers: {"Content-Type": "application/json"}, ...(body === undefined ? {} : {body: JSON.stringify(body)})}); }
+  catalog = signal<DocumentCatalog>({types: [], specialties: [], rule_version: ""});
   countries = signal<{ code: string; name: string }[]>([]);
   country = signal(localStorage.getItem("mediflow-country") || "EC");
   private configuration?: Promise<void>;
@@ -43,7 +48,7 @@ export class Api {
       );
     return data as T;
   }
-  me() { return this.request<{ id: number; role: string; country: string | null; email: string }>("/auth/me"); }
+  async me() { const a = await this.request<AccountInfo>("/auth/me"); this.account.set(a); return a; }
   register(data: {country: string; identity_number: string; email: string; password: string}) {
     return this.request<{message: string}>("/auth/register", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
   }
@@ -57,25 +62,31 @@ export class Api {
   myDocuments() { return this.request<DocumentRecord[]>("/auth/my-documents"); }
   configure(): Promise<void> {
     return this.configuration ??= (async () => {
-      const [config, countries] = await Promise.all([
+      const [config, countries, catalog] = await Promise.all([
         this.request<{ default_country: string; timezone: string; max_upload_bytes: number }>("/config"),
         this.request<{ code: string; name: string }[]>("/countries"),
+        this.request<DocumentCatalog>("/document-types"),
       ]);
       this.config.set(config);
       this.countries.set(countries);
+      this.catalog.set(catalog);
+      registerCatalog(catalog);
       if (!countries.some((item) => item.code === this.country()))
         this.selectCountry(config.default_country);
     })().catch((error) => { this.configuration = undefined; throw error; });
   }
-  list(status: string, q: string, offset: number, destination = "") {
+  list(status: string, q: string, offset: number, destination = "", priority = "") {
     return this.request<{
       items: DocumentRecord[];
       total: number;
       limit: number;
       offset: number;
     }>(
-      `/documents?limit=20&offset=${offset}&country=${encodeURIComponent(this.country())}&q=${encodeURIComponent(q)}${status ? "&status=" + encodeURIComponent(status) : ""}${destination ? "&destination=" + encodeURIComponent(destination) : ""}`,
+      `/documents?limit=20&offset=${offset}&country=${encodeURIComponent(this.country())}&q=${encodeURIComponent(q)}${status ? "&status=" + encodeURIComponent(status) : ""}${destination ? "&destination=" + encodeURIComponent(destination) : ""}${priority ? "&priority=" + encodeURIComponent(priority) : ""}`,
     );
+  }
+  summary() {
+    return this.request<DocumentSummary>(`/documents/summary?country=${encodeURIComponent(this.country())}`);
   }
   get(id: string) {
     return this.request<DocumentRecord>(`/documents/${id}`);

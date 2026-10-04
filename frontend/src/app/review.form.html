@@ -69,6 +69,11 @@
             </label>
           }
           <h3>Campos y evidencias</h3>
+          <p class="muted">Una cita es el fragmento literal del original que respalda el dato, con su página. No completes datos ausentes.</p>
+          @if (requiredGroups.length) {
+            <p class="muted">Cobertura requerida: @for (group of requiredGroups; track $index) { <span>{{ group.join(' / ') }}; </span> }</p>
+          }
+          <datalist id="suggested-fields">@for (name of suggestedFields; track name) { <option [value]="name">{{ label(name) }}</option> }</datalist>
           @if (classification.document_type === "DISCHARGE_SUMMARY") {
             <p class="muted">
               Campos obligatorios de la epicrisis: patient_name, patient_age, professional_name,
@@ -78,8 +83,9 @@
           }
           @for (field of fields; track $index; let i = $index) {
             <div class="field-editor">
+              <label>Grupo de medicamento / prueba<input [name]="'entity-' + i" [(ngModel)]="field.entity_id" placeholder="medication-1 o test-1 (opcional)" /></label>
               <div class="field-row">
-                <label>Nombre<input [name]="'name' + i" [(ngModel)]="field.name" required /></label
+                <label>Nombre<input list="suggested-fields" [name]="'name' + i" [(ngModel)]="field.name" required /></label
                 ><label
                   >Valor<input [name]="'value' + i" [(ngModel)]="field.value" required
                 /></label>
@@ -122,7 +128,7 @@
           >Confirmo que revisé el documento original.</span
         ></label
       >
-      <p class="muted">Se registrará como superadmin-local, sin identidad autenticada.</p>
+      <p class="muted">La decisión, los cambios y el motivo quedarán en el historial del documento.</p>
       @if (error()) {
         <p class="error" role="alert">{{ error() }}</p>
       }

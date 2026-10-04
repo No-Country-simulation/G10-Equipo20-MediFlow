@@ -1,12 +1,7 @@
 import re
 
 from app.schemas.processing import ClassificationResult, ContentResult, ExtractionResult, ValidationResult
-
-
-DISCHARGE_REQUIRED_FIELDS = (
-    "patient_name", "patient_age", "professional_name", "document_date",
-    "discharge_diagnosis", "discharge_treatment", "follow_up",
-)
+from app.core.document_catalog import DISCHARGE_REQUIRED_FIELDS, REQUIRED_GROUPS
 
 
 def normalized(text: str) -> str:
@@ -57,9 +52,21 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
                 issues.append(f"FIELD_{index}_VALUE_NOT_SUPPORTED")
             if field.unit and not literal_present(field.unit, field.evidence.quote):
                 issues.append(f"FIELD_{index}_UNIT_NOT_SUPPORTED")
-    if classification and classification.document_type == "DISCHARGE_SUMMARY":
-        present = {field.name for field in extraction.fields} if extraction else set()
-        for name in DISCHARGE_REQUIRED_FIELDS:
-            if name not in present:
-                issues.append("MISSING_REQUIRED_FIELD:" + name)
-    return ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues, rule_version="documentary-v2")
+    if classification:
+        present = {field.name for field in extraction.fields if field.value.strip()} if extraction else set()
+        for group in REQUIRED_GROUPS.get(classification.document_type, ()):
+            if not any(name in present for name in group):
+                issues.append("MISSING_REQUIRED_FIELD:" + group[0])
+        # Pair each repeated drug/test rather than borrowing a dose or result from another.
+        paired = {"PRESCRIPTION": ("medication_name", "medication_dose", "medication_frequency"),
+                  "LABORATORY_RESULT": ("test_name", "test_result")}.get(classification.document_type)
+        if paired and extraction:
+            relevant = [field for field in extraction.fields if field.name in paired]
+            repeated = any(sum(field.name == name for field in relevant) > 1 for name in paired)
+            if repeated and any(field.entity_id is None for field in relevant):
+                issues.append("REPEATED_ENTITIES_NOT_GROUPED")
+            for entity_id in {field.entity_id for field in relevant if field.entity_id}:
+                names = {field.name for field in relevant if field.entity_id == entity_id}
+                if not set(paired).issubset(names):
+                    issues.append("INCOMPLETE_ENTITY:" + entity_id)
+    return ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues, rule_version="documentary-v3")

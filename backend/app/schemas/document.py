@@ -19,6 +19,7 @@ class DocumentMetadata(BaseModel):
 
 class DocumentResponse(DocumentMetadata):
     status: DocumentStatus
+    priority: Literal["ROUTINE", "URGENT", "CRITICAL", "UNASSESSED"] = "UNASSESSED"
     processing_attempts: int = 0
     rejection_reason: str | None = None
     patient_id: int | None = None

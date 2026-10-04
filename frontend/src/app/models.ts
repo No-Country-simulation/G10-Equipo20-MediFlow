@@ -6,6 +6,7 @@ export interface DocumentRecord {
   received_at: string;
   country: string;
   status: string;
+  priority?: string;
   processing_attempts: number;
   rejection_reason: string | null;
   patient_id: number | null;
@@ -43,8 +44,8 @@ export interface RoutingRule extends RoutingRuleInput {
 export interface Page {
   page: number;
   text: string;
-  method: "embedded_text" | "gemini_ocr" | "human_corrected";
-  engine: "pymupdf" | "gemini" | null;
+  method: "embedded_text" | "gemini_ocr" | "openai_ocr" | "human_corrected";
+  engine: "pymupdf" | "gemini" | "openai" | null;
   uncertain: boolean;
 }
 export interface Evidence {
@@ -62,6 +63,24 @@ export interface ExtractedField {
   value: string;
   unit: string | null;
   evidence: Evidence;
+  entity_id?: string | null;
+}
+export interface DocumentCatalog {
+  types: { code: string; name: string; fields: string[]; required_groups: string[][] }[];
+  specialties: { code: string; name: string }[];
+  rule_version: string;
+}
+export interface DocumentSummary {
+  country: string;
+  total: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  pending_review: number;
+  delivered_local: number;
+}
+const catalogLabels: Record<string, string> = {};
+export function registerCatalog(catalog: DocumentCatalog) {
+  for (const item of [...catalog.types, ...catalog.specialties]) catalogLabels[item.code] = item.name;
 }
 export interface Result {
   document_id: string;
@@ -130,24 +149,40 @@ export const STATUSES = [
   "RECHAZADO",
   "FALLO_TECNICO",
 ];
-export const TYPES = [
-  "ECHOCARDIOGRAM_REPORT",
-  "SPIROMETRY_REPORT",
-  "CHEST_IMAGING_REPORT",
-  "ECG_REPORT",
-  "DISCHARGE_SUMMARY",
-  "LABORATORY_RESULT",
-  "LABORATORY_ORDER",
-  "OTHER",
-  "UNKNOWN",
-];
-export const SPECIALTIES = ["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "LABORATORY", "OTHER", "UNKNOWN"];
 export function label(value: string): string {
+  if (catalogLabels[value]) return catalogLabels[value];
   if (value.startsWith("MISSING_REQUIRED_FIELD:"))
     return "Falta campo obligatorio: " + label(value.split(":")[1]);
   return (
     (
       {
+        UNASSESSED: "Sin evaluar",
+        GENERAL_MEDICINE: "Medicina general",
+        RADIOLOGY: "Radiología",
+        PRESCRIPTION: "Receta médica",
+        PROCEDURE_ORDER: "Orden de procedimiento",
+        MEDICAL_CERTIFICATE: "Certificado médico",
+        IMAGING_REPORT: "Informe de imágenes",
+        test_name: "Prueba de laboratorio",
+        test_result: "Resultado de laboratorio",
+        reference_range: "Rango de referencia",
+        medication_name: "Medicamento",
+        medication_dose: "Dosis",
+        medication_frequency: "Frecuencia",
+        medication_route: "Vía de administración",
+        medication_duration: "Duración",
+        medication_concentration: "Concentración",
+        requested_procedure: "Procedimiento solicitado",
+        procedure_indication: "Indicación del procedimiento",
+        certificate_purpose: "Finalidad del certificado",
+        certificate_period: "Período del certificado",
+        study_name: "Estudio",
+        findings: "Hallazgos",
+        conclusion: "Conclusión",
+        ejection_fraction: "Fracción de eyección",
+        fev1: "FEV1",
+        rhythm: "Ritmo",
+        REPEATED_ENTITIES_NOT_GROUPED: "Falta agrupar los medicamentos o pruebas repetidos",
         DISCHARGE_SUMMARY: "Epicrisis / informe de alta",
         LABORATORY_RESULT: "Resultados de laboratorio",
         LABORATORY_ORDER: "Orden de laboratorio",
@@ -165,6 +200,23 @@ export function label(value: string): string {
         patient_age: "Edad del paciente",
         patient_identity: "Identificación del paciente",
         ordered_test: "Examen solicitado",
+        ACCOUNT_ALREADY_EXISTS: "Ya existe una cuenta con ese email o identificación",
+        ACCOUNT_DISABLED: "Esta cuenta está desactivada",
+        DUPLICATE_OR_REFERENCED_RECORD: "El registro ya existe o está siendo utilizado",
+        ROLE_IN_USE: "El rol está asignado a empleados. Reasígnalos antes de eliminarlo",
+        ROLE_ALREADY_EXISTS: "Ya existe un rol con ese nombre",
+        UNKNOWN_PERMISSION: "Selecciona permisos existentes",
+        UPPERCASE_NAME_REQUIRED: "La clave debe estar en mayúsculas, con letras, números o guiones bajos",
+        OPENAI_NOT_CONFIGURED: "Configura APIKEY_OPENAI en Variables de Configuración",
+        GEMINI_NOT_CONFIGURED: "Configura APIKEY_GEMINI en Variables de Configuración",
+        OPENAI_ACCESS_DENIED: "OpenAI rechazó la clave o su acceso al modelo",
+        OPENAI_QUOTA_EXCEEDED: "Se alcanzó la cuota de OpenAI",
+        OPENAI_TIMEOUT: "OpenAI superó el tiempo de espera. Puedes reintentar",
+        OPENAI_REQUEST_FAILED: "OpenAI rechazó la solicitud. Comprueba el modelo y su configuración",
+        OPENAI_INVALID_RESPONSE: "OpenAI devolvió un resultado inválido. Puedes reintentar",
+        OPENAI_UNAVAILABLE: "OpenAI no está disponible. Puedes reintentar",
+        OPENAI_INCOMPLETE_RESPONSE: "OpenAI devolvió una respuesta incompleta. Puedes reintentar",
+        OPENAI_REFUSED: "OpenAI no pudo analizar este contenido",
         PATIENT_IDENTITY_NOT_FOUND: "No se encontró identificación del paciente",
         PATIENT_IDENTITY_INVALID_FORMAT: "La identificación no cumple el formato del país",
         PATIENT_IDENTITY_AMBIGUOUS: "Identificación o nombre ambiguo: requiere revisión",

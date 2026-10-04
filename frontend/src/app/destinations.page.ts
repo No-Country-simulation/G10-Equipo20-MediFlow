@@ -2,14 +2,14 @@ import { Component, inject, OnInit, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { RouterLink } from "@angular/router";
 import { Api } from "./api";
-import { Destination, DestinationInput, RoutingRule, RoutingRuleInput, TYPES, SPECIALTIES, label } from "./models";
+import { Destination, DestinationInput, RoutingRule, RoutingRuleInput, label } from "./models";
 
 @Component({
   selector: "app-destinations",
   imports: [FormsModule, RouterLink],
   template: `
     <div class="page-heading"><div><h1>DESTINOS DE TRIAJE</h1>
-      <p class="subtitle">Departamentos, colas y sistemas que reciben una asignación lógica. La entrega externa aún no está integrada.</p>
+      <p class="subtitle">Departamentos, colas y sistemas que reciben una asignación lógica.</p>
     </div></div>
     @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
     @if (message()) { <p class="notice" role="status">{{ message() }}</p> }
@@ -87,8 +87,8 @@ export class DestinationsPage implements OnInit {
   editing = signal<string | null>(null);
   editName = "";
   editKind: DestinationInput["kind"] = "DEPARTMENT";
-  types = TYPES.filter((type) => !["OTHER", "UNKNOWN"].includes(type));
-  specialties = SPECIALTIES.filter((specialty) => !["OTHER", "UNKNOWN"].includes(specialty));
+  get types() { return this.api.catalog().types.map(item => item.code).filter(code => !["OTHER", "UNKNOWN"].includes(code)); }
+  get specialties() { return this.api.catalog().specialties.map(item => item.code).filter(code => !["OTHER", "UNKNOWN"].includes(code)); }
   label = label;
   draft: DestinationInput = { code: "", name: "", kind: "DEPARTMENT" };
   ruleDraft: RoutingRuleInput = { document_type: "ECHOCARDIOGRAM_REPORT", specialty: "ANY", destination_code: "", active: true };

@@ -65,7 +65,8 @@ export class AuthPage implements OnInit {
     try {
       if (this.admin()) {
         await this.api.adminLogin({email: this.email, password: this.password});
-        await this.router.navigateByUrl("/documents");
+        await this.api.me();
+        await this.router.navigateByUrl(this.api.can("DOCUMENTS_READ") ? "/home" : this.api.can("PATIENTS_READ") ? "/patients" : this.api.can("DESTINATIONS_MANAGE") ? "/destinations" : "/sin-acceso");
       } else if (this.register()) {
         await this.api.register({country: this.country, identity_number: this.identity, email: this.email, password: this.password});
         this.message.set("Cuenta creada. Ya puedes iniciar sesión.");

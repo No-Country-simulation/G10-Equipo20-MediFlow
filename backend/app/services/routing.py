@@ -37,10 +37,14 @@ def route_classification(classification: ClassificationResult, priority: Priorit
         "ECHOCARDIOGRAM_REPORT": "CARDIOLOGIA", "ECG_REPORT": "CARDIOLOGIA",
         "SPIROMETRY_REPORT": "NEUMOLOGIA", "CHEST_IMAGING_REPORT": "NEUMOLOGIA",
         "LABORATORY_ORDER": "LABORATORIO", "LABORATORY_RESULT": "HISTORIA_CLINICA",
+        "PRESCRIPTION": "FARMACIA_HOSPITALARIA", "PROCEDURE_ORDER": "AUDITORIA_AUTORIZACIONES",
+        "MEDICAL_CERTIFICATE": "HISTORIA_CLINICA", "IMAGING_REPORT": "HISTORIA_CLINICA",
     }
     destination = destinations.get(classification.document_type)
     if not destination or classification.specialty in ("OTHER", "UNKNOWN"):
         raise DocumentError(422, "NO_ROUTING_RULE")
-    if classification.specialty == "CARDIOPULMONARY":
+    if classification.specialty == "CARDIOPULMONARY" and classification.document_type in (
+        "ECHOCARDIOGRAM_REPORT", "ECG_REPORT", "SPIROMETRY_REPORT", "CHEST_IMAGING_REPORT",
+    ):
         destination = "CARDIOPULMONAR"
     return RoutingResult(destination=destination, routed_at=datetime.now(UTC))

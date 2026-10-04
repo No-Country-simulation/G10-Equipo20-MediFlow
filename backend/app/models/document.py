@@ -37,3 +37,7 @@ class Document(Base):
     patient_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("patients.id", ondelete="SET NULL"))
     patient_match_status: Mapped[str] = mapped_column(String(24), default="NOT_EVALUATED", server_default="NOT_EVALUATED")
     patient_match_reason: Mapped[str | None] = mapped_column(String(100))
+
+    @property
+    def priority(self):
+        return ((self.processing_result or {}).get("priority") or {}).get("level", "UNASSESSED")

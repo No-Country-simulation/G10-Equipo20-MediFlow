@@ -48,11 +48,10 @@ class ContentReader:
             raise DocumentError(422, "PROCESSING_TEXT_LIMIT")
         return ContentResult(pages=pages)
 
-    @staticmethod
-    def _ocr_pages(result, original_numbers):
+    def _ocr_pages(self, result, original_numbers):
         if [page.page for page in result.pages] != list(range(1, len(original_numbers) + 1)):
             raise ProviderError("OCR_PAGE_MAPPING_INVALID")
         return [ContentPage(
-            page=original, text=page.text, method="gemini_ocr", engine="gemini",
+            page=original, text=page.text, method="openai_ocr" if getattr(self.provider, "name", "gemini") == "openai" else "gemini_ocr", engine=getattr(self.provider, "name", "gemini"),
             uncertain=page.uncertain or "[ILEGIBLE]" in page.text.upper(),
         ) for original, page in zip(original_numbers, result.pages, strict=True)]

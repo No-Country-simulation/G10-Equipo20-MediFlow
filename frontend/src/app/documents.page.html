@@ -1,9 +1,11 @@
 <div class="page-heading">
   <div>
-    <h1>CENTRO DE DOCUMENTOS</h1>
-    <p class="subtitle">Carga, consulta y revisa tus informes cardiopulmonares.</p>
+    <p class="eyebrow">INGESTA Y SEGUIMIENTO · {{ api.country() }}</p>
+    <h1>Documentos</h1>
+    <p class="subtitle">Carga, consulta y revisa tus documentos clínicos.</p>
   </div>
 </div>
+@if (api.can("DOCUMENTS_UPLOAD")) {
 <section class="upload-card" aria-labelledby="upload-title">
   <div class="upload-copy">
     <h2 id="upload-title">Comienza con un documento</h2>
@@ -28,15 +30,16 @@
       {{ uploading() ? "Guardando documento…" : "Cargar documento" }}
       <span>↗</span>
     </button>
-    <button class="secondary" [disabled]="!file() || uploading()" (click)="upload(true)">
+    <button class="secondary" [disabled]="!file() || uploading() || !api.can('DOCUMENTS_PROCESS')" (click)="upload(true)">
       Cargar y analizar ahora
     </button>
-    <small class="muted">Cargar documento: solo guarda y valida. Cargar y analizar ahora: también ejecuta Gemini y el grafo.</small>
+    <small class="muted">Cargar documento: solo guarda y valida. Cargar y analizar ahora: también ejecuta el proveedor elegido y el grafo.</small>
     @if (uploadError()) {
       <p class="error" role="alert">{{ uploadError() }}</p>
     }
   </div>
 </section>
+}
 <section class="panel">
   <div class="panel-heading">
     <div>
@@ -65,7 +68,7 @@
       @for (state of statuses; track state) {
         <option [value]="state">{{ label(state) }}</option>
       }</select
-    ><button class="secondary" type="submit">Buscar</button>
+    ><select name="priority" [(ngModel)]="priority" (ngModelChange)="load(true)" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option value="ROUTINE">Rutina</option><option value="URGENT">Urgente</option><option value="CRITICAL">Crítica</option><option value="UNASSESSED">Sin evaluar</option></select><button class="secondary" type="submit">Buscar</button>
   </form>
   @if (error()) {
     <p class="error" role="alert">{{ error() }}</p>
@@ -75,12 +78,12 @@
     <div class="empty">
       <span class="empty-icon">▤</span>
       <h3>
-        {{ search || status ? "No hay coincidencias" : "Tu bandeja está lista" }}
+        {{ search || status || priority ? "No hay coincidencias" : "Tu bandeja está lista" }}
       </h3>
       <p>
         {{
-          search || status
-            ? "Prueba otro nombre o estado."
+          search || status || priority
+            ? "Prueba otro nombre, estado o prioridad."
             : "Carga tu primer
       documento para comenzar."
         }}
@@ -94,6 +97,7 @@
             <th>Documento</th>
             <th>Recibido · {{ api.country() }}</th>
             <th>Estado</th>
+            <th>Prioridad</th>
             <th>Tamaño</th>
             <th><span class="sr-only">Acción</span></th>
           </tr>
@@ -116,6 +120,7 @@
               <td>
                 <span class="badge" [attr.data-state]="doc.status">{{ label(doc.status) }}</span>
               </td>
+              <td><span class="badge" [attr.data-priority]="doc.priority">{{ doc.priority && doc.priority !== 'UNASSESSED' ? label(doc.priority) : 'Sin evaluar' }}</span></td>
               <td>{{ size(doc.size_bytes) }}</td>
               <td>
                 <a class="text-link" [routerLink]="['/documents', doc.document_id]">Abrir ↗</a>

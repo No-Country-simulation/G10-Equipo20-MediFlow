@@ -96,8 +96,8 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
     finally:
         resources.close()
     result = ProcessingResult(
-        document_id=document_id, status=document.status, processed_at=datetime.now(UTC), model=settings.gemini_model,
-        pipeline_version="cardiopulmonary-v4",
+        document_id=document_id, status=document.status, processed_at=datetime.now(UTC), model=getattr(provider, "model", settings.gemini_model), provider=getattr(provider, "name", "gemini"),
+        pipeline_version="documentary-v5",
         **{key: state.get(key) for key in ('content', 'classification', 'extraction', 'validation', 'priority',
                                             'quality', 'local_alert', 'routing', 'patient')},
         error_code=(failure.code if isinstance(failure, ProviderError) else failure.detail) if failure else None,
