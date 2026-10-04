@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, Output, OnInit, inject, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { Api } from "./api";
-import { Classification, ExtractedField, Page, Result, TYPES, SPECIALTIES, label } from "./models";
+import { Classification, ExtractedField, Page, Result, label } from "./models";
 @Component({
   selector: "app-review-form",
   imports: [FormsModule],
@@ -20,8 +20,10 @@ export class ReviewForm implements OnInit {
   pages: Page[] = [];
   fields: ExtractedField[] = [];
   classification!: Classification;
-  types = TYPES;
-  specialties = SPECIALTIES;
+  get types() { return this.api.catalog().types.map(item => item.code); }
+  get specialties() { return this.api.catalog().specialties.map(item => item.code); }
+  get requiredGroups() { return this.api.catalog().types.find(item => item.code === this.classification?.document_type)?.required_groups || []; }
+  get suggestedFields() { return this.api.catalog().types.find(item => item.code === this.classification?.document_type)?.fields || []; }
   label = label;
   ngOnInit() {
     this.pages = structuredClone(
@@ -72,6 +74,7 @@ export class ReviewForm implements OnInit {
           fields: this.fields.map((f) => ({
             ...f,
             unit: f.unit?.trim() || null,
+            entity_id: f.entity_id?.trim() || null,
           })),
         };
       }

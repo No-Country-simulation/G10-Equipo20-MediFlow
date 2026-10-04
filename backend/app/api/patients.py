@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_superadmin, same_origin
+from app.core.auth import require_staff, require_permission, same_origin
 from app.core.countries import COUNTRY_CODES
 from app.core.database import get_session
 from app.models.document import Document
@@ -18,9 +18,9 @@ from app.schemas.document import DocumentResponse
 from app.services.patients import validate_identity
 
 router = APIRouter(prefix="/patients", tags=["patients"],
-                   dependencies=[Depends(require_superadmin), Depends(same_origin)])
+                   dependencies=[Depends(require_staff), Depends(same_origin)])
 Db = Annotated[Session, Depends(get_session)]
-Admin = Annotated[dict[str, str], Depends(require_superadmin)]
+Admin = Annotated[dict[str, str], Depends(require_staff)]
 
 
 class PatientOutput(BaseModel):
@@ -55,7 +55,7 @@ def output(patient: Patient, session: Session) -> PatientOutput:
     return PatientOutput.model_validate(patient).model_copy(update={"document_count": count})
 
 
-@router.get("", response_model=PatientList)
+@router.get("", response_model=PatientList, dependencies=[Depends(require_permission("PATIENTS_READ"))])
 def list_patients(session: Db, country: Annotated[str, Query(min_length=2, max_length=2)],
                   q: Annotated[str, Query(max_length=255)] = "",
                   limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -73,7 +73,7 @@ def list_patients(session: Db, country: Annotated[str, Query(min_length=2, max_l
                        total=total, limit=limit, offset=offset)
 
 
-@router.get("/{patient_id}", response_model=PatientOutput)
+@router.get("/{patient_id}", response_model=PatientOutput, dependencies=[Depends(require_permission("PATIENTS_READ"))])
 def get_patient(patient_id: int, session: Db):
     patient = session.get(Patient, patient_id)
     if patient is None:
@@ -81,7 +81,7 @@ def get_patient(patient_id: int, session: Db):
     return output(patient, session)
 
 
-@router.get("/{patient_id}/documents", response_model=list[DocumentResponse])
+@router.get("/{patient_id}/documents", response_model=list[DocumentResponse], dependencies=[Depends(require_permission("PATIENTS_READ"))])
 def patient_documents(patient_id: int, session: Db):
     if session.get(Patient, patient_id) is None:
         raise HTTPException(404, "PATIENT_NOT_FOUND")
@@ -89,7 +89,7 @@ def patient_documents(patient_id: int, session: Db):
         select(Document).where(Document.patient_id == patient_id).order_by(Document.received_at.desc()))]
 
 
-@router.patch("/{patient_id}", response_model=PatientOutput)
+@router.patch("/{patient_id}", response_model=PatientOutput, dependencies=[Depends(require_permission("PATIENTS_EDIT"))])
 def update_patient(patient_id: int, payload: PatientUpdate, session: Db, admin: Admin):
     patient = session.get(Patient, patient_id)
     if patient is None:

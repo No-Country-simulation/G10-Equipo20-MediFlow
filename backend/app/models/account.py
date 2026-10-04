@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Identity, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Identity, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.document import Base
+from app.models.administration import Role  # Registers the FK target for standalone bootstrap commands.
 
 
 class Account(Base):
@@ -18,6 +19,10 @@ class Account(Base):
     identity_type: Mapped[str | None] = mapped_column(String(16))
     identity_number: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255))
+    contact: Mapped[str | None] = mapped_column(String(100))
+    assigned_role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id", ondelete="RESTRICT"))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
 
 class LoginSession(Base):

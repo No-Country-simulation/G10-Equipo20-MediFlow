@@ -2,7 +2,7 @@ import base64
 import json
 import subprocess
 import sys
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query, Response
@@ -23,14 +23,15 @@ from app.providers.gemini import GeminiProvider
 from app.schemas.processing import ProcessingResult
 from app.services.processing import process_document
 from app.services.processing import locked_document
-from app.core.auth import require_superadmin, same_origin
+from app.core.auth import require_staff, require_permission, same_origin
 from app.core.countries import COUNTRY_CODES
 from app.schemas.lifecycle import DocumentStatus, StateEvent
 from app.schemas.processing import ReviewRequest, ReviewAudit
 from app.services.review import review_document
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/documents", tags=["documents"],
-                   dependencies=[Depends(require_superadmin), Depends(same_origin)])
+                   dependencies=[Depends(require_staff), Depends(same_origin)])
 
 
 def selected_country(country: str | None, settings: Settings) -> str:
@@ -40,7 +41,7 @@ def selected_country(country: str | None, settings: Settings) -> str:
     return code
 
 
-@router.post("/{document_id}/review", response_model=ProcessingResult)
+@router.post("/{document_id}/review", response_model=ProcessingResult, dependencies=[Depends(require_permission("DOCUMENTS_REVIEW"))])
 def submit_review(document_id: UUID, request: ReviewRequest,
                   session: Annotated[Session, Depends(get_session)],
                   settings: Annotated[Settings, Depends(get_settings)]):
@@ -53,7 +54,7 @@ def submit_review(document_id: UUID, request: ReviewRequest,
         raise HTTPException(503, "REVIEW_STORAGE_UNAVAILABLE") from None
 
 
-@router.get("/{document_id}/reviews", response_model=list[ReviewAudit])
+@router.get("/{document_id}/reviews", response_model=list[ReviewAudit], dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def get_reviews(document_id: UUID, session: Annotated[Session, Depends(get_session)]):
     try:
         document = DocumentRepository(session).get(document_id)
@@ -64,11 +65,15 @@ def get_reviews(document_id: UUID, session: Annotated[Session, Depends(get_sessi
     return document.review_history
 
 
-def get_document_provider(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentProvider:
-    return GeminiProvider(settings)
+def get_document_provider(settings: Annotated[Settings, Depends(get_settings)],
+                          session: Annotated[Session, Depends(get_session)]) -> DocumentProvider:
+    from app.services.runtime_configuration import provider_settings
+    from app.providers.openai import OpenAIProvider
+    configured, use_gemini = provider_settings(session, settings)
+    return GeminiProvider(configured) if use_gemini else OpenAIProvider(configured)
 
 
-@router.post("", response_model=DocumentResponse, status_code=201)
+@router.post("", response_model=DocumentResponse, status_code=201, dependencies=[Depends(require_permission("DOCUMENTS_UPLOAD"))])
 def upload_document(
     file: Annotated[UploadFile, File(description="Documento PDF, JPG o PNG")],
     session: Annotated[Session, Depends(get_session)],
@@ -87,7 +92,7 @@ def upload_document(
         raise HTTPException(503, "No fue posible guardar el documento. Intenta nuevamente.") from exc
 
 
-@router.post("/triage", response_model=ProcessingResult, status_code=201)
+@router.post("/triage", response_model=ProcessingResult, status_code=201, dependencies=[Depends(require_permission("DOCUMENTS_PROCESS")), Depends(require_permission("DOCUMENTS_UPLOAD"))])
 def upload_and_triage(
     file: Annotated[UploadFile, File(description="Documento PDF, JPG o PNG")],
     response: Response,
@@ -121,10 +126,11 @@ def upload_and_triage(
                             headers={"Location": f"/documents/{document.document_id}"}) from None
 
 
-@router.get("", response_model=DocumentList)
+@router.get("", response_model=DocumentList, dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def list_documents(
     session: Annotated[Session, Depends(get_session)],
     status: DocumentStatus | None = None,
+    priority: Literal["ROUTINE", "URGENT", "CRITICAL", "UNASSESSED"] | None = None,
     country: Annotated[str | None, Query()] = None,
     destination: Annotated[str | None, Query(max_length=60)] = None,
     q: Annotated[str, Query(max_length=255)] = "",
@@ -138,6 +144,8 @@ def list_documents(
         query = query.where(Document.country == country)
     if status is not None:
         query = query.where(Document.status == status.value)
+    if priority is not None:
+        query = query.where(func.coalesce(Document.processing_result["priority"]["level"].astext, "UNASSESSED") == priority)
     if destination is not None:
         query = query.where(Document.processing_result["routing"]["destination"].astext == destination)
     if q.strip():
@@ -150,7 +158,39 @@ def list_documents(
         raise HTTPException(503, "DOCUMENT_LIST_UNAVAILABLE") from None
 
 
-@router.get("/{document_id}/preview")
+class DocumentSummary(BaseModel):
+    country: str
+    total: int
+    by_status: dict[str, int]
+    by_priority: dict[str, int]
+    pending_review: int
+    delivered_local: int
+
+
+@router.get("/summary", response_model=DocumentSummary, dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
+def document_summary(session: Annotated[Session, Depends(get_session)],
+                     settings: Annotated[Settings, Depends(get_settings)],
+                     country: str | None = None):
+    code = selected_country(country, settings)
+    priority = func.coalesce(Document.processing_result["priority"]["level"].astext, "UNASSESSED")
+    try:
+        rows = session.execute(select(Document.status, priority, func.count())
+                               .where(Document.country == code).group_by(Document.status, priority)).all()
+        by_status, by_priority = {}, {}
+        for status, level, count in rows:
+            by_status[status] = by_status.get(status, 0) + count
+            by_priority[level] = by_priority.get(level, 0) + count
+        delivered = session.scalar(select(func.count()).select_from(Document).where(
+            Document.country == code,
+            Document.processing_result["routing"]["delivery_status"].astext == "DELIVERED_LOCAL"))
+        return DocumentSummary(country=code, total=sum(by_status.values()), by_status=by_status,
+                               by_priority=by_priority, pending_review=by_status.get("EN_REVISION_HUMANA", 0),
+                               delivered_local=delivered or 0)
+    except SQLAlchemyError:
+        raise HTTPException(503, "DOCUMENT_SUMMARY_UNAVAILABLE") from None
+
+
+@router.get("/{document_id}/preview", dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def preview_pdf(document_id: UUID, session: Annotated[Session, Depends(get_session)],
                 settings: Annotated[Settings, Depends(get_settings)],
                 page: Annotated[int, Query(ge=1)] = 1) -> Response:
@@ -179,7 +219,7 @@ def preview_pdf(document_id: UUID, session: Annotated[Session, Depends(get_sessi
         raise HTTPException(503, "DOCUMENT_STORAGE_UNAVAILABLE") from None
 
 
-@router.get("/{document_id}/file")
+@router.get("/{document_id}/file", dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def get_original(document_id: UUID, session: Annotated[Session, Depends(get_session)],
                  settings: Annotated[Settings, Depends(get_settings)]) -> Response:
     try:
@@ -197,7 +237,7 @@ def get_original(document_id: UUID, session: Annotated[Session, Depends(get_sess
         raise HTTPException(503, "DOCUMENT_STORAGE_UNAVAILABLE") from None
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get("/{document_id}", response_model=DocumentResponse, dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def get_document(
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -211,12 +251,12 @@ def get_document(
     return DocumentResponse.model_validate(document)
 
 
-@router.delete("/{document_id}", status_code=204)
+@router.delete("/{document_id}", status_code=204, dependencies=[Depends(require_permission("DOCUMENTS_DELETE"))])
 def delete_document(
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
-    admin: Annotated[dict[str, str], Depends(require_superadmin)],
+    admin: Annotated[dict[str, str], Depends(require_staff)],
 ):
     try:
         document = locked_document(document_id, session)
@@ -233,7 +273,7 @@ def delete_document(
         raise HTTPException(503, "DOCUMENT_DELETE_INCOMPLETE_RETRY") from None
 
 
-@router.post("/{document_id}/process", response_model=ProcessingResult)
+@router.post("/{document_id}/process", response_model=ProcessingResult, dependencies=[Depends(require_permission("DOCUMENTS_PROCESS"))])
 def process_uploaded_document(
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -251,7 +291,7 @@ def process_uploaded_document(
         raise HTTPException(503, "PROCESSING_STORAGE_UNAVAILABLE") from None
 
 
-@router.get("/{document_id}/result", response_model=ProcessingResult)
+@router.get("/{document_id}/result", response_model=ProcessingResult, dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def get_processing_result(
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -267,7 +307,7 @@ def get_processing_result(
     return ProcessingResult.model_validate(document.processing_result)
 
 
-@router.get("/{document_id}/history", response_model=list[StateEvent])
+@router.get("/{document_id}/history", response_model=list[StateEvent], dependencies=[Depends(require_permission("DOCUMENTS_READ"))])
 def get_document_history(
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],

@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import logging
+import re
 from urllib.parse import urlsplit
 
 import boto3
@@ -18,6 +19,7 @@ class R2DocumentStorage:
 
     def __init__(self, settings, bucket=None):
         self.bucket = bucket or settings.r2_bucket_name
+        self.prefix = settings.r2_object_prefix
         endpoint = urlsplit(settings.r2_endpoint_url)
         if (endpoint.scheme != "https" or not endpoint.hostname
                 or not endpoint.hostname.endswith(".r2.cloudflarestorage.com")
@@ -36,7 +38,23 @@ class R2DocumentStorage:
                           response_checksum_validation="when_required"),
         )
 
+    def object_key(self, relative: str) -> str:
+        return f"{self.prefix}/{relative}"
+
+    def _check_key(self, key: str, writing: bool = False):
+        from app.core.countries import COUNTRY_CODES
+        parts = key.split("/")
+        if parts[0] == self.prefix:
+            parts = parts[1:]
+        elif writing:
+            raise OSError("R2_KEY_OUTSIDE_PREFIX")
+        # Legacy country/originals keys remain readable/deletable through DB references.
+        if (len(parts) != 3 or parts[0] not in COUNTRY_CODES or parts[1] != "originals"
+                or not re.fullmatch(r"[A-Za-z0-9_-]+\.(pdf|jpg|png)", parts[2])):
+            raise OSError("R2_KEY_OUTSIDE_PREFIX")
+
     def put_file(self, key: str, path: Path, max_bytes: int) -> None:
+        self._check_key(key, writing=True)
         if path.stat().st_size > max_bytes:
             raise DocumentError(413, "FILE_TOO_LARGE")
         try:
@@ -52,6 +70,7 @@ class R2DocumentStorage:
             raise OSError("R2_WRITE_FAILED") from None
 
     def delete(self, key: str) -> None:
+        self._check_key(key)
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)
         except (BotoCoreError, ClientError):
@@ -59,6 +78,7 @@ class R2DocumentStorage:
 
     @contextmanager
     def materialize(self, key: str, max_bytes: int):
+        self._check_key(key)
         with TemporaryDirectory(prefix="mediflow-r2-") as temporary:
             path = Path(temporary) / Path(key).name
             try:

@@ -65,7 +65,7 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     if not result.validation.valid:
         raise DocumentError(422, 'REVIEW_HAS_UNRESOLVED_ISSUES:' + ','.join(result.validation.issues))
     result.routing = route_classification(result.classification, result.priority, session)
-    result.pipeline_version = 'cardiopulmonary-v4'
+    result.pipeline_version = 'documentary-v5'
     transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action)
     transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED')
     result.patient = link_patient(document, result.extraction, result.patient, session)

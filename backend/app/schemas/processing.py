@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.lifecycle import DocumentStatus
+from app.core.document_catalog import DocumentType, Specialty
 
 
 class StructuredModel(BaseModel):
@@ -23,8 +24,8 @@ class OCRResult(StructuredModel):
 class ContentPage(StructuredModel):
     page: int = Field(ge=1)
     text: str
-    method: Literal["embedded_text", "gemini_ocr", "human_corrected"]
-    engine: Literal["pymupdf", "gemini"] | None = None
+    method: Literal["embedded_text", "gemini_ocr", "openai_ocr", "human_corrected"]
+    engine: Literal["pymupdf", "gemini", "openai"] | None = None
     uncertain: bool = False
 
 
@@ -38,11 +39,8 @@ class Evidence(StructuredModel):
 
 
 class ClassificationResult(StructuredModel):
-    document_type: Literal[
-        "ECHOCARDIOGRAM_REPORT", "SPIROMETRY_REPORT", "CHEST_IMAGING_REPORT",
-        "ECG_REPORT", "DISCHARGE_SUMMARY", "LABORATORY_RESULT", "LABORATORY_ORDER", "OTHER", "UNKNOWN",
-    ]
-    specialty: Literal["CARDIOLOGY", "PULMONOLOGY", "CARDIOPULMONARY", "LABORATORY", "OTHER", "UNKNOWN"]
+    document_type: DocumentType
+    specialty: Specialty
     evidence: Evidence | None
     reason: str
 
@@ -52,6 +50,8 @@ class ExtractedField(StructuredModel):
     value: str = Field(min_length=1)
     unit: str | None
     evidence: Evidence
+    # Optional grouping for multiple medications/tests; old results remain readable.
+    entity_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,59}$")
 
 
 class ExtractionResult(StructuredModel):

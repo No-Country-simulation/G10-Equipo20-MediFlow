@@ -39,9 +39,12 @@ class LoginInput(BaseModel):
     password: str
 
 
-def public_account(account: Account) -> dict:
+def public_account(account: Account, session: Session) -> dict:
+    from app.core.permissions import effective_permissions
+    permissions, denials = effective_permissions(account, session)
     return {"id": account.id, "role": account.role, "country": account.country,
-            "identity_number": account.identity_number, "email": account.email}
+            "identity_number": account.identity_number, "email": account.email,
+            "name": account.name, "permissions": permissions, "denied_permissions": denials}
 
 
 @router.post("/register", status_code=201, dependencies=[Depends(same_origin)])
@@ -71,25 +74,25 @@ def patient_login(payload: LoginInput, request: Request, response: Response, ses
     account = session.scalar(select(Account).where(Account.role == "PATIENT",
         Account.country == payload.country, Account.identity_type == identity[0],
         Account.identity_number == identity[1]))
-    if account is None or not password_matches(payload.password, account.password_hash):
+    if account is None or not account.active or not password_matches(payload.password, account.password_hash):
         raise HTTPException(401, "INVALID_CREDENTIALS")
     create_session(account, session, response, request)
-    return public_account(account)
+    return public_account(account, session)
 
 
 @router.post("/admin-login", dependencies=[Depends(same_origin)])
 def admin_login(payload: LoginInput, request: Request, response: Response, session: Db):
     account = session.scalar(select(Account).where(Account.email == str(payload.email or "").lower(),
-                                                   Account.role == "SUPERADMIN"))
-    if account is None or not password_matches(payload.password, account.password_hash):
+                                                   Account.role.in_(("SUPERADMIN", "EMPLOYEE"))))
+    if account is None or not account.active or not password_matches(payload.password, account.password_hash):
         raise HTTPException(401, "INVALID_CREDENTIALS")
     create_session(account, session, response, request)
-    return public_account(account)
+    return public_account(account, session)
 
 
 @router.get("/me")
-def me(account: Annotated[Account, Depends(current_account)]):
-    return public_account(account)
+def me(account: Annotated[Account, Depends(current_account)], session: Db):
+    return public_account(account, session)
 
 
 @router.post("/logout", dependencies=[Depends(same_origin)])

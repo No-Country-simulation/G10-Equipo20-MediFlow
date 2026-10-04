@@ -21,6 +21,7 @@ export class DocumentsPage {
   file = signal<File | null>(null);
   offset = signal(0);
   status = "";
+  priority = "";
   search = "";
   statuses = STATUSES;
   label = label;
@@ -37,7 +38,7 @@ export class DocumentsPage {
     this.loading.set(true);
     this.error.set("");
     try {
-      const data = await this.api.list(this.status, this.search, this.offset());
+      const data = await this.api.list(this.status, this.search, this.offset(), "", this.priority);
       if (seq === this.sequence) {
         this.items.set(data.items);
         this.total.set(data.total);

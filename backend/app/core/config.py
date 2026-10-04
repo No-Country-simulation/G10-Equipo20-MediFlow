@@ -20,11 +20,14 @@ class Settings(BaseModel):
     r2_secret_access_key: SecretStr = SecretStr("")
     r2_bucket_name: str = "mediflow-g10"
     r2_region: str = "auto"
+    r2_object_prefix: str = Field(default="mediflow", pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
     default_country: str = "EC"
     app_timezone: Literal["America/Guayaquil"] = "America/Guayaquil"
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.1-flash-lite"
+    openai_api_key: SecretStr = SecretStr("")
+    openai_model: str = "gpt-4o-mini"
     gemini_timeout_seconds: int = Field(default=90, ge=1, le=180)
     processing_max_pages: int = Field(default=20, ge=1, le=100)
     processing_max_characters: int = Field(default=50000, ge=100, le=200000)

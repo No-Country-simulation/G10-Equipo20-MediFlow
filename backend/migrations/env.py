@@ -6,6 +6,7 @@ from app.models.document import Base
 from app.models import destination  # noqa: F401 - register catalog tables
 from app.models import patient  # noqa: F401 - register patient table
 from app.models import account  # noqa: F401 - register account tables
+from app.models import administration  # noqa: F401
 
 target_metadata = Base.metadata
 

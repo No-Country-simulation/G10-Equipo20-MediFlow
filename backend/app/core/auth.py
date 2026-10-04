@@ -56,6 +56,8 @@ def current_account(request: Request, session: Annotated[Session, Depends(get_se
     account = session.get(Account, record.account_id)
     if account is None:
         raise HTTPException(401, "LOGIN_REQUIRED")
+    if not account.active:
+        raise HTTPException(403, "ACCOUNT_DISABLED")
     return account
 
 
@@ -63,6 +65,22 @@ def require_superadmin(account: Annotated[Account, Depends(current_account)]) ->
     if account.role != "SUPERADMIN":
         raise HTTPException(403, "SUPERADMIN_REQUIRED")
     return {"id": str(account.id), "role": account.role}
+
+
+def require_staff(account: Annotated[Account, Depends(current_account)], session: Annotated[Session, Depends(get_session)]):
+    if account.role not in ("SUPERADMIN", "EMPLOYEE"):
+        raise HTTPException(403, "STAFF_REQUIRED")
+    from app.core.permissions import effective_permissions
+    granted, denied = effective_permissions(account, session)
+    return {"id": str(account.id), "role": account.role, "permissions": granted, "denied_permissions": denied}
+
+
+def require_permission(code):
+    def check(staff: Annotated[dict, Depends(require_staff)]):
+        if staff['role'] != 'SUPERADMIN' and (code in staff.get('denied_permissions', []) or code not in staff.get('permissions', [])):
+            raise HTTPException(403, "PERMISSION_DENIED:" + code)
+        return staff
+    return check
 
 
 def require_patient(account: Annotated[Account, Depends(current_account)]) -> Account:

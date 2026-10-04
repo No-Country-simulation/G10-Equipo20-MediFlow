@@ -22,7 +22,7 @@ import { DocumentRecord, Patient, label } from "./models";
           <label>Nombre <input name="name" [(ngModel)]="name" required /></label>
           <label>Edad <input name="age" type="number" min="0" max="130" [(ngModel)]="age" /></label>
           <label>Identificación <input name="identity" [(ngModel)]="identity" required /></label>
-          <button class="primary" [disabled]="busy()">Guardar cambios</button>
+          <button class="primary" [disabled]="busy() || !api.can('PATIENTS_EDIT')">Guardar cambios</button>
         </form>
       </section>
       <section class="panel catalog-panel"><div class="panel-heading"><h2>Documentos asociados</h2></div>

@@ -1,4 +1,10 @@
-<a routerLink="/documents" class="back-link">← Volver a documentos</a>
+<a [routerLink]="reviewMode ? '/review' : '/documents'" class="back-link">← {{ reviewMode ? 'Volver a revisión humana' : 'Volver a documentos' }}</a>
+@if (reviewMode) {
+  <div class="case-navigation"><span>Revisión junto al original</span><div>
+    @if (previousCase()) { <a class="secondary" [routerLink]="['/review', previousCase()]" [queryParams]="{offset: reviewOffset}">← Caso anterior</a> }
+    @if (nextCase()) { <a class="secondary" [routerLink]="['/review', nextCase()]" [queryParams]="{offset: reviewOffset}">Siguiente caso →</a> }
+  </div></div>
+}
 @if (error()) {
   <p class="error" role="alert">{{ error() }}</p>
 }
@@ -9,18 +15,18 @@
       <h1>{{ d.original_filename }}</h1>
       <p class="subtitle mono">{{ d.document_id }}</p>
     </div>
-    <span class="badge" [attr.data-state]="d.status">{{ label(d.status) }}</span>
+    <span class="badge detail-status" [attr.data-state]="d.status">{{ label(d.status) }}</span>
   </div>
   <div class="detail-toolbar">
     <span
       >Recibido {{ d.received_at | date: "dd/MM/yyyy, HH:mm" : "-0500" }} ·
-      {{ d.processing_attempts }} intento(s)</span
+      Análisis ejecutados: {{ d.processing_attempts }}</span
     >
     <div>
       <a class="secondary" href="#historial">Ver historial</a>
-      <button class="danger" (click)="deleteDocument()" [disabled]="busy() || loading()">
+      @if (api.can("DOCUMENTS_DELETE")) { <button class="danger" (click)="deleteDocument()" [disabled]="busy() || loading()">
         Eliminar documento
-      </button>
+      </button> }
       <button class="secondary" (click)="load()" [disabled]="loading() || busy()">
         Actualizar
       </button>
@@ -38,20 +44,11 @@
       }
     </div>
   </div>
-  <section class="panel catalog-panel">
-    <div class="panel-heading"><h2>Paciente y entrega</h2></div>
-    @if (d.patient_id) {
-      <p>Paciente identificado: <a [routerLink]="['/patients', d.patient_id]">Ver ficha #{{ d.patient_id }}</a></p>
-    } @else {
-      <p>{{ d.patient_match_reason ? label(d.patient_match_reason) : 'Paciente no identificado o pendiente de análisis.' }}</p>
-    }
-    @if (result()?.routing; as routing) {
-      <p>Destino: <a [routerLink]="['/destinations', routing.destination, 'documents']">{{ label(routing.destination) }}</a></p>
-      <p>{{ routing.delivery_status === 'DELIVERED_LOCAL'
-        ? 'Entregado a bandeja local; integración externa pendiente.'
-        : 'Destino registrado; entrega externa pendiente de integración.' }}</p>
-    }
-  </section>
+  <div class="document-context">
+    <span class="patient-notice">@if (d.patient_id) { Paciente: <a [routerLink]="['/patients', d.patient_id]">Ficha #{{ d.patient_id }}</a> }
+    @else { {{ d.patient_match_reason ? label(d.patient_match_reason) : 'Paciente no identificado.' }} }</span>
+    @if (result()?.routing; as routing) { <span>Destino: <a [routerLink]="['/destinations', routing.destination, 'documents']">{{ label(routing.destination) }}</a></span> }
+  </div>
   @if (busy()) {
     <p class="notice" role="status">
       Leyendo y analizando el documento. Puede tardar varios minutos. El historial se actualizará al
@@ -68,7 +65,8 @@
       }}
     </p>
   }
-  <div class="detail-grid">
+  <div class="mobile-detail-tabs"><button class="secondary" [class.active]="mobilePanel() === 'original'" (click)="mobilePanel.set('original')">Original</button><button class="secondary" [class.active]="mobilePanel() === 'result'" (click)="mobilePanel.set('result')">Extracción y revisión</button></div>
+  <div class="detail-grid" [attr.data-mobile-panel]="mobilePanel()">
     <section class="panel original-panel">
       <div class="panel-heading">
         <h2>Documento original</h2>
@@ -159,7 +157,7 @@
               <strong>Calidad documental: {{ (quality.score * 100).toFixed(0) }} %</strong>
               <small
                 >Umbral automático {{ (quality.threshold * 100).toFixed(0) }} %. Indicador documental orientativo; no es certeza clínica ni probabilidad de extracción correcta.
-                documental, no probabilidad clínica.</small
+                </small
               >
               <small
                 >Lectura {{ (quality.components.readability * 100).toFixed(0) }} % · Campos
@@ -167,21 +165,13 @@
                 {{ (quality.components.evidence * 100).toFixed(0) }} % · Consistencia
                 {{ (quality.components.consistency * 100).toFixed(0) }} %</small
               >
-              @if (r.classification?.document_type !== "DISCHARGE_SUMMARY") {
-                <small>Para este tipo de informe, la cobertura solo comprueba que haya algún campo extraído.</small>
-              }
+              <small>Reglas: {{ quality.rule_version }}. Los resultados históricos conservan las reglas usadas en su análisis.</small>
             </div>
           }
           @if (r.local_alert; as alert) {
             <div class="notice" role="status">
               <strong>Alerta local: {{ label(alert.level) }}</strong>
               <p>Señal {{ label(alert.level) }}. Verifica el original. Visible aquí; no se envió una notificación externa.</p>
-            </div>
-          }
-          @if (r.routing) {
-            <div class="route-card">
-              <span>Destino registrado</span><strong>{{ label(r.routing.destination) }} ↗</strong
-              ><small>Entrega externa pendiente de integración</small>
             </div>
           }
           @if (r.error_code) {
@@ -242,11 +232,12 @@
           </div>
         }
       </section>
-      @if (d.status === "EN_REVISION_HUMANA" && result()) {
+      @if (d.status === "EN_REVISION_HUMANA" && result() && api.can("DOCUMENTS_REVIEW")) {
         <app-review-form [documentId]="id" [result]="result()!" (completed)="reviewed()" />
       }
       <section class="panel history-panel" id="historial">
         <div class="panel-heading"><h2>Historial del documento</h2></div>
+        <p class="history-help">La carga no ejecuta análisis. Análisis #1 es la primera ejecución del flujo; #2 y siguientes son reintentos. Varios estados pertenecen al mismo análisis. La revisión humana conserva su número.</p>
         <ol class="timeline">
           @for (event of history(); track $index) {
             <li>
@@ -254,8 +245,7 @@
               <div>
                 <strong>{{ label(event.status) }}</strong
                 ><small
-                  >{{ event.occurred_at | date: "dd/MM/yyyy, HH:mm:ss" : "-0500" }} · intento
-                  {{ event.attempt }}</small
+                  >{{ event.occurred_at | date: "dd/MM/yyyy, HH:mm:ss" : "-0500" }} · {{ event.attempt === 0 ? "Carga inicial · sin análisis" : "Análisis #" + event.attempt }}</small
                 ><span class="muted">{{ label(event.reason) }}</span>
               </div>
             </li>
