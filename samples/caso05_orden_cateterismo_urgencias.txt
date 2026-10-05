@@ -1,0 +1,8 @@
+ORDEN MÉDICA - SERVICIO DE URGENCIAS
+IPS Cardiovida. Fecha: 03/04/2026
+Paciente: Marta Cecilia Ruiz Vargas, 63 años. CC 51.789.012. Triage II.
+Cuadro: dolor torácico opresivo de 2 horas, ECG con infradesnivel del ST en V4-V6, troponina I elevada (0,45 ng/mL).
+Diagnóstico: síndrome coronario agudo sin elevación del ST (I21.4).
+Procedimiento solicitado: cateterismo cardíaco diagnóstico y eventual angioplastia. CUPS 372100.
+Justificación: SCA con troponina positiva y cambios dinámicos del ST; requiere estratificación invasiva urgente.
+Dr. Felipe Andrade, médico de urgencias. RM 55678.
