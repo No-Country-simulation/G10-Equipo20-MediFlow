@@ -1,0 +1,56 @@
+# Umbrales numéricos. Sección 7 del documento de reglas de negocio, versión 8.
+# Los de confianza y tiempo son valores iniciales por validar con el método de la
+# sección 8. Los clínicos (NEWS2) vienen de guías y no se tocan (RN-D5, RN-L2).
+
+confianza:                        # RN-C3, RN-B4. Configurables dentro de rango (RN-L1)
+  clasificacion: 0.85
+  identidad_paciente: 0.95
+  medicamento_dosis: 0.95
+  diagnostico_codigo: 0.90
+  profesional: 0.85
+  resto: 0.80
+  texto_ilegible_max: null        # por definir (RN-C5)
+
+consistencia:
+  tolerancia_edad_anios: 1        # RN-CO2
+
+tiempos:                          # en minutos u horas, según el sufijo
+  comunicacion_critico_min: 60    # RN-D1. Solo a la baja
+  escalamiento_sin_acuse_min: 15  # RN-F2
+  atencion_urgente_h: 24          # RN-D6
+  cola_revision:                  # RN-J2
+    critico_min: 15
+    urgente_h: 2
+    rutina_h_habiles: 24
+
+news2:                            # RN-D3, RN-D4. NO configurable (RN-D5)
+  configurable: false
+  fr_bajo: 8
+  fr_alto: 25
+  spo2_bajo: 91
+  spo2_escala2_min: 88            # RN-D4: objetivo 88-92 % en hipercápnicos
+  spo2_escala2_max: 92
+  fc_bajo: 40
+  fc_alto: 131
+  pas_bajo: 90
+  total_critico: 7
+  edad_minima: 16                 # RN-N1
+
+rangos:                           # RN-L1: el gestor mueve cada umbral solo dentro de su rango
+  confianza.clasificacion:        {min: 0.70, max: 0.99}
+  confianza.identidad_paciente:   {min: 0.90, max: 0.99}
+  confianza.medicamento_dosis:    {min: 0.90, max: 0.99}
+  confianza.diagnostico_codigo:   {min: 0.80, max: 0.99}
+  confianza.profesional:          {min: 0.75, max: 0.99}
+  confianza.resto:                {min: 0.70, max: 0.99}
+  consistencia.tolerancia_edad_anios:      {min: 0, max: 3}
+  tiempos.comunicacion_critico_min:        {min: 15, max: 60, solo_a_la_baja: true}   # RN-D1
+  tiempos.escalamiento_sin_acuse_min:      {min: 5, max: 30}
+  tiempos.atencion_urgente_h:              {min: 4, max: 48}
+  tiempos.cola_revision.critico_min:       {min: 5, max: 30}
+  tiempos.cola_revision.urgente_h:         {min: 1, max: 8}
+  tiempos.cola_revision.rutina_h_habiles:  {min: 8, max: 72}
+
+calidad:
+  limite_correccion_campo: 0.10   # RN-R4: sobre esta tasa se avisa al gestor y se propone subir el umbral
+  simulacion_ultimos: 50          # RN-L6: documentos recientes sobre los que se simula una configuración
