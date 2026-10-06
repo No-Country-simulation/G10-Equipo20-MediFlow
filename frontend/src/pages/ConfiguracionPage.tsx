@@ -1,4 +1,4 @@
-import { FlaskConical, GitBranchPlus, History, ListPlus, Signpost, SlidersHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, BellRing, FlaskConical, GitBranchPlus, History, ListPlus, Signpost, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { aprobarConfiguracion, obtenerConfiguracion, proponerConfiguracion, rechazarConfiguracion, simularConfiguracion } from "../api";
@@ -41,7 +41,7 @@ const NEWS2: Record<string, string> = {
   total_critico: "NEWS2 total crítico (≥)", edad_minima: "Edad mínima para NEWS2",
 };
 
-type Pestana = "umbrales" | "listas" | "destinos" | "versiones";
+type Pestana = "umbrales" | "listas" | "destinos" | "guardia" | "versiones";
 
 export function etiquetaUmbral(clave: string): string {
   return UMBRALES.find((u) => u.clave === clave)?.etiqueta ?? clave;
@@ -61,7 +61,17 @@ function resumenCambios(c: Partial<CambiosConfiguracion>): string[] {
   if (c.destinos_inactivos) {
     salida.push(c.destinos_inactivos.length ? `destinos sin uso: ${c.destinos_inactivos.map(etiquetaDestino).join(", ")}` : "todos los destinos en uso");
   }
+  if (c.notificaciones?.cadena_guardia) salida.push(`cadena de guardia: ${c.notificaciones.cadena_guardia.join(" → ")}`);
+  if (c.notificaciones?.canales) salida.push(`canales: ${c.notificaciones.canales.join(" → ")}`);
   return salida;
+}
+
+function mover<T>(lista: T[], indice: number, paso: -1 | 1): T[] {
+  const destino = indice + paso;
+  if (destino < 0 || destino >= lista.length) return lista;
+  const copia = [...lista];
+  [copia[indice], copia[destino]] = [copia[destino], copia[indice]];
+  return copia;
 }
 
 function separar(texto: string): string[] {
@@ -81,6 +91,9 @@ export function ConfiguracionPage() {
   const [controlEspecial, setControlEspecial] = useState("");
   const [hallazgo, setHallazgo] = useState({ concepto: "", sinonimos: "", cie10: "" });
   const [sinUso, setSinUso] = useState<string[]>([]);
+  const [cadena, setCadena] = useState<string[]>([]);
+  const [nivelNuevo, setNivelNuevo] = useState("");
+  const [canales, setCanales] = useState<string[]>([]);
   const [usuario] = useUsuario();
   const [motivo, setMotivo] = useState("");
   const [simulacion, setSimulacion] = useState<Simulacion | null>(null);
@@ -94,6 +107,8 @@ export function ConfiguracionPage() {
         setCfg(c);
         setTextos(Object.fromEntries(Object.entries(c.rangos).map(([k, r]) => [k, String(r.efectivo)])));
         setSinUso((c.destinos ?? []).filter((d) => !d.activo).map((d) => d.destino));
+        setCadena(c.notificaciones?.cadena_guardia ?? []);
+        setCanales(c.notificaciones?.canales ?? []);
       })
       .catch(() => setMensaje({ texto: "No hay conexión con el servidor. La página se mostrará cuando vuelva.", error: true }));
   useEffect(() => { cargar(); }, []);
@@ -115,13 +130,20 @@ export function ConfiguracionPage() {
     // Los destinos viajan solo si cambiaron, y entonces como conjunto completo (RN-L1).
     const vigentes = (cfg?.destinos ?? []).filter((d) => !d.activo).map((d) => d.destino);
     const pedidos = (cfg?.destinos ?? []).map((d) => d.destino).filter((d) => sinUso.includes(d));
-    if (pedidos.join("|") !== vigentes.join("|")) return { umbrales, ampliaciones, destinos_inactivos: pedidos };
-    return { umbrales, ampliaciones };
-  }, [textos, cfg, altoRiesgo, controlEspecial, hallazgo, sinUso]);
+    const salida: CambiosConfiguracion = { umbrales, ampliaciones };
+    if (pedidos.join("|") !== vigentes.join("|")) salida.destinos_inactivos = pedidos;
+    // Lo mismo con la cadena de guardia y los canales: completos y en orden, solo si cambiaron (RN-Q2, RN-P7).
+    const notificaciones: NonNullable<CambiosConfiguracion["notificaciones"]> = {};
+    if (cfg?.notificaciones && cadena.join("|") !== cfg.notificaciones.cadena_guardia.join("|")) notificaciones.cadena_guardia = cadena;
+    if (cfg?.notificaciones && canales.join("|") !== cfg.notificaciones.canales.join("|")) notificaciones.canales = canales;
+    if (Object.keys(notificaciones).length > 0) salida.notificaciones = notificaciones;
+    return salida;
+  }, [textos, cfg, altoRiesgo, controlEspecial, hallazgo, sinUso, cadena, canales]);
 
   const nCambios = Object.keys(cambios.umbrales).length + cambios.ampliaciones.alto_riesgo.length
     + cambios.ampliaciones.control_especial.length + cambios.ampliaciones.hallazgos_criticos.length
-    + (cambios.destinos_inactivos ? 1 : 0);
+    + (cambios.destinos_inactivos ? 1 : 0) + (cambios.notificaciones?.cadena_guardia ? 1 : 0) + (cambios.notificaciones?.canales ? 1 : 0);
+  const guardiaInvalida = cadena.length === 0 || canales.length === 0;
   const fueraDeRango = Object.entries(cambios.umbrales).filter(([k, v]) => {
     const r = cfg?.rangos[k];
     return r && (v < r.min || v > r.max || (r.solo_a_la_baja && v > r.base));
@@ -209,6 +231,7 @@ export function ConfiguracionPage() {
         <button type="button" role="tab" id="tab-umbrales" aria-controls="panel-configuracion" tabIndex={pestana === "umbrales" ? 0 : -1} aria-selected={pestana === "umbrales"} className={pestana === "umbrales" ? "" : "secundario"} onClick={() => setPestana("umbrales")}><SlidersHorizontal size={16} aria-hidden="true" />Umbrales</button>
         <button type="button" role="tab" id="tab-listas" aria-controls="panel-configuracion" tabIndex={pestana === "listas" ? 0 : -1} aria-selected={pestana === "listas"} className={pestana === "listas" ? "" : "secundario"} onClick={() => setPestana("listas")}><ListPlus size={16} aria-hidden="true" />Listas ampliables</button>
         <button type="button" role="tab" id="tab-destinos" aria-controls="panel-configuracion" tabIndex={pestana === "destinos" ? 0 : -1} aria-selected={pestana === "destinos"} className={pestana === "destinos" ? "" : "secundario"} onClick={() => setPestana("destinos")}><Signpost size={16} aria-hidden="true" />Destinos</button>
+        <button type="button" role="tab" id="tab-guardia" aria-controls="panel-configuracion" tabIndex={pestana === "guardia" ? 0 : -1} aria-selected={pestana === "guardia"} className={pestana === "guardia" ? "" : "secundario"} onClick={() => setPestana("guardia")}><BellRing size={16} aria-hidden="true" />Guardia y canales</button>
         <button type="button" role="tab" id="tab-versiones" aria-controls="panel-configuracion" tabIndex={pestana === "versiones" ? 0 : -1} aria-selected={pestana === "versiones"} className={pestana === "versiones" ? "" : "secundario"} onClick={() => setPestana("versiones")}><History size={16} aria-hidden="true" />Versiones{pendientes > 0 && <span className="contador-pestana">{pendientes}</span>}</button>
       </div>
 
@@ -307,6 +330,57 @@ export function ConfiguracionPage() {
         </section>
       )}
 
+      {pestana === "guardia" && (
+        <div className="dos-columnas">
+          <section className="tarjeta" data-testid="cadena-guardia">
+            <h2>Cadena de guardia</h2>
+            <p className="muted">
+              A quién va la alerta crítica y a quién escala sin acuse, en este orden. Quitar un nivel toca seguridad: necesita dos aprobadores.
+              Cada nivel de la cadena que tenga un canal de Slack propio se configura en el servidor.
+            </p>
+            <ol className="accesos" data-testid="niveles">
+              {cadena.map((nivel, i) => (
+                <li key={`${nivel}-${i}`} className={cfg?.notificaciones?.cadena_guardia[i] !== nivel ? "cambiado" : ""}>
+                  <strong>{i + 1}.</strong> {nivel}
+                  <span className="acciones" style={{ marginLeft: 8, display: "inline-flex", gap: 4 }}>
+                    <button type="button" className="secundario" aria-label={`Subir ${nivel}`} disabled={i === 0} onClick={() => setCadena(mover(cadena, i, -1))}><ArrowUp size={14} aria-hidden="true" /></button>
+                    <button type="button" className="secundario" aria-label={`Bajar ${nivel}`} disabled={i === cadena.length - 1} onClick={() => setCadena(mover(cadena, i, 1))}><ArrowDown size={14} aria-hidden="true" /></button>
+                    <button type="button" className="secundario" aria-label={`Quitar ${nivel}`} onClick={() => setCadena(cadena.filter((_, j) => j !== i))}><X size={14} aria-hidden="true" /></button>
+                  </span>
+                </li>
+              ))}
+              {cadena.length === 0 && <li className="error">La cadena necesita al menos un nivel.</li>}
+            </ol>
+            <div className="formulario" style={{ marginTop: 10 }}>
+              <label>Nivel nuevo<input value={nivelNuevo} onChange={(e) => setNivelNuevo(e.target.value)} placeholder="Médico de Turno" /></label>
+              <button type="button" className="secundario" disabled={!nivelNuevo.trim() || cadena.some((n) => n.toLowerCase() === nivelNuevo.trim().toLowerCase())}
+                onClick={() => { setCadena([...cadena, nivelNuevo.trim()]); setNivelNuevo(""); }}>Agregar al final</button>
+            </div>
+          </section>
+
+          <section className="tarjeta" data-testid="canales">
+            <h2>Canales de notificación</h2>
+            <p className="muted">Se intentan en este orden; si el primero no responde se usa el siguiente. Quitar un canal toca seguridad.</p>
+            <ol className="accesos" data-testid="orden-canales">
+              {canales.map((canal, i) => (
+                <li key={canal} className={cfg?.notificaciones?.canales[i] !== canal ? "cambiado" : ""}>
+                  <strong>{i + 1}.</strong> {canal}
+                  <span className="acciones" style={{ marginLeft: 8, display: "inline-flex", gap: 4 }}>
+                    <button type="button" className="secundario" aria-label={`Subir ${canal}`} disabled={i === 0} onClick={() => setCanales(mover(canales, i, -1))}><ArrowUp size={14} aria-hidden="true" /></button>
+                    <button type="button" className="secundario" aria-label={`Bajar ${canal}`} disabled={i === canales.length - 1} onClick={() => setCanales(mover(canales, i, 1))}><ArrowDown size={14} aria-hidden="true" /></button>
+                    <button type="button" className="secundario" aria-label={`Quitar ${canal}`} onClick={() => setCanales(canales.filter((c) => c !== canal))}><X size={14} aria-hidden="true" /></button>
+                  </span>
+                </li>
+              ))}
+              {canales.length === 0 && <li className="error">Hace falta al menos un canal.</li>}
+            </ol>
+            {(cfg?.notificaciones?.canales_conocidos ?? []).filter((c) => !canales.includes(c)).map((c) => (
+              <button key={c} type="button" className="secundario" style={{ marginTop: 8 }} onClick={() => setCanales([...canales, c])}>Agregar {c}</button>
+            ))}
+          </section>
+        </div>
+      )}
+
       {pestana === "versiones" && (
         <>
           <section className="tarjeta">
@@ -368,16 +442,16 @@ export function ConfiguracionPage() {
           {simulacion && <section className="tarjeta" style={{ marginTop: 12 }}><ResultadoSimulacion s={simulacion} /></section>}
           <div className="barra-acciones" data-testid="barra-proponer">
             <span className="resumen-cambios">
-              {nCambios === 0 ? <span className="muted">Sin cambios. Ajusta un umbral, amplía una lista o cambia un destino.</span> : <><strong>{nCambios} {nCambios === 1 ? "cambio" : "cambios"}</strong> <span className="muted">· {resumenCambios(cambios).join(" · ")}</span></>}
+              {nCambios === 0 ? <span className="muted">Sin cambios. Ajusta un umbral, amplía una lista, cambia un destino o la cadena de guardia.</span> : <><strong>{nCambios} {nCambios === 1 ? "cambio" : "cambios"}</strong> <span className="muted">· {resumenCambios(cambios).join(" · ")}</span></>}
             </span>
-            <button type="button" className="secundario" disabled={nCambios === 0 || fueraDeRango.length > 0 || simulando} onClick={simular}>
+            <button type="button" className="secundario" disabled={nCambios === 0 || fueraDeRango.length > 0 || guardiaInvalida || simulando} onClick={simular}>
               <FlaskConical size={16} aria-hidden="true" />{simulando ? "Simulando…" : "Simular"}
             </button>
             <label className="motivo">
               <span className="oculto-visual">Motivo de la versión</span>
               <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo de la versión (obligatorio)" />
             </label>
-            <button type="button" disabled={nCambios === 0 || fueraDeRango.length > 0 || !yo || !motivo.trim()} onClick={proponer} title={!yo ? "Escribe tu usuario en la barra lateral" : undefined}>
+            <button type="button" disabled={nCambios === 0 || fueraDeRango.length > 0 || guardiaInvalida || !yo || !motivo.trim()} onClick={proponer} title={!yo ? "Escribe tu usuario en la barra lateral" : undefined}>
               <GitBranchPlus size={16} aria-hidden="true" />Proponer versión
             </button>
           </div>

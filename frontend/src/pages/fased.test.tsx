@@ -21,6 +21,8 @@ const CONFIGURACION = {
   no_configurable: { news2: { fr_bajo: 8, fr_alto: 25, spo2_bajo: 91, spo2_escala2_min: 88, spo2_escala2_max: 92, fc_bajo: 40, fc_alto: 131, pas_bajo: 90, total_critico: 7, edad_minima: 16 } },
   listas: { alto_riesgo: { base: ["warfarina", "apixaban"], ampliadas: [] }, control_especial: { base: ["morfina"], ampliadas: [] }, hallazgos_criticos: { base: ["TEP_AGUDO", "IAM_STEMI"], ampliados: [] } },
   calidad: { limite_correccion_campo: 0.1, simulacion_ultimos: 50 },
+  notificaciones: { cadena_guardia: ["Jefe de Urgencias", "Coordinador Médico de Turno", "Dirección Médica"], canales: ["Slack", "Correo"],
+    base: { cadena_guardia: ["Jefe de Urgencias", "Coordinador Médico de Turno", "Dirección Médica"], canales: ["Slack", "Correo"] }, canales_conocidos: ["Slack", "Correo"], slack: {} },
   destinos: [
     { destino: "Cola_Emergencia_Medica", activo: true, protegido: true }, { destino: "Auditoria_Autorizaciones", activo: true, protegido: false },
     { destino: "Farmacia_Hospitalaria", activo: true, protegido: false }, { destino: "Historia_Clinica_Electronica", activo: true, protegido: false },

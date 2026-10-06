@@ -355,6 +355,16 @@ export interface CambiosConfiguracion {
   ampliaciones: Ampliaciones;
   /** RN-L1: conjunto completo de destinos sin uso desde esta versión. Ausente: la versión no los toca. */
   destinos_inactivos?: string[] | null;
+  /** RN-L1, RN-Q2, RN-P7: cadena de guardia y orden de canales, completos y en orden. Ausente: la versión no los toca. */
+  notificaciones?: { cadena_guardia?: string[] | null; canales?: string[] | null };
+}
+
+export interface NotificacionesConfiguradas {
+  cadena_guardia: string[];
+  canales: string[];
+  base: { cadena_guardia: string[]; canales: string[] };
+  canales_conocidos: string[];
+  slack: Record<string, unknown>;
 }
 
 export interface DestinoConfigurado {
@@ -431,6 +441,7 @@ export interface Configuracion {
   };
   calidad: { limite_correccion_campo: number; simulacion_ultimos: number };
   destinos?: DestinoConfigurado[];
+  notificaciones?: NotificacionesConfiguradas;
   propuestas: VersionConfiguracion[];
   historial: VersionConfiguracion[];
 }
