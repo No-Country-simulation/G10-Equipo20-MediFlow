@@ -157,6 +157,8 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
         "texto_enviado_llm": doc.texto_seudonimizado,
         "entregas": doc.entregas_json or {},
         "paciente_id": doc.paciente_id,  # RN-M6: ficha del directorio a la que quedó vinculado
+        "asignado_a": doc.asignado_a,  # RN-J3
+        "escalado_a_rol": doc.escalado_a_rol,  # RN-J2, RN-J3
         "verificaciones": doc.verificaciones_json or [],
         "autorizacion": doc.autorizacion_json,
         "alerta": _alerta(doc),

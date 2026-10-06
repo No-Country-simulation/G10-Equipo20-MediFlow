@@ -12,18 +12,10 @@ from app.repositories.documentos import RepositorioDocumentos
 from app.services.alertas import Notificador
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
+from app.services.revision_humana import ServicioRevision, plazo_minutos
 from app.services.storage import Storage
 
 router = APIRouter(prefix="/revision", tags=["revision humana"])
-
-
-def _plazo_minutos(nivel: str | None, cola) -> int:
-    """RN-J2: Crítico 15 min, Urgente 2 h, Rutina 24 h hábiles."""
-    if nivel == "Crítico":
-        return cola.critico_min
-    if nivel == "Urgente":
-        return cola.urgente_h * 60
-    return cola.rutina_h_habiles * 60
 
 
 @router.get("")
@@ -41,15 +33,24 @@ def cola_de_revision(session: Session = Depends(get_session)):
             # Conceptos del pack (TEP_AGUDO…), nunca texto del paciente (RN-M4): la cola muestra qué es cada caso.
             "hallazgos": (d.resultado_json or {}).get("extraccion", {}).get("hallazgos_criticos_detectados", []),
             "creado_en": d.creado_en.isoformat(),
-            "plazo_minutos": _plazo_minutos(d.nivel_prioridad, cola),
+            "plazo_minutos": plazo_minutos(d.nivel_prioridad, cola),
+            "asignado_a": d.asignado_a,  # RN-J3
+            "escalado_a_rol": d.escalado_a_rol,  # RN-J2, RN-J3
         }
         for d in documentos
     ]
 
 
+@router.get("/revisores")
+def revisores(session: Session = Depends(get_session)):
+    """RN-J3: a quién se puede reasignar un caso. Sin claves ni hashes: solo cuenta, nombre y rol."""
+    return [{"usuario": u.usuario, "nombre": u.nombre, "rol": u.rol} for u in ServicioRevision(RepositorioDocumentos(session)).revisores()]
+
+
 class ResolucionRequest(BaseModel):
-    accion: Literal["aprobar", "corregir", "rechazar", "transcribir"]  # RN-J3 (reasignar y escalar quedan para después)
+    accion: Literal["aprobar", "corregir", "rechazar", "transcribir", "reasignar", "escalar"]  # RN-J3
     motivo: str = ""
+    asignar_a: str | None = None  # reasignar: cuenta del revisor que toma el caso
     correcciones: dict[str, Any] | None = None
     # Fallo técnico (RN-P2): sin lectura del LLM, la persona transcribe con la misma forma de la propuesta.
     transcripcion: dict[str, Any] | None = None
@@ -70,13 +71,18 @@ def resolver(
     doc = repo.ultima_version(documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="documento no encontrado")
-    orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos), memoria=get_memoria(),
-                              notificador=notificador)
     try:
-        resultado = orquestador.resolver_revision(
-            doc, accion=cuerpo.accion, usuario=quien.usuario, rol=quien.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones,
-            transcripcion=cuerpo.transcripcion,
-        )
+        if cuerpo.accion == "reasignar":  # RN-J3: no decide nada; el grafo sigue esperando a la persona
+            resultado = ServicioRevision(repo).reasignar(doc, usuario=quien.usuario, rol=quien.rol, a_usuario=cuerpo.asignar_a or "", motivo=cuerpo.motivo)
+        elif cuerpo.accion == "escalar":
+            resultado = ServicioRevision(repo).escalar(doc, usuario=quien.usuario, rol=quien.rol, motivo=cuerpo.motivo)
+        else:
+            orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos), memoria=get_memoria(),
+                                      notificador=notificador)
+            resultado = orquestador.resolver_revision(
+                doc, accion=cuerpo.accion, usuario=quien.usuario, rol=quien.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones,
+                transcripcion=cuerpo.transcripcion,
+            )
     except ErrorDeRevision as error:
         session.rollback()
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error

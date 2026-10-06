@@ -51,6 +51,9 @@ class Documento(Base):
     tokens_salida: Mapped[int] = mapped_column(Integer, default=0)
     # RN-M6: paciente del directorio al que pertenece el documento. Vacío hasta que se enruta con identidad válida (RN-N5).
     paciente_id: Mapped[int | None] = mapped_column(ForeignKey("pacientes.id", name="fk_documentos_paciente"), nullable=True, index=True)
+    # RN-J3: revisor que tiene el caso. RN-J2/RN-J3: rol al que se escaló la revisión. Nada de esto cambia el estado.
+    asignado_a: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    escalado_a_rol: Mapped[str | None] = mapped_column(String(32), nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
 
     transiciones: Mapped[list["TransicionEstado"]] = relationship(
