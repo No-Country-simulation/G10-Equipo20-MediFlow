@@ -181,7 +181,8 @@ def test_la_carpeta_local_tambien_lista_y_borra(tmp_path):
     assert [(o.ruta, o.tamano) for o in s.listar()] == [("co/rechazados/DOC-2.txt", 5), ("co/recibidos/DOC-1.txt", 4)]
     assert [o.ruta for o in s.listar("co/recibidos")] == ["co/recibidos/DOC-1.txt"]
     assert s.listar("no-existe") == []
-    borrados = purgar(s, dias=0, prefijo="co/recibidos", confirmar=True)
+    # En Windows la fecha del archivo puede quedar un tic por delante del reloj: el límite se fija un segundo después de guardar.
+    borrados = purgar(s, dias=0, prefijo="co/recibidos", confirmar=True, ahora=datetime.now(timezone.utc) + timedelta(seconds=1))
     assert [o.ruta for o in borrados] == ["co/recibidos/DOC-1.txt"]
     assert [o.ruta for o in s.listar()] == ["co/rechazados/DOC-2.txt"]
     s.borrar("co/recibidos/DOC-1.txt")  # ya no existe: no falla
