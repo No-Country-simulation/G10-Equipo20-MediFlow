@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     llm_periodo_h: float = 24.0
     limite_documentos_por_minuto: int = 0  # RN-T2 (0 = sin límite)
     escalamiento_cada_s: int = 60  # RN-F2: cada cuánto se revisan las alertas sin acuse (0 = solo por script)
+    # Slack por webhooks (RN-F1, RN-F3, RN-Q2). Cada dirección es un secreto: nunca se versiona ni se escribe en el log.
+    # Qué canal recibe cada cosa se decide en umbrales.yaml (notificaciones.slack). Sin webhooks, el canal cuenta como caído (RN-P7).
+    slack_webhook_url: str = ""  # canal general: avisos de nivel Urgente al solicitante (RN-F3)
+    slack_webhook_url_urgente: str = ""  # canal de guardia: alertas críticas y sus escalamientos (RN-F1, RN-F2)
+    slack_timeout_s: float = 5.0  # pasado este tiempo, el canal cuenta como caído y se prueba el siguiente (RN-P7)
     prompt_version: str = "triaje_v1"  # RN-R5
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8

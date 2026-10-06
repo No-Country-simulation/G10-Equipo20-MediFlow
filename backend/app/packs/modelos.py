@@ -191,11 +191,21 @@ class Calidad(BaseModel):
     simulacion_ultimos: int = 50  # RN-L6
 
 
+class Slack(BaseModel):
+    """Qué canal de Slack recibe cada cosa. Los nombres son `general` o `urgente`: cada uno tiene su webhook en .env."""
+
+    criticos: str = "urgente"  # alertas críticas y sus escalamientos (RN-F1, RN-F2)
+    avisos_urgentes: str | None = "general"  # avisos de nivel Urgente al solicitante (RN-F3); None: no se envían
+    por_rol: dict[str, str] = Field(default_factory=dict)  # un canal propio por rol de la cadena, si existe
+    mencion_criticos: str = "@channel"  # suena en todos los teléfonos del canal; vacío para no mencionar
+
+
 class Notificaciones(BaseModel):
     """RN-Q2: cadena de guardia de la clínica. RN-P7: canales en orden de intento."""
 
     cadena_guardia: list[str] = Field(default_factory=lambda: ["Jefe de Urgencias", "Coordinador Médico de Turno", "Dirección Médica"])
     canales: list[str] = Field(default_factory=lambda: ["Slack", "Correo"])
+    slack: Slack = Field(default_factory=Slack)
 
 
 class Umbrales(BaseModel):

@@ -56,7 +56,12 @@ notificaciones:                   # RN-Q2: la clínica configura la cadena de gu
     - Jefe de Urgencias
     - Coordinador Médico de Turno
     - Dirección Médica
-  canales: [Slack, Correo]        # se intentan en este orden; el MVP solo los registra, no hay envío real
+  canales: [Slack, Correo]        # se intentan en este orden; un canal sin configurar cuenta como caído (RN-P7)
+  slack:                          # qué canal de Slack recibe cada cosa; los webhooks de cada canal van en .env
+    criticos: urgente             # alertas críticas y sus escalamientos (RN-F1, RN-F2)
+    avisos_urgentes: general      # avisos de nivel Urgente al solicitante (RN-F3); null para no enviarlos
+    por_rol: {}                   # canal propio por rol de la cadena, cuando exista: "Dirección Médica": direccion
+    mencion_criticos: "@channel"  # suena en todos los teléfonos del canal; vacío para no mencionar
 
 calidad:
   limite_correccion_campo: 0.10   # RN-R4: sobre esta tasa se avisa al gestor y se propone subir el umbral
