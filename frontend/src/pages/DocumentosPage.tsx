@@ -33,6 +33,7 @@ export function DocumentosPage() {
   const [documentoId, setDocumentoId] = useState("");
   const [canal, setCanal] = useState<CanalOrigen>("Consulta_Ambulatoria");
   const [cobertura, setCobertura] = useState<Cobertura | "">("");
+  const [paginasPorDocumento, setPaginasPorDocumento] = useState("");
   const [archivo, setArchivo] = useState<File | null>(null);
   const [modoTexto, setModoTexto] = useState(false);
   const [texto, setTexto] = useState("");
@@ -90,7 +91,7 @@ export function DocumentosPage() {
       const datos = { documento_id: documentoId.trim(), canal_origen: canal, cobertura_paciente: cobertura || null };
       const detalle = modoTexto
         ? await enviarDocumento({ ...datos, tipo_contenido: "texto", contenido_texto: texto })
-        : await enviarArchivo(archivo!, datos);
+        : await enviarArchivo(archivo!, { ...datos, paginas_por_documento: paginasPorDocumento.trim() || null });
       if (detalle.codigo_error) {
         setErrorCarga(mensajeDeRechazo(detalle.codigo_error));
       } else {
@@ -98,6 +99,7 @@ export function DocumentosPage() {
         setArchivo(null);
         setTexto("");
         setDocumentoId("");
+        setPaginasPorDocumento("");
       }
       setOffset(0);
       cargarLista();
@@ -177,6 +179,12 @@ export function DocumentosPage() {
                 {COBERTURAS.map((c) => <option key={c} value={c}>{ETIQUETA_COBERTURA[c] ?? c}</option>)}
               </select>
             </label>
+            {!modoTexto && archivo?.name.toLowerCase().endsWith(".pdf") && (
+              <label className="ancho">
+                Páginas por documento (si el PDF trae varios documentos)
+                <input value={paginasPorDocumento} onChange={(e) => setPaginasPorDocumento(e.target.value)} placeholder="p. ej. 1-2,3 · vacío: el sistema corta por los títulos" />
+              </label>
+            )}
           </div>
           <div className="acciones" style={{ marginTop: 12 }}>
             <button type="button" disabled={!listo} onClick={cargar} aria-describedby="falta-carga"><Upload size={16} aria-hidden="true" />{enviando ? "Procesando…" : "Cargar documento"}</button>
@@ -234,6 +242,7 @@ export function DocumentosPage() {
                     <code>{d.documento_id}</code>
                     <span className="secundaria">
                       {d.nombre_archivo ?? "texto pegado"}{d.num_paginas && d.num_paginas > 1 ? ` · ${d.num_paginas} pág` : ""} · {tiempoRelativo(d.creado_en)}
+                      {d.documento_padre && <> · parte de <code>{d.documento_padre}</code></>}
                     </span>
                   </td>
                   <td>{d.tipo ?? <span className="muted">—</span>}{d.motivo_auditoria && <span className="secundaria">{etiquetaMotivo(d.motivo_auditoria)}</span>}</td>

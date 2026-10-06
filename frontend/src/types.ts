@@ -155,6 +155,10 @@ export interface DocumentoDetalle {
   paciente_id?: number | null;
   /** RN-M6: solicitud del titular pendiente de respuesta sobre este documento. */
   solicitud_titular?: SolicitudTitular | null;
+  /** RN-O4: id del PDF compuesto del que esta parte salió. */
+  documento_padre?: string | null;
+  /** RN-O4: las partes de un PDF compuesto; solo las trae el padre. */
+  sub_documentos?: ItemListado[];
 }
 
 export interface ItemCola {
@@ -211,6 +215,8 @@ export interface ItemListado {
   motivo_auditoria: string | null;
   codigo_error: string | null;
   num_paginas?: number;
+  /** RN-O4: id del PDF compuesto del que esta parte salió. */
+  documento_padre?: string | null;
 }
 
 export interface Listado {
@@ -225,6 +231,8 @@ export interface DatosArchivo {
   canal_origen: CanalOrigen;
   cobertura_paciente?: Cobertura | null;
   pais_origen?: string;
+  /** RN-O4: páginas de cada sub-documento de un PDF compuesto, p. ej. "1-2,3". */
+  paginas_por_documento?: string | null;
 }
 
 export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir" | "reasignar" | "escalar";

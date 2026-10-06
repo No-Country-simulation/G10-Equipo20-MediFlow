@@ -249,6 +249,7 @@ export function DetalleDocumentoPage() {
             {titulo && <span className="id-doc"><code>{detalle.documento_id}</code> · </span>}
             {etiquetaTipo(r?.clasificacion.tipo) || "Sin clasificar"} · {detalle.canal_origen?.replace(/_/g, " ")} · versión {detalle.version}
             {detalle.nombre_archivo && <> · {modoDiscreto ? <span className="muted">nombre de archivo oculto</span> : <span className="archivo">{detalle.nombre_archivo}</span>}</>}
+            {detalle.documento_padre && <> · parte del PDF compuesto <Link to={`/documentos/${encodeURIComponent(detalle.documento_padre)}`}><code>{detalle.documento_padre}</code></Link></>}
           </p>
         </div>
         {alerta && plazoAlerta && (
@@ -261,6 +262,29 @@ export function DetalleDocumentoPage() {
       </header>
 
       <EstadoMensaje mensaje={mensaje} />
+
+      {detalle.sub_documentos && detalle.sub_documentos.length > 0 && (
+        <section className="tarjeta" data-testid="sub-documentos" style={{ marginBottom: 12 }}>
+          <h2>PDF compuesto: {detalle.sub_documentos.length} sub-documentos</h2>
+          <p className="muted">Cada parte se clasificó y enrutó por su cuenta. La prioridad de este compuesto es la máxima de sus partes.</p>
+          <div className="scroll">
+            <table className="tabla-densa">
+              <thead><tr><th>Parte</th><th>Tipo</th><th>Prioridad</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                {detalle.sub_documentos.map((s) => (
+                  <tr key={`${s.documento_id}-${s.version}`} data-testid="sub-documento" className="fila rutina">
+                    <td><code>{s.documento_id}</code><span className="secundaria">{s.num_paginas ?? 1} pág</span></td>
+                    <td>{etiquetaTipo(s.tipo) || <span className="muted">—</span>}</td>
+                    <td><TagPrioridad nivel={s.nivel_prioridad} /></td>
+                    <td><TagEstado estado={s.estado} /></td>
+                    <td><Link to={`/documentos/${encodeURIComponent(s.documento_id)}`}>Abrir ›</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {pared ? (
         <section className="tarjeta resguardo-pared" data-testid="documento-resguardado" aria-labelledby="resguardo-titulo">

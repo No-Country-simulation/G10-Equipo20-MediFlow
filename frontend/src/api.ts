@@ -131,6 +131,7 @@ export async function enviarArchivo(archivo: File, datos: DatosArchivo): Promise
   form.append("canal_origen", datos.canal_origen);
   if (datos.cobertura_paciente) form.append("cobertura_paciente", datos.cobertura_paciente);
   if (datos.pais_origen) form.append("pais_origen", datos.pais_origen);
+  if (datos.paginas_por_documento) form.append("paginas_por_documento", datos.paginas_por_documento);
   const respuesta = await fetch(`${BASE_URL}/documentos/archivo`, { method: "POST", body: form });
   const cuerpo = await respuesta.json().catch(() => null);
   if (!respuesta.ok && respuesta.status !== 400) {
