@@ -16,7 +16,7 @@ import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoM
 import { HistorialDecisiones } from "../components/HistorialDecisiones";
 import { TagEstado, TagPrioridad } from "../components/Tags";
 import { Transcripcion } from "../components/Transcripcion";
-import type { AccionRevision, DocumentoDetalle, ItemCola, Revisor } from "../types";
+import type { AccionRevision, DocumentoDetalle, ItemCola, Revisor, VerificacionProfesional } from "../types";
 
 type ClaveConfianza = "identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional";
 type Decision = "aprobar" | "rechazar" | "escalar";
@@ -49,6 +49,24 @@ function PildoraConfianza({ valor, umbral }: { valor: number | null | undefined;
   if (valor === null || valor === undefined) return <span className="tag neutro">sin dato</span>;
   const bajo = umbral !== undefined && valor < umbral;
   return <span className={`tag ${bajo ? "urgente" : "exito"}`} title="Confianza de la lectura automática frente al umbral del campo">{valor.toFixed(2)}</span>;
+}
+
+const ETIQUETA_VERIFICACION: Record<VerificacionProfesional["estado"], { texto: string; clase: string }> = {
+  verificado: { texto: "Verificado en el padrón", clase: "exito" },
+  no_encontrado: { texto: "No está en el padrón", clase: "urgente" },
+  sin_datos: { texto: "Sin datos para verificar", clase: "neutro" },
+  no_aplica: { texto: "Sin verificación en línea", clase: "neutro" },
+};
+
+/** RN-A7: qué dijo la verificación del profesional, con el enlace al registro nacional para quien quiera consultar. */
+function VerificacionProfesionalTag({ verificacion }: { verificacion: VerificacionProfesional }) {
+  const etiqueta = ETIQUETA_VERIFICACION[verificacion.estado];
+  return (
+    <>
+      <span className={`tag ${etiqueta.clase}`} title={verificacion.detalle}>{etiqueta.texto}</span>
+      {verificacion.enlace_consulta && <a href={verificacion.enlace_consulta} target="_blank" rel="noreferrer">Consultar en ReTHUS ›</a>}
+    </>
+  );
 }
 
 const PASADO: Record<AccionRevision, string> = { aprobar: "Aprobado", corregir: "Corregido y reevaluado", rechazar: "Rechazado", transcribir: "Transcrito y evaluado", reasignar: "Reasignado", escalar: "Escalado" };
@@ -364,6 +382,7 @@ export function DetalleDocumentoPage() {
                 <div data-testid="campo-profesional" className={bajo("profesional") ? "dudoso" : ""}>
                   <dt>Profesional</dt>
                   <dd><span>{ver(r.extraccion.profesional.nombre)}</span><span>· {r.extraccion.profesional.registro_profesional ?? "sin registro"}</span> <PildoraConfianza valor={conf.profesional} umbral={umb.profesional} /></dd>
+                  {r.extraccion.profesional.verificacion && <dd data-testid="verificacion-profesional"><VerificacionProfesionalTag verificacion={r.extraccion.profesional.verificacion} /></dd>}
                   {bajo("profesional") && <dd className="aviso">Bajo el umbral {umb.profesional?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.profesional.registro_profesional", valor: r.extraccion.profesional.registro_profesional ?? "" })}>Corregir</button></dd>}
                 </div>
                 <div>

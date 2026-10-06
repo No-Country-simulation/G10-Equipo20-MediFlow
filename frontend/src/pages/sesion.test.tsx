@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.spyOn(api, "colaRevision").mockResolvedValue([]);
   vi.spyOn(api, "obtenerResumen").mockResolvedValue({ total: 0, por_estado: {}, por_prioridad: {}, en_revision: 0, alertas_sin_acuse: 0, recetas_por_verificar: 0, ordenes_por_autorizar: 0, enrutados: 0, entregados_hoy: 0 });
   vi.spyOn(api, "listarUsuarios").mockResolvedValue(USUARIOS as never);
+  vi.spyOn(api, "listarProfesionales").mockResolvedValue([]);
   vi.spyOn(api, "puestaEnMarcha").mockResolvedValue({ listo: false, requisitos: [] } as never);
   vi.spyOn(api, "obtenerPack").mockRejectedValue(new Error("sin pack"));
   vi.spyOn(api, "listarAccesos").mockResolvedValue([]);

@@ -91,6 +91,7 @@ beforeEach(() => {
   vi.spyOn(api, "obtenerConfiguracion").mockResolvedValue(CONFIGURACION as never);
   vi.spyOn(api, "obtenerMetricas").mockResolvedValue(METRICAS as never);
   vi.spyOn(api, "listarUsuarios").mockResolvedValue(USUARIOS as never);
+  vi.spyOn(api, "listarProfesionales").mockResolvedValue([]);
   vi.spyOn(api, "puestaEnMarcha").mockResolvedValue(PUESTA as never);
   vi.spyOn(api, "obtenerPack").mockResolvedValue(PACK as never);
   vi.spyOn(api, "listarAccesos").mockResolvedValue(ACCESOS as never);

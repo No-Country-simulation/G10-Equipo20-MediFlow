@@ -16,6 +16,7 @@ import type {
   Metricas,
   PacienteDetalle,
   PacienteFicha,
+  ProfesionalRegistrado,
   CorreccionDePaciente,
   CuentaSesion,
   PuestaEnMarcha,
@@ -215,6 +216,23 @@ export function obtenerMetricas(dias = 30): Promise<Metricas> {
 }
 
 // --- Fase D: administración (RN-K, RN-S3) --------------------------------------------------------
+
+export function listarProfesionales(): Promise<ProfesionalRegistrado[]> {
+  return llamar<ProfesionalRegistrado[]>("/administracion/profesionales");
+}
+
+export function crearProfesional(cuerpo: { registro: string; nombre: string; profesion?: string; tipo_documento?: string; numero_documento?: string }): Promise<ProfesionalRegistrado> {
+  return llamar("/administracion/profesionales", { method: "POST", body: JSON.stringify(cuerpo) });
+}
+
+export function cambiarEstadoProfesional(id: number, activo: boolean): Promise<ProfesionalRegistrado> {
+  return llamar(`/administracion/profesionales/${id}/${activo ? "activar" : "desactivar"}`, { method: "POST" });
+}
+
+/** Deja anotado que se consultó el registro nacional (ReTHUS) para ese profesional. */
+export function anotarConsultaRegistro(id: number): Promise<ProfesionalRegistrado> {
+  return llamar(`/administracion/profesionales/${id}/consulta_registro`, { method: "POST" });
+}
 
 export function listarUsuarios(): Promise<UsuarioAdmin[]> {
   return llamar<UsuarioAdmin[]>("/administracion/usuarios");

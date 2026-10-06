@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 
-import { cambiarEstadoUsuario, crearUsuario, definirClave, listarAccesos, listarUsuarios, obtenerPack, puestaEnMarcha } from "../api";
+import { anotarConsultaRegistro, cambiarEstadoProfesional, cambiarEstadoUsuario, crearProfesional, crearUsuario, definirClave, listarAccesos, listarProfesionales, listarUsuarios, obtenerPack, puestaEnMarcha } from "../api";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { ROLES } from "../app/roles";
 import { useUsuario } from "../app/usuario";
-import type { Acceso, FichaPack, PuestaEnMarcha, UsuarioAdmin } from "../types";
+import type { Acceso, FichaPack, ProfesionalRegistrado, PuestaEnMarcha, UsuarioAdmin } from "../types";
 
 const FORMULARIO_VACIO = { usuario: "", nombre: "", rol: "auditor_clinico", tipo: "persona" };
+const PROFESIONAL_VACIO = { registro: "", nombre: "", profesion: "", tipo_documento: "CC", numero_documento: "" };
 const CLAVE_MINIMA = 8;
 
 function nombreRol(id: string): string {
@@ -25,9 +26,12 @@ export function AdministracionPage() {
   const [claveInicial, setClaveInicial] = useState("");
   const [cambioDeClave, setCambioDeClave] = useState<{ usuario: string; clave: string } | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+  const [profesionales, setProfesionales] = useState<ProfesionalRegistrado[] | null>(null);
+  const [profesional, setProfesional] = useState(PROFESIONAL_VACIO);
 
   const cargar = () => {
     listarUsuarios().then(setUsuarios).catch(() => setUsuarios([]));
+    listarProfesionales().then(setProfesionales).catch(() => setProfesionales([]));
     puestaEnMarcha().then(setPuesta).catch(() => setPuesta(null));
     obtenerPack().then(setPack).catch(() => setPack(null));
   };
@@ -50,6 +54,31 @@ export function AdministracionPage() {
       setForm(FORMULARIO_VACIO);
       setClaveInicial("");
       cargar();
+    } catch (e) {
+      informar(e);
+    }
+  }
+
+  async function crearEnPadron() {
+    setMensaje(null);
+    try {
+      const p = await crearProfesional({
+        registro: profesional.registro.trim(), nombre: profesional.nombre.trim(), profesion: profesional.profesion.trim() || undefined,
+        tipo_documento: profesional.numero_documento.trim() ? profesional.tipo_documento : undefined, numero_documento: profesional.numero_documento.trim() || undefined,
+      });
+      setMensaje({ texto: `${p.nombre} queda en el padrón con el registro ${p.registro}. Anota la consulta en ReTHUS cuando la hagas.` });
+      setProfesional(PROFESIONAL_VACIO);
+      listarProfesionales().then(setProfesionales).catch(() => undefined);
+    } catch (e) {
+      informar(e);
+    }
+  }
+
+  async function actualizarProfesional(accion: Promise<ProfesionalRegistrado>) {
+    setMensaje(null);
+    try {
+      const p = await accion;
+      setProfesionales((lista) => (lista ?? []).map((x) => (x.id === p.id ? p : x)));
     } catch (e) {
       informar(e);
     }
@@ -178,6 +207,48 @@ export function AdministracionPage() {
             <button type="button" className="secundario" onClick={() => setCambioDeClave(null)}>Cancelar</button>
           </div>
         )}
+      </section>
+
+      <section className="tarjeta" style={{ marginTop: 12 }} data-testid="padron-profesionales">
+        <h2>Padrón de profesionales</h2>
+        <p className="muted">
+          Quién puede firmar documentos clínicos en esta instalación. El triaje verifica contra este padrón y lo muestra en cada documento;
+          la consulta en el registro nacional es manual y queda anotada con fecha y quién la hizo.
+          {pack?.identidad_profesional.verificacion_en_linea.url ? <> <a href={String(pack.identidad_profesional.verificacion_en_linea.url)} target="_blank" rel="noreferrer">Consultar {pack.identidad_profesional.registro} ›</a></> : null}
+        </p>
+        <div className="formulario" style={{ marginBottom: 10 }}>
+          <label>Registro profesional<input value={profesional.registro} onChange={(e) => setProfesional({ ...profesional, registro: e.target.value })} placeholder="RM 45678" /></label>
+          <label>Nombre del profesional<input value={profesional.nombre} onChange={(e) => setProfesional({ ...profesional, nombre: e.target.value })} placeholder="Andrés Rojas" /></label>
+          <label>Profesión<input value={profesional.profesion} onChange={(e) => setProfesional({ ...profesional, profesion: e.target.value })} placeholder="Medicina" /></label>
+          <label>Tipo de documento
+            <select value={profesional.tipo_documento} onChange={(e) => setProfesional({ ...profesional, tipo_documento: e.target.value })}>
+              {["CC", "CE", "PA", "PT"].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Número de documento<input value={profesional.numero_documento} onChange={(e) => setProfesional({ ...profesional, numero_documento: e.target.value })} placeholder="Opcional" /></label>
+          <button type="button" disabled={!yo || !profesional.registro.trim() || !profesional.nombre.trim()} onClick={crearEnPadron}>Agregar al padrón</button>
+        </div>
+        <div className="scroll">
+          <table className="tabla-densa">
+            <thead><tr><th>Registro</th><th>Profesional</th><th>Documento</th><th>Registro nacional</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              {profesionales?.map((p) => (
+                <tr key={p.id} data-testid="fila-profesional" className={`fila ${p.activo ? "rutina" : "critico"}`}>
+                  <td><code>{p.registro}</code></td>
+                  <td>{p.nombre}{p.profesion && <span className="secundaria">{p.profesion}</span>}</td>
+                  <td>{p.numero_documento ? <code>{p.tipo_documento} {p.numero_documento}</code> : <span className="muted">—</span>}</td>
+                  <td>{p.registro_consultado_en ? <><span className="tag exito">Consultado</span><span className="secundaria">{new Date(p.registro_consultado_en).toLocaleDateString("es-CO")} · {p.registro_consultado_por}</span></> : <span className="tag neutro">Sin consultar</span>}</td>
+                  <td>{p.activo ? <span className="tag exito">Activo</span> : <span className="tag critico">Inactivo</span>}</td>
+                  <td className="acciones">
+                    <button type="button" className="secundario" disabled={!yo} aria-label={`Anotar la consulta en el registro nacional de ${p.nombre}`} onClick={() => actualizarProfesional(anotarConsultaRegistro(p.id))}>Consultado</button>
+                    <button type="button" className={p.activo ? "peligro" : "secundario"} disabled={!yo} aria-label={`${p.activo ? "Desactivar" : "Activar"} a ${p.nombre}`} onClick={() => actualizarProfesional(cambiarEstadoProfesional(p.id, !p.activo))}>{p.activo ? "Desactivar" : "Activar"}</button>
+                  </td>
+                </tr>
+              ))}
+              {profesionales && profesionales.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 20 }}>Padrón vacío: ningún profesional saldrá verificado hasta que se agregue.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="tarjeta" style={{ marginTop: 12 }} data-testid="accesos">

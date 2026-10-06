@@ -49,9 +49,18 @@ export interface Medicamento {
   control_especial: boolean;
 }
 
+/** RN-A7: resultado de verificar al profesional contra el padrón de la instalación. */
+export interface VerificacionProfesional {
+  estado: "verificado" | "no_encontrado" | "sin_datos" | "no_aplica";
+  fuente: string | null;
+  detalle: string;
+  enlace_consulta: string | null;
+  consultado_en_registro_en: string | null;
+}
+
 export interface Extraccion {
   paciente: Paciente;
-  profesional: { nombre: string | null; registro_profesional: string | null };
+  profesional: { nombre: string | null; registro_profesional: string | null; verificacion?: VerificacionProfesional | null };
   fecha_documento: string | null;
   signos_vitales: { FR: number | null; SpO2: number | null; FC: number | null; PAS: number | null; Temp: number | null; NEWS2_total: number | null };
   diagnosticos: { texto: string; cie10_sugerido: string | null; cie11_sugerido: string | null }[];
@@ -516,6 +525,21 @@ export interface PuestaEnMarcha {
 }
 
 // --- Directorio de pacientes (RN-M6) ----------------------------------------------------------------
+
+/** Padrón de profesionales de la instalación (RN-A7, RN-CO5). */
+export interface ProfesionalRegistrado {
+  id: number;
+  registro: string;
+  nombre: string;
+  profesion: string | null;
+  tipo_documento: string | null;
+  numero_documento: string | null;
+  activo: boolean;
+  creado_por: string;
+  creado_en: string | null;
+  registro_consultado_en: string | null;
+  registro_consultado_por: string | null;
+}
 
 export interface PacienteFicha {
   id: number;
