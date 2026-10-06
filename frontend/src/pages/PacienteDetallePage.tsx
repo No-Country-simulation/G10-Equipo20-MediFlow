@@ -7,6 +7,7 @@ import { etiquetaTipo } from "../app/mensajes";
 import { useRol } from "../app/RolContext";
 import { enmascarar, useUsuario } from "../app/usuario";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
+import { SolicitudesTitular } from "../components/SolicitudesTitular";
 import { TagEstado, TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
 import type { PacienteDetalle } from "../types";
@@ -148,6 +149,12 @@ export function PacienteDetallePage() {
           </table>
         </div>
       </section>
+
+      {paciente && (
+        <SolicitudesTitular pacienteId={paciente.id} documentos={paciente.documentos_listado} solicitudes={paciente.solicitudes ?? []}
+          puedeRegistrar={rol.id === "auditor_clinico" && yo !== ""} puedeResponder={rol.acciones.includes("resolver_revision") && yo !== ""}
+          onCambio={(solicitudes) => setPaciente({ ...paciente, solicitudes })} onMensaje={setMensaje} />
+      )}
 
       <section className="tarjeta" style={{ marginTop: 12 }} data-testid="historial-paciente">
         <h2>Correcciones a la ficha</h2>

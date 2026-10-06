@@ -27,6 +27,7 @@ import type {
   ResultadoTriaje,
   Resumen,
   Simulacion,
+  SolicitudTitular,
   UsuarioAdmin,
   VersionConfiguracion,
 RolApi, EstadoSesion } from "./types";
@@ -263,4 +264,24 @@ export function editarPaciente(
   cuerpo: { nombre?: string; edad?: number | null; motivo: string },
 ): Promise<PacienteFicha & { historial: CorreccionDePaciente[] }> {
   return llamar(`/pacientes/${id}`, { method: "PATCH", body: JSON.stringify(cuerpo) });
+}
+
+// --- Solicitudes del titular (RN-M6) -------------------------------------------------------------------
+
+export function listarSolicitudesTitular(estado: "pendiente" | "respondida" | "todas" = "pendiente"): Promise<SolicitudTitular[]> {
+  return llamar<SolicitudTitular[]>(`/pacientes/solicitudes?estado=${estado}`);
+}
+
+export function registrarSolicitudTitular(
+  pacienteId: number,
+  cuerpo: { documento_id: string; presentada_por: SolicitudTitular["presentada_por"]; canal: SolicitudTitular["canal"]; motivo: string },
+): Promise<SolicitudTitular> {
+  return llamar(`/pacientes/${pacienteId}/solicitudes`, { method: "POST", body: JSON.stringify(cuerpo) });
+}
+
+export function responderSolicitudTitular(
+  id: number,
+  cuerpo: { resultado: "mantenida" | "corregida"; respuesta: string },
+): Promise<SolicitudTitular> {
+  return llamar(`/pacientes/solicitudes/${id}/responder`, { method: "POST", body: JSON.stringify(cuerpo) });
 }

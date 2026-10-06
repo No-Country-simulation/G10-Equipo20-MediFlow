@@ -1,13 +1,14 @@
-import { Contact } from "lucide-react";
+import { Contact, MessageSquareReply } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { listarPacientes } from "../api";
+import { listarPacientes, listarSolicitudesTitular } from "../api";
 import { useRol } from "../app/RolContext";
+import { fechaCorta, vencida } from "../app/titular";
 import { enmascarar } from "../app/usuario";
 import { EstadoMensaje, type Mensaje } from "../components/EstadoMensaje";
 import { Vacio } from "../components/Vacio";
-import type { ListadoPacientes } from "../types";
+import type { ListadoPacientes, SolicitudTitular } from "../types";
 
 const LIMITE = 20;
 
@@ -19,6 +20,13 @@ export function PacientesPage() {
   const [q, setQ] = useState("");
   const [offset, setOffset] = useState(0);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+  const [solicitudes, setSolicitudes] = useState<SolicitudTitular[]>([]);
+
+  useEffect(() => {
+    let activo = true;
+    listarSolicitudesTitular("pendiente").then((s) => activo && setSolicitudes(s)).catch(() => activo && setSolicitudes([]));
+    return () => { activo = false; };
+  }, []);
 
   useEffect(() => {
     let activo = true;
@@ -45,6 +53,21 @@ export function PacientesPage() {
         </div>
       </header>
       <EstadoMensaje mensaje={mensaje} />
+
+      {solicitudes.length > 0 && (
+        <section className="tarjeta aviso-tarjeta" data-testid="solicitudes-pendientes">
+          <h2><MessageSquareReply size={18} aria-hidden="true" /> {solicitudes.length} solicitud{solicitudes.length === 1 ? "" : "es"} del titular sin responder</h2>
+          <ul className="accesos">
+            {solicitudes.map((s) => (
+              <li key={s.id}>
+                <span className={`tag ${vencida(s) ? "critico" : "urgente"}`}>{vencida(s) ? "Vencida" : `Plazo ${fechaCorta(s.vence_en)}`}</span>{" "}
+                <Link to={`/pacientes/${s.paciente_id}`}>{ver(s.paciente_nombre ?? `paciente ${s.paciente_id}`)}</Link> · <code>{s.documento_id}</code>
+                <span className="secundaria">{s.motivo}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="tarjeta" style={{ padding: 0 }}>
         <div style={{ padding: "12px 16px 0" }}>

@@ -153,6 +153,8 @@ export interface DocumentoDetalle {
   autorizacion?: Autorizacion | null;
   /** Ficha del directorio de pacientes a la que quedó vinculado (RN-M6). */
   paciente_id?: number | null;
+  /** RN-M6: solicitud del titular pendiente de respuesta sobre este documento. */
+  solicitud_titular?: SolicitudTitular | null;
 }
 
 export interface ItemCola {
@@ -538,9 +540,30 @@ export interface DocumentoDePaciente {
   creado_en: string | null;
 }
 
+/** RN-M6: el titular pide que una persona revise una decisión automatizada sobre uno de sus documentos. */
+export interface SolicitudTitular {
+  id: number;
+  paciente_id: number;
+  paciente_nombre?: string;
+  documento_id: string;
+  version: number;
+  presentada_por: "titular" | "representante";
+  canal: "presencial" | "telefono" | "correo" | "escrito";
+  motivo: string;
+  registrada_por: string;
+  registrada_en: string;
+  vence_en: string;
+  estado: "pendiente" | "respondida";
+  resultado: "mantenida" | "corregida" | null;
+  respuesta: string | null;
+  respondida_por: string | null;
+  respondida_en: string | null;
+}
+
 export interface PacienteDetalle extends PacienteFicha {
   historial: CorreccionDePaciente[];
   documentos_listado: DocumentoDePaciente[];
+  solicitudes: SolicitudTitular[];
 }
 
 export interface ListadoPacientes {

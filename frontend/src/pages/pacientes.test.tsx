@@ -15,6 +15,7 @@ const LUIS = { id: 5, pais: "CO", tipo_documento: "CC", numero_documento: "79456
 const FICHA = {
   ...ANA,
   historial: [],
+  solicitudes: [],
   documentos_listado: [
     { documento_id: "REC-2", version: 1, estado: "ENRUTADO", nivel_prioridad: "Rutina", tipo: "Receta Médica", fecha_documento: "03/04/2026", creado_en: AHORA },
     { documento_id: "EPI-1", version: 2, estado: "ENTREGADO", nivel_prioridad: "Crítico", tipo: "Epicrisis o Alta", fecha_documento: null, creado_en: AHORA },
@@ -28,6 +29,7 @@ beforeEach(() => {
   vi.spyOn(api, "obtenerResumen").mockResolvedValue({ total: 3, por_estado: {}, por_prioridad: {}, en_revision: 0, alertas_sin_acuse: 0, recetas_por_verificar: 0, ordenes_por_autorizar: 0, enrutados: 0, entregados_hoy: 0 });
   vi.spyOn(api, "listarPacientes").mockResolvedValue({ items: [ANA, LUIS], total: 2, limit: 20, offset: 0 } as never);
   vi.spyOn(api, "obtenerPaciente").mockResolvedValue(FICHA as never);
+  vi.spyOn(api, "listarSolicitudesTitular").mockResolvedValue([]);
 });
 afterEach(() => vi.restoreAllMocks());
 

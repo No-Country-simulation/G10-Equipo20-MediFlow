@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { colaRevision, confirmarEntrega, consultarDocumento, listarRevisores, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
 import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, etiquetaTipo, motivoLegible, tituloHallazgos } from "../app/mensajes";
 import { usePared } from "../app/pared";
+import { fechaCorta, PRESENTADA_POR } from "../app/titular";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
 import { useRol } from "../app/RolContext";
 import { rolPorId, rolPuedeVer } from "../app/roles";
@@ -377,6 +378,13 @@ export function DetalleDocumentoPage() {
         {/* ------------------------------------------------ Decisión */}
         <section className="panel" aria-labelledby="p-decision">
           <div className="panel-cabecera"><h2 id="p-decision">Decisión</h2></div>
+
+          {detalle.solicitud_titular && (
+            <p className="aviso" data-testid="aviso-titular">
+              Revisión pedida por {PRESENTADA_POR[detalle.solicitud_titular.presentada_por]} el {fechaCorta(detalle.solicitud_titular.registrada_en)}: «{detalle.solicitud_titular.motivo}». Plazo para responder: {fechaCorta(detalle.solicitud_titular.vence_en)}.
+              {rolPuedeVer(rol, "/pacientes") && <> <Link to={`/pacientes/${detalle.solicitud_titular.paciente_id}`}>Responder en la ficha ›</Link></>}
+            </p>
+          )}
 
           {cierre && (
             <div className="cierre-caso" data-testid="cierre-caso">
