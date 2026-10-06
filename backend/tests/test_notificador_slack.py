@@ -147,6 +147,51 @@ def test_el_escalamiento_publica_un_segundo_mensaje_que_nombra_el_cambio_de_rol_
     assert "Sin acuse de Jefe de Urgencias en 15 min." in texto and "Para: Coordinador Médico de Turno." in texto
 
 
+# --- Avisos Urgentes (RN-F3) ---------------------------------------------------------------------
+
+
+def test_un_documento_urgente_avisa_una_vez_al_canal_general_sin_acuse_RN_F3_RN_Q3(client, llm_falso, notificador_falso):
+    urgente = propuesta(**{"clasificacion.nivel_prioridad_propuesto": "Urgente", "extraccion.hallazgos_criticos_detectados": [],
+                           "extraccion.diagnosticos": [{"texto": "Insuficiencia cardíaca descompensada", "cie10_sugerido": "I50.9", "cie11_sugerido": None}],
+                           "extraccion.signos_vitales": {"FR": 20, "SpO2": 95, "FC": 98, "PAS": 118, "Temp": None, "nivel_conciencia": "alerta"}})
+    d = enviar(client, llm_falso, "URG-1", "Fecha: 03/04/2026. Paciente: Carlos Mendes, 52 años. Falla cardíaca descompensada. Dr. Rojas, RM 45678.", urgente,
+               canal="Guardia_Emergencias")
+    assert d["estado"] == "ENRUTADO" and d["nivel_prioridad"] == "Urgente"
+    assert notificador_falso.avisos == [("Profesional solicitante", "URG-1")]
+    assert notificador_falso.enviados == []  # sin acuse ni cadena de guardia
+    assert client.get("/alertas").json() == []
+    historial = client.get("/documentos/URG-1").json()["resultado"]["historial_decisiones"]
+    assert [h["decision"] for h in historial if h["regla"] == "RN-F3"][-1] == "aviso enviado"
+    # confirmar entregas vuelve a persistir el resultado: no se avisa dos veces
+    client.post("/documentos/URG-1/entregar", json={"destino": "Historia_Clinica_Electronica"})
+    assert len(notificador_falso.avisos) == 1
+
+
+def test_rutina_no_avisa_y_critico_no_usa_el_canal_general_RN_Q3(client, llm_falso, notificador_falso):
+    enviar(client, llm_falso, "RUT-1", TEXTO_RECETA, receta([med("losartan", "50 mg")]))
+    enviar(client, llm_falso, "CRI-1", "Paciente: Carlos Mendes, 52 años. Fecha: 03/04/2026. TC: tromboembolismo pulmonar agudo. Dr. Rojas, RM 45678.",
+           propuesta_caso_1(), canal="Guardia_Emergencias")
+    assert notificador_falso.avisos == []
+    assert [e[2] for e in notificador_falso.enviados] == ["CRI-1"]
+
+
+def test_el_aviso_urgente_va_al_webhook_general_y_sin_canal_configurado_queda_registrado():
+    slack = SlackSimulado()
+    notificador(slack).avisar("Profesional solicitante", "Aviso Urgente. Doc: URG-9. Nivel: Urgente. Atención en 24 h.", "http://x/URG-9")
+    assert slack.publicaciones == [(GENERAL, "Aviso Urgente. Doc: URG-9. Nivel: Urgente. Atención en 24 h. Para: Profesional solicitante. <http://x/URG-9|Abrir en MediFlow>")]
+    with pytest.raises(CanalCaido):
+        notificador(slack, Slack(avisos_urgentes=None)).avisar("Profesional solicitante", "Aviso Urgente. Doc: URG-9.", None)
+
+
+def test_un_aviso_urgente_sin_canal_no_detiene_el_enrutamiento(repo, storage):
+    cliente = ClienteFalso(respuestas=[fabricar(**{"clasificacion.nivel_prioridad_propuesto": "Urgente"}).model_dump(mode="json")])
+    orq = Orquestador(repo, storage, ServicioExtraccion(cliente, max_intentos=1), notificador=NotificadorFalso(caidos={"Slack"}))
+    doc = ingresar(repo, storage, request_caso_1(documento_id="URG-2", contenido_texto="Control. Fecha: 03/04/2026. Dr. Rojas, RM 45678."))
+    resultado = orq.procesar(doc)
+    assert resultado.clasificacion.nivel_prioridad is N.URGENTE and doc.estado == "ENRUTADO"
+    assert any(d.regla == "RN-F3" and d.decision.startswith("aviso no enviado") for d in resultado.historial_decisiones)
+
+
 # --- Selección por configuración --------------------------------------------------------------------
 
 

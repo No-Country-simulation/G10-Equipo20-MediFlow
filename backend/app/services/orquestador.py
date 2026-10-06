@@ -36,7 +36,7 @@ from app.schemas.resultado import (
     Setting,
     TipoDocumento as T,
 )
-from app.services.alertas import ServicioAlertas
+from app.services.alertas import CanalCaido, ServicioAlertas
 from app.services.ciclo_vida import prefijo_storage
 from app.services.configuracion import ServicioConfiguracion
 from app.services.enrutamiento import ContextoEnrutamiento, enrutar
@@ -639,9 +639,27 @@ class Orquestador:
             self._emitir_alerta(doc, resultado)
         if resultado.estado is E.ENRUTADO:
             self._vincular_paciente(doc, resultado)
+            self._avisar_urgente(doc, resultado)
         self._respaldar_json(doc, resultado)
         doc.resultado_json = resultado.model_dump(mode="json")
         self.repo.guardar()
+
+    def _avisar_urgente(self, doc: Documento, resultado: ResultadoTriaje) -> None:
+        """RN-F3: un caso Urgente avisa una sola vez al profesional solicitante, sin acuse ni escalamiento (RN-Q3).
+        El aviso sale cuando el documento queda enrutado; si el canal no responde, se registra y no se insiste."""
+        n = resultado.notificacion_generada
+        if n is None or resultado.clasificacion.nivel_prioridad is not N.URGENTE:
+            return
+        if any(d.regla == "RN-F3" and d.decision.startswith(("aviso enviado", "aviso no enviado")) for d in resultado.historial_decisiones):
+            return
+        try:
+            self.alertas.notificador.avisar(n.destinatario, n.mensaje, n.enlace)
+        except CanalCaido as error:
+            logger.warning("Aviso urgente de %s sin canal: %s", doc.documento_id, error)  # RN-M4: solo el ID
+            decision = DecisionRegistrada(regla="RN-F3", evidencia=str(error), decision="aviso no enviado; queda en la bandeja")
+        else:
+            decision = DecisionRegistrada(regla="RN-F3", evidencia=f"canal Slack, destinatario {n.destinatario}", decision="aviso enviado")
+        resultado.historial_decisiones.append(decision)
 
     def _emitir_alerta(self, doc: Documento, resultado: ResultadoTriaje) -> None:
         """RN-F1 con las excepciones RN-O2 (versión sin subir de nivel) y RN-O3 (posible duplicado)."""
