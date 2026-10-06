@@ -54,6 +54,8 @@ class Documento(Base):
     # RN-J3: revisor que tiene el caso. RN-J2/RN-J3: rol al que se escaló la revisión. Nada de esto cambia el estado.
     asignado_a: Mapped[str | None] = mapped_column(String(128), nullable=True)
     escalado_a_rol: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # RN-O4: un sub-documento de un PDF compuesto lleva el documento_id de su padre.
+    documento_padre: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora)
 
     transiciones: Mapped[list["TransicionEstado"]] = relationship(

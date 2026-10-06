@@ -55,6 +55,7 @@ class LecturaPDF:
     texto: str
     paginas_texto: list[int] = field(default_factory=list)
     paginas_imagen: list[tuple[int, bytes]] = field(default_factory=list)  # (número de página, PNG)
+    textos_por_pagina: dict[int, str] = field(default_factory=dict)  # RN-O4: para detectar títulos de sub-documentos
 
 
 def nombre_base(nombre: str | None) -> str:
@@ -148,6 +149,7 @@ def leer_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_POR_DEFECTO, max_ca
         textos: list[str] = []
         paginas_texto: list[int] = []
         paginas_imagen: list[tuple[int, bytes]] = []
+        textos_por_pagina: dict[int, str] = {}
         total = 0
         for indice, pagina in enumerate(documento, start=1):
             texto = pagina.get_text("text", sort=True)
@@ -157,6 +159,7 @@ def leer_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_POR_DEFECTO, max_ca
                     raise ArchivoInvalido("limite_caracteres")
                 textos.append(f"--- página {indice} ---\n{texto.strip()}")
                 paginas_texto.append(indice)
+                textos_por_pagina[indice] = texto.strip()
             else:
                 pixmap = pagina.get_pixmap(matrix=pymupdf.Matrix(ESCALA_RENDER, ESCALA_RENDER), alpha=False)
                 paginas_imagen.append((indice, pixmap.tobytes("png")))
@@ -165,7 +168,17 @@ def leer_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_POR_DEFECTO, max_ca
             texto="\n\n".join(textos),
             paginas_texto=paginas_texto,
             paginas_imagen=paginas_imagen,
+            textos_por_pagina=textos_por_pagina,
         )
+
+
+def extraer_paginas(datos: bytes, paginas: list[int]) -> bytes:
+    """RN-O4: un PDF nuevo con solo esas páginas del original, en ese orden."""
+    pymupdf.TOOLS.mupdf_display_errors(False)
+    with pymupdf.open(stream=datos, filetype="pdf") as origen, pymupdf.open() as destino:
+        for numero in paginas:
+            destino.insert_pdf(origen, from_page=numero - 1, to_page=numero - 1)
+        return destino.tobytes()
 
 
 def renderizar_pagina(datos: bytes, numero: int) -> bytes:

@@ -23,8 +23,9 @@ from app.models.documento import Documento
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import DocumentoRequest, TipoContenido
 from app.schemas.resultado import EstadoDocumento as E
-from app.services.archivos import MIME, ArchivoInvalido, LecturaPDF, leer_pdf, validar_archivo
+from app.services.archivos import MIME, ArchivoInvalido, LecturaPDF, extraer_paginas, leer_pdf, nombre_base, validar_archivo
 from app.services.ciclo_vida import prefijo_storage
+from app.services.division import describir, parsear_rangos, segmentar_por_titulos, titulos_por_tipo
 from app.services.seudonimizacion import Seudonimizador
 from app.services.storage import Storage
 
@@ -52,6 +53,7 @@ class ResultadoIngesta:
     documento: Documento
     duplicado_exacto: bool = False  # RN-O1
     codigo_error: str | None = None
+    hijos: list["ResultadoIngesta"] = field(default_factory=list)  # RN-O4: los sub-documentos de un PDF compuesto
 
 
 @dataclass
@@ -61,6 +63,7 @@ class DatosRequest:
     pais_origen: str = "CO"
     cobertura_paciente: str | None = None
     metadatos: dict = field(default_factory=dict)
+    documento_padre: str | None = None  # RN-O4
 
     @property
     def nombres_conocidos(self) -> list[str]:
@@ -85,12 +88,14 @@ class ServicioIngesta:
         *,
         tamano_maximo_bytes: int = TAMANO_MAXIMO_BYTES_POR_DEFECTO,
         max_paginas_pdf: int = 20,
+        vocabulario: dict[str, list[str]] | None = None,
     ):
         self.repositorio = repositorio
         self.storage = storage
         self.tamano_maximo_bytes = tamano_maximo_bytes
         self.max_paginas_pdf = max_paginas_pdf
         self.seudonimizador = Seudonimizador()
+        self.titulos = titulos_por_tipo(vocabulario or {})  # RN-O4: sin vocabulario no hay división automática
 
     # --- entradas ------------------------------------------------------------------
 
@@ -111,14 +116,15 @@ class ServicioIngesta:
             else:
                 nombre = request.nombre_archivo or f"{request.documento_id}.{'pdf' if request.tipo_contenido is TipoContenido.PDF else 'png'}"
                 contenido = self._analizar_archivo(nombre, binario)
-        return self._ingresar(datos, contenido)
+        return self._ingresar(datos, contenido, division=request.paginas_por_documento)
 
     def recibir_archivo(self, nombre: str | None, binario: bytes, *, documento_id: str, canal_origen: str,
-                        pais_origen: str = "CO", cobertura_paciente: str | None = None, metadatos: dict | None = None) -> ResultadoIngesta:
-        """Carga multipart (PDF, PNG, JPG) validada por contenido."""
+                        pais_origen: str = "CO", cobertura_paciente: str | None = None, metadatos: dict | None = None,
+                        division: str | None = None, documento_padre: str | None = None) -> ResultadoIngesta:
+        """Carga multipart (PDF, PNG, JPG) validada por contenido. `division` declara las páginas de cada sub-documento (RN-O4)."""
         datos = DatosRequest(documento_id=documento_id, canal_origen=canal_origen, pais_origen=pais_origen,
-                             cobertura_paciente=cobertura_paciente, metadatos=metadatos or {})
-        return self._ingresar(datos, self._analizar_archivo(nombre, binario))
+                             cobertura_paciente=cobertura_paciente, metadatos=metadatos or {}, documento_padre=documento_padre)
+        return self._ingresar(datos, self._analizar_archivo(nombre, binario), division=division)
 
     # --- núcleo ------------------------------------------------------------------------
 
@@ -138,7 +144,8 @@ class ServicioIngesta:
                 contenido.codigo_error = error.codigo
         return contenido
 
-    def _ingresar(self, datos: DatosRequest, contenido: ContenidoRecibido) -> ResultadoIngesta:
+    def _ingresar(self, datos: DatosRequest, contenido: ContenidoRecibido, *, division: str | None = None) -> ResultadoIngesta:
+        segmentos = self._segmentos(contenido, division) if datos.documento_padre is None else None
         hash_contenido = hashlib.sha256(contenido.datos).hexdigest()
 
         previo = self.repositorio.ultima_version(datos.documento_id)
@@ -164,12 +171,51 @@ class ServicioIngesta:
             tamano_bytes=len(contenido.datos),
             num_paginas=contenido.lectura.num_paginas if contenido.lectura else 1,
             posible_duplicado_de=otro.documento_id if otro is not None else None,  # RN-O3
+            documento_padre=datos.documento_padre,  # RN-O4
         )
         self._respaldar(documento, contenido, E.RECIBIDO)
         contenido.nombres_conocidos = datos.nombres_conocidos
         documento.contenido_recibido = contenido  # transitorio: el grafo lo valida en esta misma petición
         self.repositorio.guardar()
-        return ResultadoIngesta(documento, codigo_error=contenido.codigo_error)
+        resultado = ResultadoIngesta(documento, codigo_error=contenido.codigo_error)
+        if segmentos:
+            self._dividir(resultado, datos, contenido, segmentos)
+        return resultado
+
+    # --- PDF compuesto (RN-O4) ---------------------------------------------------------------------
+
+    def _segmentos(self, contenido: ContenidoRecibido, division: str | None) -> list[list[int]] | None:
+        """Las páginas de cada sub-documento, o None si el archivo no es un PDF compuesto."""
+        if division and division.strip():
+            if contenido.codigo_error or contenido.lectura is None:
+                contenido.codigo_error = contenido.codigo_error or "division_invalida"
+                return None
+            try:
+                return parsear_rangos(division, contenido.lectura.num_paginas)
+            except ArchivoInvalido as error:
+                contenido.codigo_error = error.codigo
+                return None
+        if contenido.codigo_error or contenido.lectura is None or len(contenido.datos) > self.tamano_maximo_bytes:
+            return None
+        segmentos = segmentar_por_titulos(contenido.lectura.num_paginas, contenido.lectura.textos_por_pagina, self.titulos)
+        return segmentos if len(segmentos) > 1 else None
+
+    def _dividir(self, resultado: ResultadoIngesta, datos: DatosRequest, contenido: ContenidoRecibido, segmentos: list[list[int]]) -> None:
+        """El padre queda VALIDADO y no se clasifica: cada hijo entra como un documento más, con las páginas que le tocan.
+        El padre toma la prioridad máxima de sus hijos cuando estos se evalúan."""
+        padre = resultado.documento
+        self.repositorio.transicionar(padre, E.VALIDADO, actor=ACTOR_SISTEMA,
+                                      motivo=f"RN-O4: PDF compuesto dividido en {len(segmentos)} sub-documentos (páginas {describir(segmentos)})")
+        padre.paginas_json = []
+        self.repositorio.guardar()
+        base = nombre_base(contenido.nombre_archivo).rsplit(".", 1)[0] or padre.documento_id
+        for numero, paginas in enumerate(segmentos, start=1):
+            hijo = self.recibir_archivo(
+                f"{base}_{numero}.pdf", extraer_paginas(contenido.datos, paginas), documento_id=f"{padre.documento_id}-{numero}",
+                canal_origen=datos.canal_origen, pais_origen=datos.pais_origen, cobertura_paciente=datos.cobertura_paciente,
+                metadatos=datos.metadatos, documento_padre=padre.documento_id,
+            )
+            resultado.hijos.append(hijo)
 
     def validar(self, documento: Documento) -> str | None:
         """Primer nodo del grafo: RECIBIDO -> VALIDADO o RECHAZADO (sección 3.3, RN-I5). Devuelve el código de rechazo."""

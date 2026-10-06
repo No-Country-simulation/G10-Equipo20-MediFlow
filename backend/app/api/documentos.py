@@ -38,8 +38,9 @@ def _ingesta(session: Session, storage: Storage) -> ServicioIngesta:
     # RN-T2: límite de documentos por minuto. Se comprueba antes de recibir: lo que no entró no se pierde.
     if LimiteIngesta(settings.limite_documentos_por_minuto).excedido(RepositorioDocumentos(session)):
         raise HTTPException(status_code=429, detail=f"RN-T2: límite de {settings.limite_documentos_por_minuto} documentos por minuto; reintente en un momento")
+    vocabulario = ServicioConfiguracion(session).pack(settings.pais_instalacion).vocabulario  # RN-O4: títulos que abren sub-documentos
     return ServicioIngesta(RepositorioDocumentos(session), storage, tamano_maximo_bytes=settings.tamano_maximo_bytes,
-                           max_paginas_pdf=settings.max_paginas_pdf)
+                           max_paginas_pdf=settings.max_paginas_pdf, vocabulario=vocabulario)
 
 
 def _resumen(doc: Documento, *, con_resultado: bool = True) -> dict:
@@ -58,6 +59,7 @@ def _resumen(doc: Documento, *, con_resultado: bool = True) -> dict:
         "status_backup": resultado.get("status_backup") if resultado else doc.status_backup,
         "ruta_storage": resultado.get("ruta_storage") if resultado else doc.ruta_storage,
         "posible_duplicado_de": doc.posible_duplicado_de,
+        "documento_padre": doc.documento_padre,  # RN-O4
         "codigo_error": doc.codigo_error,
         "tipo": (resultado or {}).get("clasificacion", {}).get("tipo"),
         "motivo_auditoria": (resultado or {}).get("evaluacion", {}).get("motivo_auditoria"),
@@ -67,10 +69,23 @@ def _resumen(doc: Documento, *, con_resultado: bool = True) -> dict:
     return datos
 
 
+def _partes(session: Session, doc: Documento) -> dict:
+    """RN-O4: un padre lista sus sub-documentos; cualquier otro documento no agrega nada."""
+    hijos = RepositorioDocumentos(session).hijos_de(doc.documento_id)
+    return {"sub_documentos": [_resumen(h, con_resultado=False) for h in hijos]} if hijos else {}
+
+
 def _responder_ingesta(ingesta: ResultadoIngesta, session: Session, storage: Storage, llm: ClienteLLM, notificador: Notificador):
     doc = ingesta.documento
     if ingesta.duplicado_exacto:
-        return JSONResponse({**_resumen(doc), "duplicado": True}, status_code=200)  # RN-O1
+        return JSONResponse({**_resumen(doc), "duplicado": True, **_partes(session, doc)}, status_code=200)  # RN-O1
+    if ingesta.hijos:
+        # RN-O4: el padre no se clasifica; cada sub-documento corre el pipeline completo y alerta por su cuenta.
+        orquestador = _orquestador(session, storage, llm, notificador)
+        for hijo in ingesta.hijos:
+            if not hijo.duplicado_exacto:
+                orquestador.procesar(hijo.documento)
+        return {**_resumen(doc), "sub_documentos": [_resumen(h.documento) for h in ingesta.hijos]}
     _orquestador(session, storage, llm, notificador).procesar(doc)
     if doc.estado == E.RECHAZADO:
         return JSONResponse({**_resumen(doc), "codigo_error": doc.codigo_error}, status_code=400)  # RN-A1, RN-O5, RN-I5
@@ -95,6 +110,7 @@ async def recibir_archivo(
     canal_origen: Annotated[CanalOrigen, Form()],
     cobertura_paciente: Annotated[CoberturaPaciente | None, Form()] = None,
     pais_origen: Annotated[str, Form(min_length=2, max_length=2)] = "CO",
+    paginas_por_documento: Annotated[str | None, Form(max_length=256, description="RN-O4: páginas de cada sub-documento, p. ej. 1-2,3")] = None,
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
@@ -105,6 +121,7 @@ async def recibir_archivo(
     ingesta = _ingesta(session, storage).recibir_archivo(
         archivo.filename, binario, documento_id=documento_id.strip(), canal_origen=canal_origen.value,
         pais_origen=pais_origen.upper(), cobertura_paciente=cobertura_paciente.value if cobertura_paciente else None,
+        division=paginas_por_documento,
     )
     return _responder_ingesta(ingesta, session, storage, llm, notificador)
 
@@ -161,6 +178,7 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
         "asignado_a": doc.asignado_a,  # RN-J3
         "escalado_a_rol": doc.escalado_a_rol,  # RN-J2, RN-J3
         "solicitud_titular": _solicitud_pendiente(session, doc),  # RN-M6
+        **_partes(session, doc),  # RN-O4
         "verificaciones": doc.verificaciones_json or [],
         "autorizacion": doc.autorizacion_json,
         "alerta": _alerta(doc),

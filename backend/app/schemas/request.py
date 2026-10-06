@@ -51,6 +51,7 @@ class DocumentoRequest(BaseModel):
     contenido_texto: str | None = None
     archivo_base64: str | None = None
     nombre_archivo: str | None = None
+    paginas_por_documento: str | None = Field(default=None, description="RN-O4: páginas de cada sub-documento de un PDF compuesto, p. ej. 1-2,3")
     metadatos: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("documento_id")

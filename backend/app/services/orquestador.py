@@ -635,6 +635,8 @@ class Orquestador:
     def _persistir(self, doc: Documento, resultado: ResultadoTriaje, *, emitir_alerta: bool = True) -> None:
         doc.nivel_prioridad = resultado.clasificacion.nivel_prioridad.value
         doc.tipo = resultado.clasificacion.tipo.value  # RN-J9: cada rol lista solo sus tipos
+        if doc.documento_padre:
+            self.repo.actualizar_prioridad_padre(doc)  # RN-O4
         if emitir_alerta:
             self._emitir_alerta(doc, resultado)
         if resultado.estado is E.ENRUTADO:

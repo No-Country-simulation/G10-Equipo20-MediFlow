@@ -77,6 +77,37 @@ class RepositorioDocumentos:
         filas = self.session.scalars(consulta.order_by(Documento.creado_en.desc(), Documento.id.desc()).limit(limit).offset(offset))
         return list(filas), total
 
+    # --- PDF compuesto (RN-O4) -------------------------------------------------------
+
+    def hijos_de(self, documento_padre: str) -> list[Documento]:
+        """Última versión de cada sub-documento del padre, en el orden de sus páginas."""
+        ultima = (
+            select(Documento.documento_id, func.max(Documento.version).label("version"))
+            .where(Documento.documento_padre == documento_padre)
+            .group_by(Documento.documento_id)
+            .subquery()
+        )
+        consulta = (
+            select(Documento)
+            .join(ultima, (Documento.documento_id == ultima.c.documento_id) & (Documento.version == ultima.c.version))
+            .order_by(Documento.id)
+        )
+        return list(self.session.scalars(consulta))
+
+    def actualizar_prioridad_padre(self, hijo: Documento) -> Documento | None:
+        """RN-O4: la prioridad del padre es la máxima de sus hijos."""
+        if not hijo.documento_padre:
+            return None
+        padre = self.ultima_version(hijo.documento_padre)
+        if padre is None:
+            return None
+        self.session.flush()
+        orden = {"Rutina": 0, "Urgente": 1, "Crítico": 2}
+        niveles = [h.nivel_prioridad for h in self.hijos_de(padre.documento_id) if h.nivel_prioridad in orden]
+        padre.nivel_prioridad = max(niveles, key=orden.__getitem__) if niveles else None
+        self.session.flush()
+        return padre
+
     def ultimas_versiones(self, *, estado: str | None = None) -> list[Documento]:
         documentos, _ = self.listar(estado=estado, limit=5000)
         return documentos
