@@ -135,6 +135,8 @@ export interface DocumentoDetalle {
   confianzas?: Partial<Record<"identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional", number | null>>;
   umbrales?: Partial<Record<"clasificacion" | "identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional" | "resto", number>>;
   texto_enviado_llm?: string | null;
+  asignado_a?: string | null;
+  escalado_a_rol?: string | null;
   status_backup: string;
   ruta_storage: string | null;
   posible_duplicado_de: string | null;
@@ -164,6 +166,16 @@ export interface ItemCola {
   plazo_minutos: number;
   /** Conceptos críticos del pack (TEP_AGUDO…), para ver qué es cada caso sin abrirlo. */
   hallazgos?: string[];
+  /** RN-J3: revisor que tiene el caso. RN-J2/RN-J3: rol al que escaló. */
+  asignado_a?: string | null;
+  escalado_a_rol?: string | null;
+}
+
+/** RN-J3: a quién se puede reasignar un caso. */
+export interface Revisor {
+  usuario: string;
+  nombre: string;
+  rol: string;
 }
 
 /** Respuesta de GET /alertas. Nunca lleva datos del paciente (RN-Q4). */
@@ -213,12 +225,14 @@ export interface DatosArchivo {
   pais_origen?: string;
 }
 
-export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir";
+export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir" | "reasignar" | "escalar";
 
 export interface ResolucionRequest {
   accion: AccionRevision;
   motivo: string;
   correcciones?: Record<string, unknown> | null;
+  /** reasignar: cuenta del revisor que toma el caso (RN-J3). */
+  asignar_a?: string | null;
   /** Fallo técnico: la persona transcribe con la misma forma que la propuesta del LLM. */
   transcripcion?: Record<string, unknown> | null;
 }

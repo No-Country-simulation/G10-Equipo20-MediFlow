@@ -1,23 +1,27 @@
-import { ArrowLeft, ArrowRight, Check, CircleCheckBig, Keyboard, Maximize2, Minimize2, PanelLeftOpen, Pencil, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CircleCheckBig, Keyboard, Maximize2, Minimize2, PanelLeftOpen, Pencil, ShieldCheck, UserRound, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { colaRevision, confirmarEntrega, consultarDocumento, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
+import { colaRevision, confirmarEntrega, consultarDocumento, listarRevisores, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
 import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, etiquetaTipo, motivoLegible, tituloHallazgos } from "../app/mensajes";
 import { usePared } from "../app/pared";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
 import { useRol } from "../app/RolContext";
-import { rolPuedeVer } from "../app/roles";
+import { rolPorId, rolPuedeVer } from "../app/roles";
 import { enmascarar, useUsuario } from "../app/usuario";
 import { AccionAcuse } from "../components/AccionAcuse";
+import { TagsAsignacion } from "../components/Asignacion";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { HistorialDecisiones } from "../components/HistorialDecisiones";
 import { TagEstado, TagPrioridad } from "../components/Tags";
 import { Transcripcion } from "../components/Transcripcion";
-import type { AccionRevision, DocumentoDetalle, ItemCola } from "../types";
+import type { AccionRevision, DocumentoDetalle, ItemCola, Revisor } from "../types";
 
 type ClaveConfianza = "identidad_paciente" | "medicamento_dosis" | "diagnostico_codigo" | "profesional";
-type Decision = "aprobar" | "rechazar";
+type Decision = "aprobar" | "rechazar" | "escalar";
+
+/** RN-J2: el siguiente rol de la cola de revisión; por encima no hay otro. */
+const ROL_ESCALAMIENTO = "jefe_urgencias";
 
 interface Correccion {
   campo: string;
@@ -46,7 +50,7 @@ function PildoraConfianza({ valor, umbral }: { valor: number | null | undefined;
   return <span className={`tag ${bajo ? "urgente" : "exito"}`} title="Confianza de la lectura automática frente al umbral del campo">{valor.toFixed(2)}</span>;
 }
 
-const PASADO: Record<AccionRevision, string> = { aprobar: "Aprobado", corregir: "Corregido y reevaluado", rechazar: "Rechazado", transcribir: "Transcrito y evaluado" };
+const PASADO: Record<AccionRevision, string> = { aprobar: "Aprobado", corregir: "Corregido y reevaluado", rechazar: "Rechazado", transcribir: "Transcrito y evaluado", reasignar: "Reasignado", escalar: "Escalado" };
 
 export function DetalleDocumentoPage() {
   const { id = "" } = useParams();
@@ -66,6 +70,9 @@ export function DetalleDocumentoPage() {
   const [motivo, setMotivo] = useState("");
   const [correccion, setCorreccion] = useState<Correccion | null>(null);
   const [confirmacion, setConfirmacion] = useState<Decision | null>(null);
+  const [revisores, setRevisores] = useState<Revisor[] | null>(null);
+  const [reasignando, setReasignando] = useState(false);
+  const [asignarA, setAsignarA] = useState("");
   const [cierre, setCierre] = useState<{ accion: AccionRevision; estado: string; prioridad?: string; alerta?: boolean } | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -88,6 +95,7 @@ export function DetalleDocumentoPage() {
     // Al cambiar de documento no queda nada del anterior en pantalla mientras carga el siguiente.
     setDetalle(null); setTranscripcionSucia(false);
     setPagina(1); setCorreccion(null); setMensaje(null); setPendientes(null); setConfirmacion(null); setCierre(null); setMotivo("");
+    setReasignando(false); setAsignarA("");
     cargar();
   }, [cargar]);
   useEffect(() => {
@@ -120,20 +128,24 @@ export function DetalleDocumentoPage() {
     if (destino) navigate(`/documentos/${encodeURIComponent(destino.documento_id)}?cola=1`);
   }, [cola, posicionCola, navigate]);
 
-  const resolver = useCallback(async (accion: AccionRevision, extra: { correcciones?: Record<string, unknown>; transcripcion?: Record<string, unknown> } = {}) => {
+  const resolver = useCallback(async (accion: AccionRevision, extra: { correcciones?: Record<string, unknown>; transcripcion?: Record<string, unknown>; asignar_a?: string } = {}) => {
     if (!detalle || !firma || enviando) return;
-    if (accion === "rechazar" && !motivo.trim()) return;
+    if ((accion === "rechazar" || accion === "escalar") && !motivo.trim()) return;
     setEnviando(true);
     setMensaje(null);
     setConfirmacion(null);
     try {
       const resp = await resolverRevision(detalle.documento_id, {
         accion, motivo: motivo || (accion === "transcribir" ? "transcrito desde el original" : ""),
-        correcciones: extra.correcciones ?? null, transcripcion: extra.transcripcion ?? null,
+        correcciones: extra.correcciones ?? null, transcripcion: extra.transcripcion ?? null, asignar_a: extra.asignar_a ?? null,
       });
       setCorreccion(null);
+      setReasignando(false);
       setMotivo("");
       if (accion === "corregir") setMensaje({ texto: `${PASADO[accion]}. Queda en ${etiquetaEstado(resp.estado)}.` });
+      // Reasignar y escalar no cierran el caso: sigue en revisión, a cargo de otra persona o del siguiente rol (RN-J3).
+      else if (accion === "reasignar") setMensaje({ texto: `Reasignado a ${extra.asignar_a}. Sigue en revisión.` });
+      else if (accion === "escalar") setMensaje({ texto: `Escalado a ${rolPorId(ROL_ESCALAMIENTO).nombre}. Sigue en revisión, a cargo de ese rol.` });
       else setCierre({ accion, estado: resp.estado, prioridad: resp.resultado?.clasificacion.nivel_prioridad, alerta: !!resp.resultado?.notificacion_generada });
       cargar();
     } catch (e) {
@@ -148,6 +160,7 @@ export function DetalleDocumentoPage() {
     // Un atajo que no puede actuar lo dice, en vez de no hacer nada.
     if (transcribiendo && decision === "aprobar") { setMensaje({ texto: "Este documento no tiene lectura que aprobar: completa la transcripción.", error: true }); return; }
     if (decision === "rechazar" && !motivo.trim()) { setMensaje({ texto: "Rechazar exige escribir el motivo.", error: true }); return; }
+    if (decision === "escalar" && !motivo.trim()) { setMensaje({ texto: "Escalar exige escribir el motivo.", error: true }); return; }
     setConfirmacion(decision);
   }, [enRevision, transcribiendo, firma, enviando, motivo]);
 
@@ -171,6 +184,12 @@ export function DetalleDocumentoPage() {
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
   }, [irA, pedir, enRevision, transcribiendo, atajos, transcripcionSucia, pared]);
+
+  function abrirReasignacion() {
+    setReasignando(true);
+    setAsignarA("");
+    if (revisores === null) listarRevisores().then(setRevisores).catch(() => setRevisores([]));
+  }
 
   function cambiarAtajos(activos: boolean) {
     setAtajos(activos);
@@ -375,11 +394,12 @@ export function DetalleDocumentoPage() {
           {enRevision && r && (
             <>
               <p className="aviso">Requiere revisión: <strong>{etiquetaMotivo(r.evaluacion.motivo_auditoria)}</strong>{r.evaluacion.campos_dudosos.length > 0 && <> · dudosos: {r.evaluacion.campos_dudosos.join(", ")}</>}</p>
+              {(detalle.asignado_a || detalle.escalado_a_rol) && <p className="asignacion" data-testid="asignacion"><TagsAsignacion asignadoA={detalle.asignado_a} escaladoARol={detalle.escalado_a_rol} /></p>}
               {transcribiendo
                 ? <p className="muted">La acción principal es completar la transcripción en el panel central. Si el documento no corresponde, recházalo con su motivo.</p>
                 : <p><span className="muted">Plan tras revisión:</span> {plan.map(etiquetaDestino).join(" + ") || "sin plan"}</p>}
               <label>
-                <span id="etiqueta-motivo">{transcribiendo ? "Motivo (obligatorio para rechazar)" : "Motivo (obligatorio para rechazar o bajar la prioridad)"}</span>
+                <span id="etiqueta-motivo">{transcribiendo ? "Motivo (obligatorio para rechazar o escalar)" : "Motivo (obligatorio para rechazar, escalar o bajar la prioridad)"}</span>
                 <input value={motivo} onChange={(e) => setMotivo(e.target.value)} aria-labelledby="etiqueta-motivo" />
               </label>
               {correccion && !transcribiendo && (
@@ -406,16 +426,37 @@ export function DetalleDocumentoPage() {
                 </div>
               )}
 
+              {reasignando && (
+                <div className="tarjeta correccion" data-testid="reasignacion">
+                  <label>
+                    Reasignar a
+                    <select value={asignarA} onChange={(e) => setAsignarA(e.target.value)}>
+                      <option value="">{revisores === null ? "Cargando revisores…" : revisores.length === 0 ? "No hay revisores activos" : "Elige el revisor…"}</option>
+                      {(revisores ?? []).map((v) => <option key={v.usuario} value={v.usuario}>{v.nombre} · {rolPorId(v.rol).nombre}{v.usuario === firma ? " (yo)" : ""}</option>)}
+                    </select>
+                  </label>
+                  <div className="acciones">
+                    <button type="button" disabled={!asignarA || enviando} onClick={() => resolver("reasignar", { asignar_a: asignarA })}>Confirmar reasignación</button>
+                    <button type="button" className="secundario" onClick={() => setReasignando(false)}>Cancelar</button>
+                  </div>
+                  <p className="muted">El caso sigue en revisión: solo cambia quién lo tiene, y queda en el historial.</p>
+                </div>
+              )}
+
               {confirmacion && (
                 <div className={`confirmacion ${confirmacion}`} data-testid="confirmacion" role="group" aria-labelledby="confirmacion-titulo">
                   <p id="confirmacion-titulo">
                     {confirmacion === "aprobar"
                       ? <>¿Aprobar <strong>{detalle.documento_id}</strong>? Se enruta a <strong>{plan.map(etiquetaDestino).join(" + ") || "sin destino"}</strong>{plan.length > 0 && <span className="oculto-visual"> ({plan.join(", ")})</span>}.</>
-                      : <>¿Rechazar <strong>{detalle.documento_id}</strong>? No se enruta a ningún destino. Motivo: «{motivo.trim()}».</>}
+                      : confirmacion === "escalar"
+                        ? <>¿Escalar <strong>{detalle.documento_id}</strong> a <strong>{rolPorId(ROL_ESCALAMIENTO).nombre}</strong>? Sigue en revisión, a cargo de ese rol. Motivo: «{motivo.trim()}».</>
+                        : <>¿Rechazar <strong>{detalle.documento_id}</strong>? No se enruta a ningún destino. Motivo: «{motivo.trim()}».</>}
                   </p>
                   <div className="acciones">
                     <button type="button" ref={botonConfirmar} className={confirmacion === "rechazar" ? "peligro" : ""} disabled={enviando} onClick={() => resolver(confirmacion)}>
-                      {confirmacion === "aprobar" ? <><Check size={16} aria-hidden="true" />Confirmar aprobación</> : <><X size={16} aria-hidden="true" />Confirmar rechazo</>}
+                      {confirmacion === "aprobar" ? <><Check size={16} aria-hidden="true" />Confirmar aprobación</>
+                        : confirmacion === "escalar" ? <><ArrowUpRight size={16} aria-hidden="true" />Confirmar escalamiento</>
+                        : <><X size={16} aria-hidden="true" />Confirmar rechazo</>}
                     </button>
                     <button type="button" className="secundario" onClick={() => setConfirmacion(null)}>Cancelar <kbd>Esc</kbd></button>
                   </div>
@@ -427,7 +468,16 @@ export function DetalleDocumentoPage() {
                   {!transcribiendo && <button type="button" aria-describedby="firma-decision" disabled={!firma || enviando} onClick={() => pedir("aprobar")}><Check size={16} aria-hidden="true" />Aprobar <kbd>A</kbd></button>}
                   {!transcribiendo && <button type="button" className="secundario" disabled={!firma || enviando} onClick={() => setCorreccion((c) => c ?? { campo: "", valor: "" })}><Pencil size={16} aria-hidden="true" />Corregir <kbd>C</kbd></button>}
                   <button type="button" className="peligro" aria-describedby="firma-decision ayuda-rechazar" disabled={!firma || !motivo.trim() || enviando} onClick={() => pedir("rechazar")}><X size={16} aria-hidden="true" />Rechazar <kbd>R</kbd></button>
-                  <span id="ayuda-rechazar" className={motivo.trim() ? "oculto-visual" : "muted pista"}>Rechazar exige escribir el motivo.</span>
+                  <span id="ayuda-rechazar" className={motivo.trim() ? "oculto-visual" : "muted pista"}>Rechazar y escalar exigen escribir el motivo.</span>
+                </div>
+              )}
+
+              {!confirmacion && !reasignando && (
+                <div className="acciones" style={{ marginTop: 8 }}>
+                  <button type="button" className="secundario" aria-describedby="firma-decision" disabled={!firma || enviando} onClick={abrirReasignacion}><UserRound size={16} aria-hidden="true" />Reasignar</button>
+                  {rol.id !== ROL_ESCALAMIENTO && detalle.escalado_a_rol !== ROL_ESCALAMIENTO && (
+                    <button type="button" className="secundario" aria-describedby="firma-decision ayuda-rechazar" disabled={!firma || !motivo.trim() || enviando} onClick={() => pedir("escalar")}><ArrowUpRight size={16} aria-hidden="true" />Escalar</button>
+                  )}
                 </div>
               )}
 

@@ -21,6 +21,7 @@ import type {
   PuestaEnMarcha,
   RecetaPorVerificar,
   ResolucionRequest,
+  Revisor,
   RespuestaEntrega,
   RespuestaVerificacion,
   ResultadoTriaje,
@@ -98,6 +99,11 @@ export function consultarDocumento(documentoId: string): Promise<DocumentoDetall
 
 export function colaRevision(): Promise<ItemCola[]> {
   return llamar<ItemCola[]>("/revision");
+}
+
+/** RN-J3: personas activas cuyo rol resuelve la revisión. */
+export function listarRevisores(): Promise<Revisor[]> {
+  return llamar<Revisor[]>("/revision/revisores");
 }
 
 export function resolverRevision(

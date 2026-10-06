@@ -6,6 +6,7 @@ import { colaRevision } from "../api";
 import { etiquetaMotivo, etiquetaTipo, tituloHallazgos } from "../app/mensajes";
 import { resumirFalloTecnico } from "../app/motor";
 import { calcularPlazo } from "../app/plazos";
+import { TagsAsignacion } from "../components/Asignacion";
 import { AvisoSistemaDegradado, tituloCaida } from "../components/AvisoSistema";
 import { ChipPlazo, TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
@@ -22,6 +23,7 @@ function Filas({ items }: { items: ItemCola[] }) {
               <Link to={`/documentos/${encodeURIComponent(item.documento_id)}?cola=1`} aria-label={`Revisar ${item.documento_id}`}><code>{item.documento_id}</code></Link>
               {(item.hallazgos?.length ?? 0) > 0 && item.tipo && <> · {etiquetaTipo(item.tipo)}</>}
             </span>
+            {(item.asignado_a || item.escalado_a_rol) && <span className="secundaria asignacion"><TagsAsignacion asignadoA={item.asignado_a} escaladoARol={item.escalado_a_rol} /></span>}
           </td>
           <td><TagPrioridad nivel={item.nivel_prioridad} /></td>
           <td>{etiquetaMotivo(item.motivo_auditoria)}{item.campos_dudosos.length > 0 && <span className="secundaria">Dudosos: {item.campos_dudosos.join(", ")}</span>}</td>

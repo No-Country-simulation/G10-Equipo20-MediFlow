@@ -287,6 +287,7 @@ details summary { cursor: pointer; color: var(--primario-tinta); font-weight: 60
 .campos-extraccion dd { margin: 2px 0 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .campos-extraccion dd.aviso { display: block; font-size: 0.9375rem; }
 .correccion { margin-top: 8px; background: var(--superficie-2); }
+.asignacion { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 kbd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: max(0.8125rem, 0.8em); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; opacity: 0.8; margin-left: 4px; }
 .timeline li.alerta::before { background: var(--critico); }
 .timeline li.acuse::before { background: var(--exito); }
