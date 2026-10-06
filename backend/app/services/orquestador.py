@@ -49,6 +49,7 @@ from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, Serv
 from app.services.pacientes import ServicioPacientes
 from app.services.prioridad_declarada import prioridad_declarada
 from app.services.profesionales import ServicioProfesionales
+from app.services.referencia import ServicioReferencia
 from app.services.seudonimizacion import limpiar_tokens_no_resueltos, reidentificar_estructura
 from app.services.storage import Storage
 from app.services.usuarios import ServicioUsuarios
@@ -647,6 +648,8 @@ class Orquestador:
         if resultado.estado is E.ENRUTADO:
             self._vincular_paciente(doc, resultado)
             self._avisar_urgente(doc, resultado)
+        if doc.correcciones:
+            ServicioReferencia(self.repo.session).alimentar(doc, resultado, version_pack=self.pack.version_pack)  # RN-R2
         self._respaldar_json(doc, resultado)
         doc.resultado_json = resultado.model_dump(mode="json")
         self.repo.guardar()
