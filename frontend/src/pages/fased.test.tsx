@@ -37,7 +37,9 @@ const CONFIGURACION = {
   ],
 };
 
+const COMPUERTA = { documentos: 4, sin_propuesta: 0, criticos_esperados: 2, actual: { falsos_negativos: 1, detalle: [] }, propuesto: { falsos_negativos: 2, detalle: [] }, nuevos_falsos_negativos: ["DOC-TEP@1"], empeora: true };
 const SIMULACION = {
+  compuerta: COMPUERTA,
   documentos_evaluados: 10, sin_propuesta: 2, cambian: 1, mas_a_revision: 1, mas_automaticos: 0,
   detalle: [{ documento_id: "REC-1", version: 1, tipo: "Receta Médica", estado_actual: "ENRUTADO", estado_simulado: "EN_REVISION_HUMANA", prioridad_actual: "Rutina", prioridad_simulada: "Rutina",
     motivo_actual: null, motivo_simulado: "campo_dudoso", destino_actual: "Farmacia_Hospitalaria", destino_simulado: "Cola_Revision_Humana", cambia: true }],
@@ -132,6 +134,11 @@ describe("Configuración (RN-L1 a RN-L6)", () => {
     expect(resultado).toHaveTextContent(/1 de 10/);
     expect(resultado).toHaveTextContent("REC-1");
     expect(resultado).toHaveTextContent("EN_REVISION_HUMANA");
+    // RN-R3: la compuerta dice si la versión podrá activarse
+    const compuerta = within(resultado).getByTestId("compuerta");
+    expect(compuerta).toHaveTextContent(/no se puede activar/i);
+    expect(compuerta).toHaveTextContent("falsos negativos críticos 1 → 2");
+    expect(compuerta).toHaveTextContent("DOC-TEP@1");
     // proponer exige usuario y motivo (RN-L4)
     const boton = screen.getByRole("button", { name: /proponer versión/i });
     expect(boton).toBeDisabled();

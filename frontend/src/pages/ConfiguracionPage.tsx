@@ -7,7 +7,7 @@ import { etiquetaDestino } from "../app/mensajes";
 import { alTeclearPestanas } from "../app/pestanas";
 import { useUsuario } from "../app/usuario";
 import { Vacio } from "../components/Vacio";
-import type { Ampliaciones, CambiosConfiguracion, Configuracion, Simulacion, VersionConfiguracion } from "../types";
+import type { Ampliaciones, CambiosConfiguracion, Compuerta, Configuracion, Simulacion, VersionConfiguracion } from "../types";
 
 interface DefUmbral {
   clave: string;
@@ -324,6 +324,7 @@ export function ConfiguracionPage() {
                   <p className="muted">Simulación: {v.simulacion.cambian} de {v.simulacion.documentos_evaluados} documentos cambiarían
                     ({v.simulacion.mas_a_revision} más a revisión, {v.simulacion.mas_automaticos} más automáticos); {v.simulacion.sin_propuesta} sin propuesta del LLM.</p>
                 )}
+                {v.simulacion?.compuerta && <CompuertaCalidad c={v.simulacion.compuerta} compacta />}
                 <p><strong>{v.aprobaciones?.length ?? 0} de {v.aprobaciones_requeridas} aprobaciones</strong>{(v.aprobaciones?.length ?? 0) > 0 && <span className="muted"> · {v.aprobaciones?.map((a) => a.usuario).join(", ")}</span>}</p>
                 <div className="acciones" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <button type="button" disabled={!yo} onClick={() => aprobar(v)}>Aprobar</button>
@@ -428,6 +429,20 @@ function ListaAmpliable({ testid, titulo, base, ampliadas, valor, onChange }: { 
   );
 }
 
+/** RN-R3: la compuerta de calidad. Si la propuesta trae un falso negativo crítico nuevo, no se activa. */
+function CompuertaCalidad({ c, compacta = false }: { c: Compuerta; compacta?: boolean }) {
+  const texto = c.documentos === 0
+    ? "Compuerta de calidad: el conjunto de referencia está vacío, no hay con qué medir falsos negativos críticos."
+    : `Compuerta de calidad: ${c.documentos} documento${c.documentos === 1 ? "" : "s"} de referencia, ${c.criticos_esperados} crítico${c.criticos_esperados === 1 ? "" : "s"} esperado${c.criticos_esperados === 1 ? "" : "s"}; falsos negativos críticos ${c.actual.falsos_negativos} → ${c.propuesto.falsos_negativos}.`;
+  return (
+    <p className={c.empeora ? "aviso" : "muted"} data-testid="compuerta">
+      {c.empeora ? <strong>No se puede activar: </strong> : null}{texto}
+      {c.empeora && <> Aparecen {c.nuevos_falsos_negativos.length} nuevo{c.nuevos_falsos_negativos.length === 1 ? "" : "s"}: {c.nuevos_falsos_negativos.join(", ")}.</>}
+      {!c.empeora && !compacta && c.documentos > 0 && <> No aparece ninguno nuevo: la versión puede activarse.</>}
+    </p>
+  );
+}
+
 function ResultadoSimulacion({ s }: { s: Simulacion }) {
   return (
     <div data-testid="simulacion">
@@ -436,6 +451,7 @@ function ResultadoSimulacion({ s }: { s: Simulacion }) {
         <strong>{s.cambian} de {s.documentos_evaluados}</strong> documentos evaluados cambiarían de decisión
         ({s.mas_a_revision} más a revisión humana, {s.mas_automaticos} más automáticos). {s.sin_propuesta} no se pueden simular porque no tienen propuesta del LLM.
       </p>
+      {s.compuerta && <CompuertaCalidad c={s.compuerta} />}
       {s.detalle.length > 0 && (
         <div className="scroll">
           <table className="tabla-densa">

@@ -379,6 +379,17 @@ export interface FilaSimulacion {
   cambia: boolean;
 }
 
+/** RN-R3: falsos negativos críticos sobre el conjunto de referencia, con la configuración vigente y con la propuesta. */
+export interface Compuerta {
+  documentos: number;
+  sin_propuesta: number;
+  criticos_esperados: number;
+  actual: { falsos_negativos: number; detalle: { documento_id: string; version: number; esperado: string; obtenido: string }[] };
+  propuesto: { falsos_negativos: number; detalle: { documento_id: string; version: number; esperado: string; obtenido: string }[] };
+  nuevos_falsos_negativos: string[];
+  empeora: boolean;
+}
+
 export interface Simulacion {
   documentos_evaluados: number;
   sin_propuesta: number;
@@ -386,6 +397,7 @@ export interface Simulacion {
   mas_a_revision: number;
   mas_automaticos: number;
   detalle: FilaSimulacion[];
+  compuerta?: Compuerta;
 }
 
 export interface VersionConfiguracion {
