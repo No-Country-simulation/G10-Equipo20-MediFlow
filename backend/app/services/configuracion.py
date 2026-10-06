@@ -17,9 +17,11 @@ from sqlalchemy.orm import Session
 
 from app.models.documento import Documento
 from app.models.gobierno import VersionConfiguracion
+from app.models.referencia import CasoReferencia
 from app.packs.loader import cargar_pack, cargar_umbrales
 from app.packs.modelos import HallazgoCritico, PackPais, Umbrales
 from app.schemas.resultado import Destino, ResultadoTriaje
+from app.services.compuerta import comparar_configuraciones
 
 # Claves configurables (RN-L1) con su ruta dentro de Umbrales. Todo lo demás no se configura (RN-L2).
 CONFIGURABLES: dict[str, tuple[str, ...]] = {
@@ -253,16 +255,26 @@ class ServicioConfiguracion:
         self.session.refresh(v)
         return v
 
-    def aprobar(self, id_: int, usuario: str) -> VersionConfiguracion:
+    def aprobar(self, id_: int, usuario: str, *, pais: str) -> VersionConfiguracion:
         v = self.por_id(id_)
         if v.estado != "propuesta":
             raise ErrorConfiguracion(f"la versión ya está {v.estado}", 409)
         aprobaciones = list(v.aprobaciones_json or [])
         if any(a["usuario"] == usuario for a in aprobaciones):
             raise ErrorConfiguracion("RN-L5: los aprobadores deben ser personas distintas", 409)
+        activa = len(aprobaciones) + 1 >= aprobaciones_requeridas(v.toca_seguridad)
+        if activa:
+            # RN-R3: la compuerta corre con el conjunto de referencia de hoy, no con el del día de la propuesta.
+            compuerta = self.compuerta(CambiosConfiguracion.model_validate(v.cambios_json), pais)
+            v.simulacion_json = {**(v.simulacion_json or {}), "compuerta": compuerta}
+            if compuerta["empeora"]:
+                self.session.commit()
+                raise ErrorConfiguracion("RN-R3: la versión empeora los falsos negativos críticos sobre el conjunto de referencia "
+                                         f"({compuerta['actual']['falsos_negativos']} -> {compuerta['propuesto']['falsos_negativos']}; "
+                                         f"nuevos: {', '.join(compuerta['nuevos_falsos_negativos'])}) y no se activa", 409)
         aprobaciones.append({"usuario": usuario, "fecha_hora": datetime.now(timezone.utc).isoformat()})
         v.aprobaciones_json = aprobaciones
-        if len(aprobaciones) >= aprobaciones_requeridas(v.toca_seguridad):
+        if activa:
             self._activar(v)
         self.session.commit()
         self.session.refresh(v)
@@ -289,6 +301,16 @@ class ServicioConfiguracion:
         v.numero = ultimo + 1
         v.estado = "vigente"
         v.vigente_desde = ahora
+
+    # compuerta de calidad (RN-R3)
+
+    def casos_referencia(self) -> list[CasoReferencia]:
+        return list(self.session.scalars(select(CasoReferencia).order_by(CasoReferencia.id)))
+
+    def compuerta(self, cambios: CambiosConfiguracion, pais: str) -> dict:
+        """Falsos negativos críticos sobre el conjunto de referencia con la configuración vigente y con la propuesta."""
+        umbrales, pack = self.validar(cambios, pais)
+        return comparar_configuraciones(self.casos_referencia(), (self.pack(pais), self.umbrales()), (pack, umbrales))
 
     # simulación (RN-L6)
 
@@ -332,4 +354,5 @@ class ServicioConfiguracion:
             "mas_a_revision": a_revision,
             "mas_automaticos": automaticos,
             "detalle": detalle,
+            "compuerta": self.compuerta(cambios, pais),  # RN-R3
         }

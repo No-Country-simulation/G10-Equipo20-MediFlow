@@ -124,7 +124,7 @@ def proponer(cuerpo: PropuestaRequest, session: Session = Depends(get_session), 
 def aprobar(id_: int, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
     usuario = _gestor(session, cuenta)
     try:
-        return _version(ServicioConfiguracion(session).aprobar(id_, usuario))
+        return _version(ServicioConfiguracion(session).aprobar(id_, usuario, pais=get_settings().pais_instalacion))
     except ErrorConfiguracion as error:
         session.rollback()
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
