@@ -5,6 +5,7 @@ import type {
   Autorizacion,
   BandejaAutorizaciones,
   CambiosConfiguracion,
+  ConjuntoReferencia,
   Configuracion,
   DatosArchivo,
   DocumentoDetalle,
@@ -210,6 +211,15 @@ export function rechazarConfiguracion(id: number, cuerpo: { motivo: string }): P
 }
 
 // --- Fase D: métricas (RN-R) --------------------------------------------------------------------
+
+/** RN-R2: el conjunto de referencia seudonimizado, con su resumen. */
+export function obtenerReferencia(limit = 200): Promise<ConjuntoReferencia> {
+  return llamar<ConjuntoReferencia>(`/metricas/referencia?limit=${limit}`);
+}
+
+export function urlExportarReferencia(): string {
+  return `${BASE_URL}/metricas/referencia/exportar`;
+}
 
 export function obtenerMetricas(dias = 30): Promise<Metricas> {
   return llamar<Metricas>(`/metricas?dias=${dias}`);

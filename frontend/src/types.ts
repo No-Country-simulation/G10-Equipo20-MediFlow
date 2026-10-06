@@ -453,6 +453,42 @@ export interface Metricas {
   tokens: { entrada: number; salida: number };
 }
 
+/** RN-R2: un caso del conjunto de referencia, seudonimizado. */
+export interface CasoReferencia {
+  id: number;
+  documento_id: string;
+  version: number;
+  origen: "correccion" | "transcripcion";
+  campo: string;
+  extraido: unknown;
+  corregido: unknown;
+  usuario: string;
+  tipo_documento: string | null;
+  canal_origen: string;
+  pais: string;
+  nivel_propuesto: string | null;
+  nivel_antes: string | null;
+  nivel_resultante: string | null;
+  hallazgos: string[];
+  modelo_llm: string | null;
+  version_prompt: string | null;
+  version_reglas: string | null;
+  version_pack: string | null;
+  creado_en: string | null;
+}
+
+export interface ConjuntoReferencia {
+  resumen: {
+    casos: number;
+    documentos: number;
+    por_campo: { campo: string; casos: number }[];
+    por_tipo: { tipo: string; casos: number }[];
+    por_origen: Record<string, number>;
+    subidos_a_critico: string[];
+  };
+  casos: CasoReferencia[];
+}
+
 export interface UsuarioAdmin {
   usuario: string;
   nombre: string;

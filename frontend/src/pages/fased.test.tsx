@@ -90,6 +90,7 @@ beforeEach(() => {
   vi.spyOn(api, "obtenerResumen").mockResolvedValue({ total: 3, por_estado: {}, por_prioridad: {}, en_revision: 0, alertas_sin_acuse: 0, recetas_por_verificar: 0, ordenes_por_autorizar: 0, enrutados: 0, entregados_hoy: 0 });
   vi.spyOn(api, "obtenerConfiguracion").mockResolvedValue(CONFIGURACION as never);
   vi.spyOn(api, "obtenerMetricas").mockResolvedValue(METRICAS as never);
+  vi.spyOn(api, "obtenerReferencia").mockResolvedValue({ resumen: { casos: 0, documentos: 0, por_campo: [], por_tipo: [], por_origen: {}, subidos_a_critico: [] }, casos: [] });
   vi.spyOn(api, "listarUsuarios").mockResolvedValue(USUARIOS as never);
   vi.spyOn(api, "listarProfesionales").mockResolvedValue([]);
   vi.spyOn(api, "puestaEnMarcha").mockResolvedValue(PUESTA as never);

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { obtenerMetricas } from "../api";
+import { obtenerMetricas, obtenerReferencia, urlExportarReferencia } from "../api";
 import { etiquetaEstado, etiquetaMotivo } from "../app/mensajes";
 import { AvisoSistemaDegradado } from "../components/AvisoSistema";
-import type { Metricas } from "../types";
+import type { ConjuntoReferencia, Metricas } from "../types";
 import { etiquetaUmbral } from "./ConfiguracionPage";
 
 const PERIODOS = [7, 30, 90];
@@ -26,7 +26,14 @@ function legible(clave: string): string {
 export function MetricasPage() {
   const [dias, setDias] = useState(30);
   const [m, setM] = useState<Metricas | null>(null);
+  const [referencia, setReferencia] = useState<ConjuntoReferencia | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let activo = true;
+    obtenerReferencia().then((r) => activo && setReferencia(r)).catch(() => activo && setReferencia(null));
+    return () => { activo = false; };
+  }, []);
 
   useEffect(() => {
     let activo = true;
@@ -121,6 +128,34 @@ export function MetricasPage() {
                 </tr>
               ))}
               {m && m.correccion_por_campo.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 20 }}>Sin correcciones humanas en el periodo.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="tarjeta" style={{ marginTop: 12, padding: 0 }} data-testid="referencia">
+        <div style={{ padding: "12px 14px 0" }}>
+          <h2>Conjunto de referencia <span className="muted" style={{ fontWeight: 400 }}>· {referencia?.resumen.casos ?? 0} caso{referencia?.resumen.casos === 1 ? "" : "s"} de {referencia?.resumen.documentos ?? 0} documento{referencia?.resumen.documentos === 1 ? "" : "s"}</span></h2>
+          <p className="muted">
+            Cada corrección humana entra seudonimizada: lo que vio el motor, lo que propuso y lo que la persona corrigió. Sirve para medir un cambio de modelo, prompt o reglas antes de sacarlo.
+            {referencia && referencia.resumen.subidos_a_critico.length > 0 && <> <strong>{referencia.resumen.subidos_a_critico.length}</strong> documento{referencia.resumen.subidos_a_critico.length === 1 ? "" : "s"} que una persona subió a Crítico.</>}
+            {referencia && referencia.resumen.casos > 0 && <> <a href={urlExportarReferencia()} download="conjunto_referencia.json">Descargar el conjunto completo (JSON)</a></>}
+          </p>
+        </div>
+        <div className="scroll">
+          <table className="tabla-densa">
+            <thead><tr><th>Documento</th><th>Campo</th><th>Leído → corregido</th><th>Prioridad</th><th>Quién</th></tr></thead>
+            <tbody>
+              {referencia?.casos.map((c) => (
+                <tr key={c.id} data-testid="caso-referencia" className={`fila ${c.nivel_resultante === "Crítico" && c.nivel_antes !== "Crítico" ? "critico" : "rutina"}`}>
+                  <td><code>{c.documento_id}</code><span className="secundaria">{c.tipo_documento ?? "sin tipo"} · {c.origen === "transcripcion" ? "transcripción" : "corrección"}</span></td>
+                  <td><code>{c.campo}</code></td>
+                  <td>{c.extraido == null ? <span className="muted">sin lectura</span> : <code>{String(c.extraido)}</code>} → <code>{String(c.corregido ?? "—")}</code></td>
+                  <td>{c.nivel_antes ?? "—"}{c.nivel_resultante && c.nivel_resultante !== c.nivel_antes && <> → <strong>{c.nivel_resultante}</strong></>}</td>
+                  <td>{c.usuario}<span className="secundaria">{c.creado_en ? new Date(c.creado_en).toLocaleDateString("es-CO") : ""}</span></td>
+                </tr>
+              ))}
+              {referencia && referencia.casos.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 20 }}>Todavía no hay correcciones humanas: el conjunto se llena solo con cada una.</td></tr>}
             </tbody>
           </table>
         </div>
