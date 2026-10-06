@@ -178,6 +178,16 @@ class Paciente(BaseModel):
         return self
 
 
+class VerificacionProfesional(BaseModel):
+    """RN-A7: qué dijo la verificación del profesional. Donde no existe, no_aplica y no penaliza el score."""
+
+    estado: Literal["verificado", "no_encontrado", "sin_datos", "no_aplica"]
+    fuente: str | None = None  # padrón de profesionales de la instalación
+    detalle: str = ""
+    enlace_consulta: str | None = None  # consulta pública del registro (ReTHUS) para el revisor
+    consultado_en_registro_en: str | None = None  # última consulta manual en el registro nacional, si se anotó
+
+
 class Profesional(BaseModel):
     """RN-A6, RN-CO5."""
 
@@ -187,6 +197,7 @@ class Profesional(BaseModel):
     tipo_documento: str | None = None
     numero_documento: str | None = None
     jurisdiccion: str = "no_aplica"
+    verificacion: VerificacionProfesional | None = None  # RN-A7
 
 
 class SignosVitales(BaseModel):

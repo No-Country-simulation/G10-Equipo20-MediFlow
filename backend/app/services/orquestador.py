@@ -48,6 +48,7 @@ from app.services.limites import LimiteLLM
 from app.services.llm import EntradaLLM, FalloLLM, RespuestaFueraDeEsquema, ServicioExtraccion
 from app.services.pacientes import ServicioPacientes
 from app.services.prioridad_declarada import prioridad_declarada
+from app.services.profesionales import ServicioProfesionales
 from app.services.seudonimizacion import limpiar_tokens_no_resueltos, reidentificar_estructura
 from app.services.storage import Storage
 from app.services.usuarios import ServicioUsuarios
@@ -610,6 +611,10 @@ class Orquestador:
                  pack: PackPais | None = None, umbrales: Umbrales | None = None) -> Evaluado:
         """Reglas determinísticas más lo que solo sabe la instalación: si ese documento de identidad ya es de otra persona (RN-A4)."""
         evaluado = evaluar(propuesta, contexto or self._contexto_evaluacion(doc), pack or self.pack, umbrales or self.umbrales)
+        # RN-A7: el profesional se verifica contra el padrón de la instalación; el resultado se registra y no penaliza.
+        verificacion = ServicioProfesionales(self.repo.session, pack or self.pack).verificar(evaluado.profesional)
+        evaluado.profesional = evaluado.profesional.model_copy(update={"verificacion": verificacion})
+        evaluado.historial.append(DecisionRegistrada(regla="RN-A7", evidencia=verificacion.detalle, decision=f"profesional {verificacion.estado}"))
         registrado = self.pacientes.en_conflicto(doc.pais_origen, evaluado.paciente)
         if registrado is not None and registrado.id != doc.paciente_id:
             agregar_motivo(evaluado, M.IDENTIDAD_EN_CONFLICTO, "RN-A4",

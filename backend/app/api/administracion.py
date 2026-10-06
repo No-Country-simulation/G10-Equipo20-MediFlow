@@ -12,6 +12,7 @@ from app.models.alerta import Alerta
 from app.models.gobierno import Usuario
 from app.services.configuracion import ServicioConfiguracion
 from app.services.errores import ErrorDeRevision
+from app.services.profesionales import ServicioProfesionales
 from app.services.usuarios import TIPOS, ServicioUsuarios, validar_clave
 
 router = APIRouter(prefix="/administracion", tags=["administracion"])
@@ -107,6 +108,72 @@ def activar(usuario: str, session: Session = Depends(get_session), cuenta=Depend
     _administrador(session, cuenta)
     try:
         return _usuario(ServicioUsuarios(session).cambiar_estado(usuario, activo=True))
+    except ErrorDeRevision as error:
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+
+
+# --- Padrón de profesionales (RN-A7, RN-CO5) -----------------------------------------------------
+
+
+class ProfesionalRequest(BaseModel):
+    registro: str = Field(..., min_length=1, max_length=32)
+    nombre: str = Field(..., min_length=1, max_length=255)
+    profesion: str | None = Field(default=None, max_length=64)
+    tipo_documento: str | None = Field(default=None, max_length=8)
+    numero_documento: str | None = Field(default=None, max_length=32)
+
+
+def _profesional(p) -> dict:
+    return {
+        "id": p.id, "registro": p.registro, "nombre": p.nombre, "profesion": p.profesion, "tipo_documento": p.tipo_documento,
+        "numero_documento": p.numero_documento, "activo": p.activo, "creado_por": p.creado_por,
+        "creado_en": p.creado_en.isoformat() if p.creado_en else None,
+        "registro_consultado_en": p.registro_consultado_en.isoformat() if p.registro_consultado_en else None,
+        "registro_consultado_por": p.registro_consultado_por,
+    }
+
+
+@router.get("/profesionales")
+def listar_profesionales(session: Session = Depends(get_session)):
+    """Quién puede firmar documentos clínicos en esta instalación. Sin datos de pacientes."""
+    return [_profesional(p) for p in ServicioProfesionales(session).listar()]
+
+
+@router.post("/profesionales", status_code=201)
+def crear_profesional(cuerpo: ProfesionalRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    actor = _administrador(session, cuenta)
+    try:
+        p = ServicioProfesionales(session).crear(registro=cuerpo.registro, nombre=cuerpo.nombre, actor=actor, profesion=cuerpo.profesion,
+                                                 tipo_documento=cuerpo.tipo_documento, numero_documento=cuerpo.numero_documento)
+    except ErrorDeRevision as error:
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    return _profesional(p)
+
+
+@router.post("/profesionales/{profesional_id}/desactivar")
+def desactivar_profesional(profesional_id: int, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    _administrador(session, cuenta)
+    try:
+        return _profesional(ServicioProfesionales(session).cambiar_estado(profesional_id, activo=False))
+    except ErrorDeRevision as error:
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+
+
+@router.post("/profesionales/{profesional_id}/activar")
+def activar_profesional(profesional_id: int, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    _administrador(session, cuenta)
+    try:
+        return _profesional(ServicioProfesionales(session).cambiar_estado(profesional_id, activo=True))
+    except ErrorDeRevision as error:
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+
+
+@router.post("/profesionales/{profesional_id}/consulta_registro")
+def anotar_consulta_registro(profesional_id: int, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    """Deja anotado que se consultó el registro nacional (ReTHUS) para este profesional: fecha y quién."""
+    actor = _administrador(session, cuenta)
+    try:
+        return _profesional(ServicioProfesionales(session).anotar_consulta_en_registro(profesional_id, usuario=actor))
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
 
