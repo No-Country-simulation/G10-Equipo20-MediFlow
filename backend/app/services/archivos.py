@@ -1,33 +1,39 @@
 """Validación de archivos por contenido y lectura de PDF (RN-A1, RN-O5, RN-M1, RN-M2).
 
-Idea traída de la rama bryan-segovia: se valida lo que el archivo ES (bytes mágicos,
-estructura) y no lo que dice su extensión. Las páginas de PDF con texto embebido salen
-como texto (y pasan por la seudonimización); solo las páginas escaneadas se renderizan
-a PNG para la ruta de imagen del LLM.
+Se valida lo que el archivo ES (bytes mágicos, estructura) y no lo que dice su extensión. Las páginas de PDF
+con texto embebido salen como texto (y pasan por la seudonimización); solo las páginas escaneadas se
+renderizan a PNG para la ruta de imagen del LLM. Todo lo que abre un PDF con pymupdf corre en un proceso
+aparte con límite de tiempo (pdf_aislado): un PDF malformado no tumba ni cuelga la API.
 """
+import base64
 import io
 import warnings
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath, PureWindowsPath
 
-import pymupdf
 from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
+
+from app.services.errores_archivo import ArchivoInvalido
+from app.services.pdf_aislado import TIEMPO_MAXIMO_POR_DEFECTO_S, ejecutar
 
 EXTENSIONES = {".pdf": "pdf", ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg"}
 MIME = {"pdf": "application/pdf", "png": "image/png", "jpeg": "image/jpeg", "txt": "text/plain; charset=utf-8"}
 EXTENSION_SALIDA = {"pdf": "pdf", "png": "png", "jpeg": "jpg", "txt": "txt"}
 MAX_PAGINAS_POR_DEFECTO = 20
 MAX_CARACTERES_POR_DEFECTO = 50_000
-ESCALA_RENDER = 2.0
-# Una página con al menos este texto embebido va por la ruta de texto aunque tenga imágenes (logos, sellos).
-MIN_CARACTERES_TEXTO = 40
+
+__all__ = ["ArchivoInvalido"]
 
 
-class ArchivoInvalido(Exception):
-    def __init__(self, codigo: str):
-        super().__init__(codigo)
-        self.codigo = codigo
+def _tiempo_maximo_s() -> float:
+    """RN-P5: lo que se espera al proceso que lee el PDF. Viene de la configuración, con un valor por defecto sin ella."""
+    try:
+        from app.core.config import get_settings  # noqa: PLC0415 - evita import circular en arranque
+
+        return float(get_settings().pdf_tiempo_maximo_s)
+    except Exception:  # noqa: BLE001 - sin configuración cargable, el valor por defecto
+        return TIEMPO_MAXIMO_POR_DEFECTO_S
 
 
 @dataclass
@@ -132,70 +138,38 @@ def validar_archivo(nombre: str | None, datos: bytes) -> ArchivoValidado:
 
 
 def leer_pdf(datos: bytes, *, max_paginas: int = MAX_PAGINAS_POR_DEFECTO, max_caracteres: int = MAX_CARACTERES_POR_DEFECTO) -> LecturaPDF:
-    """Texto embebido por página; solo las páginas sin texto útil (escaneos) se renderizan a PNG."""
-    pymupdf.TOOLS.mupdf_display_errors(False)
-    pymupdf.TOOLS.mupdf_display_warnings(False)
-    try:
-        documento = pymupdf.open(stream=datos, filetype="pdf")
-    except Exception as error:  # noqa: BLE001
-        raise ArchivoInvalido("pdf_corrupto") from error
-    with documento:
-        if documento.is_encrypted:
-            raise ArchivoInvalido("pdf_cifrado")
-        if documento.page_count == 0:
-            raise ArchivoInvalido("pdf_sin_paginas")
-        if documento.page_count > max_paginas:
-            raise ArchivoInvalido("limite_paginas")  # RN-O5: se rechaza, nunca se trunca
-        textos: list[str] = []
-        paginas_texto: list[int] = []
-        paginas_imagen: list[tuple[int, bytes]] = []
-        textos_por_pagina: dict[int, str] = {}
-        total = 0
-        for indice, pagina in enumerate(documento, start=1):
-            texto = pagina.get_text("text", sort=True)
-            if len(texto.strip()) >= MIN_CARACTERES_TEXTO:
-                total += len(texto)
-                if total > max_caracteres:
-                    raise ArchivoInvalido("limite_caracteres")
-                textos.append(f"--- página {indice} ---\n{texto.strip()}")
-                paginas_texto.append(indice)
-                textos_por_pagina[indice] = texto.strip()
-            else:
-                pixmap = pagina.get_pixmap(matrix=pymupdf.Matrix(ESCALA_RENDER, ESCALA_RENDER), alpha=False)
-                paginas_imagen.append((indice, pixmap.tobytes("png")))
-        return LecturaPDF(
-            num_paginas=documento.page_count,
-            texto="\n\n".join(textos),
-            paginas_texto=paginas_texto,
-            paginas_imagen=paginas_imagen,
-            textos_por_pagina=textos_por_pagina,
-        )
+    """Texto embebido por página; solo las páginas sin texto útil (escaneos) se renderizan a PNG. Corre en un proceso aparte."""
+    respuesta = ejecutar("leer", datos, timeout_s=_tiempo_maximo_s(), max_paginas=max_paginas, max_caracteres=max_caracteres)
+    textos: list[str] = []
+    paginas_texto: list[int] = []
+    paginas_imagen: list[tuple[int, bytes]] = []
+    textos_por_pagina: dict[int, str] = {}
+    for pagina in respuesta["paginas"]:
+        numero = int(pagina["numero"])
+        if "texto" in pagina:
+            textos.append(f"--- página {numero} ---\n{pagina['texto']}")
+            paginas_texto.append(numero)
+            textos_por_pagina[numero] = pagina["texto"]
+        else:
+            paginas_imagen.append((numero, base64.b64decode(pagina["png"])))
+    return LecturaPDF(
+        num_paginas=int(respuesta["num_paginas"]),
+        texto="\n\n".join(textos),
+        paginas_texto=paginas_texto,
+        paginas_imagen=paginas_imagen,
+        textos_por_pagina=textos_por_pagina,
+    )
 
 
 def extraer_paginas(datos: bytes, paginas: list[int]) -> bytes:
     """RN-O4: un PDF nuevo con solo esas páginas del original, en ese orden."""
-    pymupdf.TOOLS.mupdf_display_errors(False)
-    with pymupdf.open(stream=datos, filetype="pdf") as origen, pymupdf.open() as destino:
-        for numero in paginas:
-            destino.insert_pdf(origen, from_page=numero - 1, to_page=numero - 1)
-        return destino.tobytes()
+    return base64.b64decode(ejecutar("extraer", datos, timeout_s=_tiempo_maximo_s(), paginas=list(paginas))["pdf"])
 
 
 def renderizar_pagina(datos: bytes, numero: int) -> bytes:
     """PNG de una página del PDF original, para la vista previa del revisor."""
-    pymupdf.TOOLS.mupdf_display_errors(False)
-    try:
-        documento = pymupdf.open(stream=datos, filetype="pdf")
-    except Exception as error:  # noqa: BLE001
-        raise ArchivoInvalido("pdf_corrupto") from error
-    with documento:
-        if numero < 1 or numero > documento.page_count:
-            raise ArchivoInvalido("pagina_no_encontrada")
-        pagina = documento[numero - 1]
-        escala = min(2.0, 1500 / max(pagina.rect.width, 1), 2000 / max(pagina.rect.height, 1))
-        return pagina.get_pixmap(matrix=pymupdf.Matrix(escala, escala), alpha=False).tobytes("png")
+    return base64.b64decode(ejecutar("renderizar", datos, timeout_s=_tiempo_maximo_s(), numero=numero)["png"])
 
 
 def contar_paginas(datos: bytes) -> int:
-    with pymupdf.open(stream=datos, filetype="pdf") as documento:
-        return documento.page_count
+    return int(ejecutar("contar", datos, timeout_s=_tiempo_maximo_s())["num_paginas"])

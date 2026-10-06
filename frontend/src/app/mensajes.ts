@@ -27,6 +27,8 @@ export const MENSAJE_RECHAZO: Record<string, string> = {
   imagen_corrupta: "La imagen está dañada o excede los límites de seguridad.",
   limite_paginas: "El PDF supera el máximo de páginas permitido.",
   limite_caracteres: "El documento supera el máximo de texto permitido.",
+  limite_render: "Las páginas escaneadas del PDF pesan demasiado para procesarlas.",
+  pdf_tiempo_excedido: "La lectura del PDF tardó demasiado y se descartó. Revisa que el archivo no esté dañado.",
   tamano_excedido: "El archivo supera el tamaño máximo. No se recorta: se rechaza (RN-O5).",
   nombre_invalido: "El nombre del archivo no es válido.",
 };

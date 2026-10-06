@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     max_paginas_pdf: int = 20  # RN-O5
+    pdf_tiempo_maximo_s: float = 30.0  # RN-P5: lo que se espera al proceso aparte que lee un PDF; superado, se rechaza
     openai_model: str = "gpt-4.1-mini"
     openai_timeout_s: float = 60.0
     llm_max_intentos: int = 3  # RN-P2
