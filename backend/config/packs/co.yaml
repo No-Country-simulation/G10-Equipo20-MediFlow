@@ -192,3 +192,4 @@ datos_personales:                         # RN-CO19
   datos_salud_sensibles: true
   llm_es_transmision_internacional: true
   solo_documentos_sinteticos_en_mvp: true
+  plazo_reclamo_dias_habiles: 15          # RN-M6: Ley 1581 de 2012, art. 15: un reclamo se atiende en 15 días hábiles

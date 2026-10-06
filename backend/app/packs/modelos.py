@@ -110,6 +110,7 @@ class DatosPersonales(BaseModel):
     datos_salud_sensibles: bool
     llm_es_transmision_internacional: bool
     solo_documentos_sinteticos_en_mvp: bool
+    plazo_reclamo_dias_habiles: int = 15  # RN-M6: días hábiles para responder la solicitud del titular
 
 
 class PackPais(BaseModel):

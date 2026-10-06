@@ -21,6 +21,7 @@ from app.services.ingesta import ResultadoIngesta, ServicioIngesta
 from app.services.limites import LimiteIngesta
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
+from app.services.solicitudes_titular import ServicioSolicitudesTitular
 from app.services.storage import Storage
 
 router = APIRouter(prefix="/documentos", tags=["documentos"])
@@ -159,6 +160,7 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
         "paciente_id": doc.paciente_id,  # RN-M6: ficha del directorio a la que quedó vinculado
         "asignado_a": doc.asignado_a,  # RN-J3
         "escalado_a_rol": doc.escalado_a_rol,  # RN-J2, RN-J3
+        "solicitud_titular": _solicitud_pendiente(session, doc),  # RN-M6
         "verificaciones": doc.verificaciones_json or [],
         "autorizacion": doc.autorizacion_json,
         "alerta": _alerta(doc),
@@ -170,6 +172,14 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
             for t in doc.transiciones
         ],
     }
+
+
+def _solicitud_pendiente(session: Session, doc: Documento) -> dict | None:
+    """RN-M6: si el titular pidió revisión humana de este documento y nadie respondió aún, el revisor lo ve aquí."""
+    from app.api.pacientes import solicitud_como_dict  # noqa: PLC0415 - evita import circular
+
+    pendiente = ServicioSolicitudesTitular(session).pendiente_de_documento(doc.documento_id)
+    return solicitud_como_dict(pendiente) if pendiente is not None else None
 
 
 def _alerta(doc: Documento) -> dict | None:

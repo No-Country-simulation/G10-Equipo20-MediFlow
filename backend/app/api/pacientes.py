@@ -1,15 +1,19 @@
-"""Directorio de pacientes (RN-M6): localizar todo lo asociado a una persona. Solo para roles clínicos (RN-K1, RN-K2)."""
-from typing import Annotated
+"""Directorio de pacientes (RN-M6): localizar todo lo asociado a una persona y registrar las solicitudes del titular.
+Solo para roles clínicos (RN-K1, RN-K2)."""
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import cuenta_actual, firmante, get_session
+from app.core.config import get_settings
 from app.models.documento import Documento
-from app.models.paciente import Paciente
+from app.models.paciente import Paciente, SolicitudTitular
+from app.services.configuracion import ServicioConfiguracion
 from app.services.errores import ErrorDeRevision
 from app.services.pacientes import ServicioPacientes
+from app.services.solicitudes_titular import ServicioSolicitudesTitular
 
 router = APIRouter(prefix="/pacientes", tags=["pacientes"])
 
@@ -33,6 +37,69 @@ def _documento(doc: Documento) -> dict:
     }
 
 
+def solicitud_como_dict(s: SolicitudTitular, paciente: Paciente | None = None) -> dict:
+    datos = {
+        "id": s.id, "paciente_id": s.paciente_id, "documento_id": s.documento_id, "version": s.version,
+        "presentada_por": s.presentada_por, "canal": s.canal, "motivo": s.motivo,
+        "registrada_por": s.registrada_por, "registrada_en": s.registrada_en.isoformat(), "vence_en": s.vence_en.isoformat(),
+        "estado": s.estado, "resultado": s.resultado, "respuesta": s.respuesta, "respondida_por": s.respondida_por,
+        "respondida_en": s.respondida_en.isoformat() if s.respondida_en else None,
+    }
+    if paciente is not None:
+        datos["paciente_nombre"] = paciente.nombre
+    return datos
+
+
+@router.get("/solicitudes")
+def listar_solicitudes(estado: Literal["pendiente", "respondida", "todas"] = "pendiente", session: Session = Depends(get_session)):
+    """RN-M6: las solicitudes del titular, pendientes primero por vencimiento."""
+    return [solicitud_como_dict(s, p) for s, p in ServicioSolicitudesTitular(session).listar(estado)]
+
+
+class SolicitudRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    documento_id: str = Field(..., min_length=1, max_length=128)
+    presentada_por: Literal["titular", "representante"] = "titular"
+    canal: Literal["presencial", "telefono", "correo", "escrito"] = "presencial"
+    motivo: str = Field(..., max_length=2000)
+
+
+class RespuestaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resultado: Literal["mantenida", "corregida"]
+    respuesta: str = Field(..., max_length=4000)
+
+
+@router.post("/{paciente_id}/solicitudes", status_code=201)
+def registrar_solicitud(paciente_id: int, cuerpo: SolicitudRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    """RN-M6: el auditor registra, en la ficha, que el titular pide revisión humana de una decisión automatizada."""
+    quien = firmante(session, cuenta, "editar_paciente")
+    pack = ServicioConfiguracion(session).pack(get_settings().pais_instalacion)
+    try:
+        solicitud = ServicioSolicitudesTitular(session, pack).registrar(
+            paciente_id, documento_id=cuerpo.documento_id, presentada_por=cuerpo.presentada_por, canal=cuerpo.canal,
+            motivo=cuerpo.motivo, usuario=quien.usuario,
+        )
+    except ErrorDeRevision as error:
+        session.rollback()
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    return solicitud_como_dict(solicitud)
+
+
+@router.post("/solicitudes/{solicitud_id}/responder")
+def responder_solicitud(solicitud_id: int, cuerpo: RespuestaRequest, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    """RN-M6: la respuesta es una revisión humana y la firma quien resuelve la revisión (RN-G4)."""
+    quien = firmante(session, cuenta, "resolver_revision")
+    try:
+        solicitud = ServicioSolicitudesTitular(session).responder(solicitud_id, resultado=cuerpo.resultado, respuesta=cuerpo.respuesta, usuario=quien.usuario)
+    except ErrorDeRevision as error:
+        session.rollback()
+        raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
+    return solicitud_como_dict(solicitud)
+
+
 @router.get("")
 def listar_pacientes(
     q: Annotated[str, Query(max_length=128)] = "",
@@ -52,7 +119,8 @@ def consultar_paciente(paciente_id: int, session: Session = Depends(get_session)
         raise HTTPException(status_code=404, detail="paciente no encontrado")
     documentos = servicio.documentos(paciente_id)
     return {**_ficha(paciente, servicio.contar_documentos(paciente_id)), "historial": paciente.historial_json or [],
-            "documentos_listado": [_documento(d) for d in documentos]}
+            "documentos_listado": [_documento(d) for d in documentos],
+            "solicitudes": [solicitud_como_dict(s) for s in ServicioSolicitudesTitular(session).de_paciente(paciente_id)]}
 
 
 class EdicionPaciente(BaseModel):
