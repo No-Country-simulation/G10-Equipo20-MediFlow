@@ -41,6 +41,8 @@ CONFIGURABLES: dict[str, tuple[str, ...]] = {
 }
 # RN-L2: por estos dos pasa la seguridad del paciente (alerta crítica, RN-F1; revisión humana, RN-E8). Nunca se desactivan.
 DESTINOS_PROTEGIDOS = (Destino.COLA_EMERGENCIA_MEDICA, Destino.COLA_REVISION_HUMANA)
+# RN-P7: los canales que el sistema sabe usar, en el orden base de intento.
+CANALES_CONOCIDOS = ("Slack", "Correo")
 _EPSILON = 1e-9
 
 
@@ -74,6 +76,20 @@ class Ampliaciones(BaseModel):
         return not (self.alto_riesgo or self.control_especial or self.hallazgos_criticos)
 
 
+class NotificacionesCambio(BaseModel):
+    """RN-L1, RN-Q2, RN-P7: la cadena de guardia y el orden de canales. None: la versión no los toca;
+    una lista: el conjunto completo, en orden, desde esta versión."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cadena_guardia: list[str] | None = None
+    canales: list[str] | None = None
+
+    @property
+    def vacias(self) -> bool:
+        return self.cadena_guardia is None and self.canales is None
+
+
 class CambiosConfiguracion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -81,10 +97,11 @@ class CambiosConfiguracion(BaseModel):
     ampliaciones: Ampliaciones = Field(default_factory=Ampliaciones)
     # RN-L1: destinos que la clínica no usa. None: la versión no los toca; una lista: el conjunto completo desde esa versión.
     destinos_inactivos: list[Destino] | None = None
+    notificaciones: NotificacionesCambio = Field(default_factory=NotificacionesCambio)
 
     @property
     def vacios(self) -> bool:
-        return not self.umbrales and self.ampliaciones.vacias and self.destinos_inactivos is None
+        return not self.umbrales and self.ampliaciones.vacias and self.destinos_inactivos is None and self.notificaciones.vacias
 
 
 # --- Reglas puras -----------------------------------------------------------------------------
@@ -103,6 +120,10 @@ def acumular(previos: CambiosConfiguracion, nuevos: CambiosConfiguracion) -> Cam
             hallazgos_criticos=[*a.hallazgos_criticos, *(h for h in b.hallazgos_criticos if h.concepto.strip().upper() not in conceptos)],
         ),
         destinos_inactivos=nuevos.destinos_inactivos if nuevos.destinos_inactivos is not None else previos.destinos_inactivos,
+        notificaciones=NotificacionesCambio(
+            cadena_guardia=nuevos.notificaciones.cadena_guardia if nuevos.notificaciones.cadena_guardia is not None else previos.notificaciones.cadena_guardia,
+            canales=nuevos.notificaciones.canales if nuevos.notificaciones.canales is not None else previos.notificaciones.canales,
+        ),
     )
 
 
@@ -110,6 +131,27 @@ def validar_destinos(cambios: CambiosConfiguracion) -> None:
     for destino in cambios.destinos_inactivos or []:
         if destino in DESTINOS_PROTEGIDOS:
             raise ErrorConfiguracion(f"RN-L2: {destino.value} no se desactiva; por ahí pasan las alertas críticas y la revisión humana")
+
+
+def validar_notificaciones(cambios: CambiosConfiguracion) -> None:
+    """RN-Q2: la cadena tiene al menos un nivel y ninguno repetido. RN-P7: solo canales que el sistema sabe usar, sin repetir."""
+    n = cambios.notificaciones
+    if n.cadena_guardia is not None:
+        niveles = [x.strip() for x in n.cadena_guardia]
+        if not niveles or any(not x for x in niveles):
+            raise ErrorConfiguracion("RN-Q2: la cadena de guardia necesita al menos un nivel, y ninguno vacío")
+        if len({x.casefold() for x in niveles}) != len(niveles):
+            raise ErrorConfiguracion("RN-Q2: la cadena de guardia no repite niveles")
+        if any(len(x) > 64 for x in niveles):
+            raise ErrorConfiguracion("RN-Q2: cada nivel de la cadena tiene como máximo 64 caracteres")
+    if n.canales is not None:
+        if not n.canales:
+            raise ErrorConfiguracion("RN-P7: hace falta al menos un canal de notificación")
+        desconocidos = [x for x in n.canales if x not in CANALES_CONOCIDOS]
+        if desconocidos:
+            raise ErrorConfiguracion(f"RN-P7: canal desconocido: {', '.join(desconocidos)}. Canales: {', '.join(CANALES_CONOCIDOS)}")
+        if len(set(n.canales)) != len(n.canales):
+            raise ErrorConfiguracion("RN-P7: un canal no se repite en el orden de intento")
 
 
 def _leer(datos: dict, ruta: tuple[str, ...]) -> Any:
@@ -144,6 +186,11 @@ def aplicar_umbrales(base: Umbrales, cambios: CambiosConfiguracion) -> Umbrales:
             raise ErrorConfiguracion(f"RN-L1: {clave}={valor} fuera del rango [{rango.min}, {rango.max}]")
         tipo = type(actual)
         _escribir(datos, CONFIGURABLES[clave], tipo(valor) if tipo in (int, float) else valor)
+    # RN-L1: cadena de guardia y canales, como conjunto completo desde esta versión.
+    if cambios.notificaciones.cadena_guardia is not None:
+        datos["notificaciones"]["cadena_guardia"] = [x.strip() for x in cambios.notificaciones.cadena_guardia]
+    if cambios.notificaciones.canales is not None:
+        datos["notificaciones"]["canales"] = list(cambios.notificaciones.canales)
     return Umbrales.model_validate(datos)
 
 
@@ -178,8 +225,14 @@ def aplicar_pack(base: PackPais, cambios: CambiosConfiguracion) -> PackPais:
 
 
 def toca_seguridad(base: Umbrales, cambios: CambiosConfiguracion, inactivos_actuales: list[str] | None = None) -> bool:
-    """RN-L5: baja de confianza, más tolerancia, más tiempo de reacción o un destino que deja de recibir tocan seguridad."""
+    """RN-L5: baja de confianza, más tolerancia, más tiempo de reacción, un destino que deja de recibir, una cadena de guardia
+    con menos niveles o menos canales de notificación tocan seguridad."""
     if cambios.destinos_inactivos is not None and {d.value for d in cambios.destinos_inactivos} - set(inactivos_actuales or []):
+        return True
+    n = cambios.notificaciones
+    if n.cadena_guardia is not None and len(n.cadena_guardia) < len(base.notificaciones.cadena_guardia):
+        return True
+    if n.canales is not None and len(n.canales) < len(base.notificaciones.canales):
         return True
     for clave, valor in cambios.umbrales.items():
         if clave not in CONFIGURABLES:
@@ -241,6 +294,7 @@ class ServicioConfiguracion:
         if cambios.vacios:
             raise ErrorConfiguracion("RN-L4: una versión necesita al menos un cambio")
         validar_destinos(cambios)
+        validar_notificaciones(cambios)
         return aplicar_umbrales(self.umbrales(), cambios), aplicar_pack(self.pack(pais), cambios)
 
     def proponer(self, cambios: CambiosConfiguracion, *, autor: str, motivo: str, pais: str, simulacion: dict | None) -> VersionConfiguracion:

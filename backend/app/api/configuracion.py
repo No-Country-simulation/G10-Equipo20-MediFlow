@@ -9,8 +9,8 @@ from app.models.gobierno import VersionConfiguracion
 from app.packs.loader import cargar_pack, cargar_umbrales
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.resultado import Destino
-from app.services.configuracion import (CONFIGURABLES, DESTINOS_PROTEGIDOS, CambiosConfiguracion, ErrorConfiguracion, ServicioConfiguracion,
-                                        aprobaciones_requeridas, valor_base)
+from app.services.configuracion import (CANALES_CONOCIDOS, CONFIGURABLES, DESTINOS_PROTEGIDOS, CambiosConfiguracion, ErrorConfiguracion,
+                                        ServicioConfiguracion, aprobaciones_requeridas, valor_base)
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import Orquestador
 from app.services.storage import Storage
@@ -91,6 +91,12 @@ def configuracion(session: Session = Depends(get_session)):
         },
         # RN-L1: destinos que la clínica usa. Los protegidos se muestran y no se pueden desactivar (RN-L2).
         "destinos": [{"destino": d.value, "activo": d.value not in pack.destinos_inactivos, "protegido": d in DESTINOS_PROTEGIDOS} for d in Destino],
+        # RN-L1, RN-Q2, RN-P7: la cadena de guardia y el orden de canales vigentes, con la base para comparar.
+        "notificaciones": {
+            "cadena_guardia": list(efectivos.notificaciones.cadena_guardia), "canales": list(efectivos.notificaciones.canales),
+            "base": {"cadena_guardia": list(base.notificaciones.cadena_guardia), "canales": list(base.notificaciones.canales)},
+            "canales_conocidos": list(CANALES_CONOCIDOS), "slack": efectivos.notificaciones.slack.model_dump(),
+        },
         "calidad": base.calidad.model_dump(),
         "propuestas": [_version(v) for v in servicio.propuestas()],
         "historial": [_version(v) for v in servicio.historial()],
