@@ -38,5 +38,9 @@ venv/
 # Respaldo local de documentos (MVP sin OCI)
 backend/storage/
 
+# Base de datos local de pruebas (SQLite). Cada quien genera la suya.
+backend/*.db
+backend/*.db-journal
+
 # Frontend
 frontend/dist/
