@@ -35,12 +35,15 @@ class SlackSimulado:
 
     def __init__(self, estado: int = 200, caido: bool = False):
         self.estado, self.caido = estado, caido
-        self.publicaciones: list[tuple[str, str]] = []  # (url, texto)
+        self.publicaciones: list[tuple[str, str]] = []  # (url, texto de una línea para la notificación)
+        self.cuerpos: list[dict] = []  # el mensaje completo, con sus bloques
 
     def manejar(self, peticion: httpx.Request) -> httpx.Response:
         if self.caido:
             raise httpx.ConnectTimeout("sin respuesta", request=peticion)
-        self.publicaciones.append((str(peticion.url), json.loads(peticion.content)["text"]))
+        cuerpo = json.loads(peticion.content)
+        self.publicaciones.append((str(peticion.url), cuerpo["text"]))
+        self.cuerpos.append(cuerpo)
         return httpx.Response(self.estado, text="ok" if self.estado == 200 else "invalid_payload")
 
     @property
@@ -75,16 +78,25 @@ def test_la_alerta_critica_va_al_canal_de_guardia_con_mencion_destinatario_y_enl
     assert len(slack.publicaciones) == 1
     url, texto = slack.publicaciones[0]
     assert url == URGENTE
-    assert texto.startswith("@channel Alerta Crítica. Doc: DOC-CLIN-2026-8942.")
-    assert "Para: Jefe de Urgencias." in texto and "|Abrir en MediFlow>" in texto and doc.documento_id in texto
+    assert texto == "<!channel> Alerta Crítica. Doc: DOC-CLIN-2026-8942. Nivel: Crítico. Requiere acuse. Para: Jefe de Urgencias."
+    cuerpo = slack.cuerpos[0]["attachments"][0]
+    assert cuerpo["color"] == "#C81E1E"  # barra roja: exige respuesta inmediata
+    tipos = [b["type"] for b in cuerpo["blocks"]]
+    assert tipos == ["header", "section", "section", "actions", "context"]
+    assert cuerpo["blocks"][0]["text"]["text"].endswith("ALERTA CRÍTICA")
+    campos = [f["text"] for f in cuerpo["blocks"][1]["fields"]]
+    assert campos == ["*Documento*\n`DOC-CLIN-2026-8942`", "*Para*\nJefe de Urgencias"]
+    assert cuerpo["blocks"][2]["text"]["text"].startswith("<!channel> ")  # la mención con su marca: así sí avisa
+    boton = cuerpo["blocks"][3]["elements"][0]
+    assert boton["style"] == "danger" and boton["url"].endswith("/DOC-CLIN-2026-8942") and boton["text"]["text"] == "Abrir en MediFlow"
 
 
 def test_el_mensaje_no_lleva_datos_del_paciente_RN_Q4(repo, storage):
     slack = SlackSimulado()
     procesar_caso_1(repo, storage, notificador(slack))
-    _, texto = slack.publicaciones[0]
+    todo = json.dumps(slack.cuerpos[0], ensure_ascii=False)
     for dato in ("Mendes", "Carlos", "52", "tromboembolismo", "Rojas"):
-        assert dato not in texto
+        assert dato not in todo
 
 
 def test_cada_rol_puede_tener_su_canal_y_sin_mencion_configurada_no_se_menciona():
@@ -94,7 +106,13 @@ def test_cada_rol_puede_tener_su_canal_y_sin_mencion_configurada_no_se_menciona(
     n.enviar("Slack", "Dirección Médica", "Alerta Crítica. Doc: X. Nivel: Crítico. Requiere acuse.", None)
     n.enviar("Slack", "Jefe de Urgencias", "Alerta Crítica. Doc: Y. Nivel: Crítico. Requiere acuse.", None)
     assert [u for u, _ in slack.publicaciones] == ["https://hooks.slack.com/services/T0/B0/direccion", URGENTE]
-    assert not slack.publicaciones[0][1].startswith("@")
+    assert slack.publicaciones[0][1].startswith("Alerta Crítica.") and "<!" not in json.dumps(slack.cuerpos[0])
+
+
+def test_la_mencion_se_traduce_a_la_marca_que_slack_entiende():
+    from app.services.alertas import _mencion
+    assert _mencion("@channel") == "<!channel>" and _mencion("@here") == "<!here>" and _mencion("") == ""
+    assert _mencion("<!subteam^S01>") == "<!subteam^S01>"  # una marca ya escrita se respeta
 
 
 # --- Canal caído (RN-P7) --------------------------------------------------------------------------
@@ -143,8 +161,11 @@ def test_el_escalamiento_publica_un_segundo_mensaje_que_nombra_el_cambio_de_rol_
     assert len(slack.publicaciones) == 2
     url, texto = slack.publicaciones[1]
     assert url == URGENTE
-    assert texto.startswith("@channel Escalamiento. Alerta Crítica. Doc: DOC-CLIN-2026-8942.")
+    assert texto.startswith("<!channel> Escalamiento. Alerta Crítica. Doc: DOC-CLIN-2026-8942.")
     assert "Sin acuse de Jefe de Urgencias en 15 min." in texto and "Para: Coordinador Médico de Turno." in texto
+    cuerpo = slack.cuerpos[1]["attachments"][0]
+    assert cuerpo["blocks"][0]["text"]["text"].endswith("Escalamiento de alerta crítica")
+    assert "Sin acuse de Jefe de Urgencias en 15 min" in cuerpo["blocks"][2]["text"]["text"]
 
 
 # --- Avisos Urgentes (RN-F3) ---------------------------------------------------------------------
@@ -178,7 +199,11 @@ def test_rutina_no_avisa_y_critico_no_usa_el_canal_general_RN_Q3(client, llm_fal
 def test_el_aviso_urgente_va_al_webhook_general_y_sin_canal_configurado_queda_registrado():
     slack = SlackSimulado()
     notificador(slack).avisar("Profesional solicitante", "Aviso Urgente. Doc: URG-9. Nivel: Urgente. Atención en 24 h.", "http://x/URG-9")
-    assert slack.publicaciones == [(GENERAL, "Aviso Urgente. Doc: URG-9. Nivel: Urgente. Atención en 24 h. Para: Profesional solicitante. <http://x/URG-9|Abrir en MediFlow>")]
+    assert slack.publicaciones == [(GENERAL, "Aviso Urgente. Doc: URG-9. Nivel: Urgente. Atención en 24 h. Para: Profesional solicitante.")]
+    cuerpo = slack.cuerpos[0]["attachments"][0]
+    assert cuerpo["color"] == "#D97706" and cuerpo["blocks"][0]["text"]["text"].endswith("Aviso urgente")
+    assert "<!" not in json.dumps(slack.cuerpos[0])  # sin mención: no suena en todos los teléfonos
+    assert cuerpo["blocks"][3]["elements"][0]["style"] == "primary"
     with pytest.raises(CanalCaido):
         notificador(slack, Slack(avisos_urgentes=None)).avisar("Profesional solicitante", "Aviso Urgente. Doc: URG-9.", None)
 

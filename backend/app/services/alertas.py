@@ -90,30 +90,68 @@ class NotificadorSlack:
         if canal != "Slack":
             raise CanalCaido(f"{canal} no está configurado en esta instalación")
         nombre = self.config.por_rol.get(destinatario, self.config.criticos)
-        mencion = f"{self.config.mencion_criticos} " if self.config.mencion_criticos else ""
-        self._publicar(nombre, f"{mencion}{mensaje} Para: {destinatario}.{_enlace(enlace)}")
+        escalada = mensaje.startswith("Escalamiento.")
+        titulo = ":rotating_light: Escalamiento de alerta crítica" if escalada else ":rotating_light: ALERTA CRÍTICA"
+        self._publicar(nombre, _mensaje_slack(titulo, mensaje, destinatario, enlace, color=_ROJO,
+                                              mencion=_mencion(self.config.mencion_criticos), pie="Requiere acuse en MediFlow (RN-J7)."))
 
     def avisar(self, destinatario: str, mensaje: str, enlace: str | None) -> None:
         if not self.config.avisos_urgentes:
             raise CanalCaido("los avisos de nivel Urgente no tienen canal en esta instalación")
-        self._publicar(self.config.avisos_urgentes, f"{mensaje} Para: {destinatario}.{_enlace(enlace)}")
+        self._publicar(self.config.avisos_urgentes, _mensaje_slack(":warning: Aviso urgente", mensaje, destinatario, enlace, color=_AMBAR,
+                                                                   mencion="", pie="Atención en 24 h. No requiere acuse."))
 
-    def _publicar(self, nombre: str, texto: str) -> None:
+    def _publicar(self, nombre: str, cuerpo: dict[str, Any]) -> None:
         url = self.webhooks.get(nombre)
         if not url:
             raise CanalCaido(f"el canal de Slack '{nombre}' no tiene webhook configurado")
         import httpx  # noqa: PLC0415 - se importa al usarse para no exigirlo donde no hay Slack
 
         try:
-            respuesta = (self._cliente or httpx).post(url, json={"text": texto}, timeout=self.timeout_s)
+            respuesta = (self._cliente or httpx).post(url, json=cuerpo, timeout=self.timeout_s)
         except httpx.HTTPError as error:
             raise CanalCaido(f"Slack ({nombre}) no respondió: {type(error).__name__}") from None
         if respuesta.status_code >= 300:
             raise CanalCaido(f"Slack ({nombre}) rechazó el mensaje: HTTP {respuesta.status_code}")
 
 
-def _enlace(enlace: str | None) -> str:
-    return f" <{enlace}|Abrir en MediFlow>" if enlace else ""
+_ROJO = "#C81E1E"  # misma señal que la interfaz: rojo sólido para lo que exige respuesta inmediata
+_AMBAR = "#D97706"
+_MENCIONES = {"@channel": "<!channel>", "@here": "<!here>", "@everyone": "<!everyone>"}
+
+
+def _mencion(texto: str) -> str:
+    """Slack solo avisa a la gente si la mención va con su marca: `@channel` escrito tal cual es texto plano."""
+    return _MENCIONES.get(texto.strip(), texto.strip()) if texto else ""
+
+
+def _documento_y_detalle(mensaje: str) -> tuple[str, str]:
+    """`Alerta Crítica. Doc: X. Nivel: Crítico. Requiere acuse.` -> ("X", lo demás sin el ID)."""
+    documento = _documento_de(mensaje)
+    partes = [p.strip() for p in mensaje.split(".") if p.strip() and not p.strip().startswith("Doc:")]
+    return documento, ". ".join(partes) + "."
+
+
+def _mensaje_slack(titulo: str, mensaje: str, destinatario: str, enlace: str | None, *, color: str, mencion: str, pie: str) -> dict[str, Any]:
+    """Encabezado grande, barra de color, campos y botón. `text` es el resumen de una línea que Slack usa en las
+    notificaciones del teléfono. Solo viaja lo que permite RN-Q4: ID, nivel, destinatario y enlace."""
+    documento, detalle = _documento_y_detalle(mensaje)
+    resumen = f"{mencion} {mensaje} Para: {destinatario}.".strip()
+    bloques: list[dict[str, Any]] = [
+        {"type": "header", "text": {"type": "plain_text", "text": titulo, "emoji": True}},
+        {"type": "section", "fields": [
+            {"type": "mrkdwn", "text": f"*Documento*\n`{documento}`"},
+            {"type": "mrkdwn", "text": f"*Para*\n{destinatario}"},
+        ]},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"{mencion} {detalle}".strip()}},
+    ]
+    if enlace:
+        bloques.append({"type": "actions", "elements": [
+            {"type": "button", "style": "danger" if color == _ROJO else "primary", "url": enlace,
+             "text": {"type": "plain_text", "text": "Abrir en MediFlow", "emoji": True}},
+        ]})
+    bloques.append({"type": "context", "elements": [{"type": "mrkdwn", "text": pie}]})
+    return {"text": resumen, "attachments": [{"color": color, "blocks": bloques}]}
 
 
 def _utc(momento: datetime) -> datetime:
