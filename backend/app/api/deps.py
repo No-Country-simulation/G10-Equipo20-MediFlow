@@ -11,6 +11,8 @@ from app.core.database import abrir_sesion
 from app.graph.memoria import crear_memoria
 from app.core.sesiones import cuenta_de_la_sesion
 from app.models.gobierno import Usuario
+from app.packs.loader import cargar_umbrales
+from app.services.alertas import Notificador, NotificadorRegistro, NotificadorSlack
 from app.services.errores import ErrorDeRevision
 from app.services.llm import ClienteGemini, ClienteLLM, ClienteOpenAI, ErrorTransitorioLLM, LlamadaLLM, RespuestaLLM
 from app.services.usuarios import ServicioUsuarios
@@ -31,6 +33,15 @@ def get_storage() -> Storage:
     if settings.oci_namespace and settings.oci_bucket:
         return StorageOCI(settings.oci_namespace, settings.oci_bucket, settings.oci_region or None)
     return StorageLocal(settings.storage_local_dir)
+
+
+@lru_cache
+def get_notificador() -> Notificador:
+    """Slack si hay algún webhook en .env; si no, solo registro en el log. Los tests lo reemplazan (RN-U4)."""
+    settings = get_settings()
+    slack = NotificadorSlack({"general": settings.slack_webhook_url, "urgente": settings.slack_webhook_url_urgente},
+                             cargar_umbrales().notificaciones.slack, timeout_s=settings.slack_timeout_s)
+    return slack if slack.configurado else NotificadorRegistro()
 
 
 @lru_cache

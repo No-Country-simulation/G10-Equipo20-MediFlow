@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import cuenta_actual, firmante, get_llm, get_memoria, get_session, get_storage
+from app.api.deps import cuenta_actual, firmante, get_llm, get_memoria, get_notificador, get_session, get_storage
 from app.core.config import get_settings
 from app.services.configuracion import ServicioConfiguracion
 from app.repositories.documentos import RepositorioDocumentos
+from app.services.alertas import Notificador
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
 from app.services.storage import Storage
@@ -61,6 +62,7 @@ def resolver(
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
     cuenta=Depends(cuenta_actual),
 ):
     quien = firmante(session, cuenta, "resolver_revision")  # RN-G4, RN-K5: firma la cuenta de la sesión
@@ -68,7 +70,8 @@ def resolver(
     doc = repo.ultima_version(documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="documento no encontrado")
-    orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos), memoria=get_memoria())
+    orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos), memoria=get_memoria(),
+                              notificador=notificador)
     try:
         resultado = orquestador.resolver_revision(
             doc, accion=cuerpo.accion, usuario=quien.usuario, rol=quien.rol, motivo=cuerpo.motivo, correcciones=cuerpo.correcciones,

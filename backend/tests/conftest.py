@@ -17,12 +17,13 @@ from fastapi.testclient import TestClient  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app.api.deps import get_llm, get_memoria, get_session, get_storage  # noqa: E402
+from app.api.deps import get_llm, get_memoria, get_notificador, get_session, get_storage  # noqa: E402
 from app.core import sesiones  # noqa: E402
 from app.core.database import Base, crear_engine  # noqa: E402
 from app.core.sesiones import hash_clave  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.gobierno import Usuario  # noqa: E402
+from app.services.alertas import NotificadorFalso  # noqa: E402
 from app.services.llm import ClienteFalso  # noqa: E402
 from app.services.storage import StorageLocal  # noqa: E402
 from app.services.usuarios import ServicioUsuarios  # noqa: E402
@@ -83,11 +84,18 @@ def iniciar_sesion(cliente: TestClient, session: Session, usuario: str, rol: str
 
 
 @pytest.fixture
-def client(session, storage, llm_falso):
+def notificador_falso():
+    """RN-U4: la API nunca publica en Slack durante la suite; lo enviado queda aquí para comprobarlo."""
+    return NotificadorFalso()
+
+
+@pytest.fixture
+def client(session, storage, llm_falso, notificador_falso):
     """Sesión de auditor clínico (aud.ana): ingresa documentos, revisa, da acuse y ve pacientes."""
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_storage] = lambda: storage
     app.dependency_overrides[get_llm] = lambda: llm_falso
+    app.dependency_overrides[get_notificador] = lambda: notificador_falso
     memoria = InMemorySaver()  # un hilo por documento y versión, aislado por prueba
     app.dependency_overrides[get_memoria] = lambda: memoria
     with TestClient(app) as cliente:

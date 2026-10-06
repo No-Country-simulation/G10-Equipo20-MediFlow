@@ -2,10 +2,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import cuenta_actual, firmante, get_llm, get_session, get_storage
+from app.api.deps import cuenta_actual, firmante, get_llm, get_notificador, get_session, get_storage
 from app.core.config import get_settings
 from app.services.configuracion import ServicioConfiguracion
 from app.repositories.documentos import RepositorioDocumentos
+from app.services.alertas import Notificador
 from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
 from app.services.storage import Storage
@@ -46,6 +47,7 @@ def acusar(
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
     cuenta=Depends(cuenta_actual),
 ):
     quien = firmante(session, cuenta, "acusar_alerta")  # RN-Q5: el acuse lo da la cuenta de la sesión
@@ -53,7 +55,7 @@ def acusar(
     doc = repo.ultima_version(documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="documento no encontrado")
-    orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos))
+    orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos), notificador=notificador)
     try:
         return orquestador.acusar(doc, quien.usuario)
     except ErrorDeRevision as error:

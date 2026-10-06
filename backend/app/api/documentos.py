@@ -7,13 +7,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_memoria, cuenta_actual, get_llm, get_session, get_storage
+from app.api.deps import cuenta_actual, get_llm, get_memoria, get_notificador, get_session, get_storage
 from app.core.config import get_settings
 from app.models.documento import Documento
 from app.services.configuracion import ServicioConfiguracion
 from app.services.usuarios import ServicioUsuarios
 from app.repositories.documentos import RepositorioDocumentos
 from app.schemas.request import CanalOrigen, CoberturaPaciente, DocumentoRequest
+from app.services.alertas import Notificador
 from app.services.archivos import MIME, ArchivoInvalido, contar_paginas, renderizar_pagina
 from app.schemas.resultado import EstadoDocumento as E
 from app.services.ingesta import ResultadoIngesta, ServicioIngesta
@@ -25,9 +26,10 @@ from app.services.storage import Storage
 router = APIRouter(prefix="/documentos", tags=["documentos"])
 
 
-def _orquestador(session: Session, storage: Storage, llm: ClienteLLM) -> Orquestador:
+def _orquestador(session: Session, storage: Storage, llm: ClienteLLM, notificador: Notificador) -> Orquestador:
     settings = get_settings()
-    return Orquestador(RepositorioDocumentos(session), storage, ServicioExtraccion(llm, max_intentos=settings.llm_max_intentos), memoria=get_memoria())
+    return Orquestador(RepositorioDocumentos(session), storage, ServicioExtraccion(llm, max_intentos=settings.llm_max_intentos), memoria=get_memoria(),
+                       notificador=notificador)
 
 
 def _ingesta(session: Session, storage: Storage) -> ServicioIngesta:
@@ -64,11 +66,11 @@ def _resumen(doc: Documento, *, con_resultado: bool = True) -> dict:
     return datos
 
 
-def _responder_ingesta(ingesta: ResultadoIngesta, session: Session, storage: Storage, llm: ClienteLLM):
+def _responder_ingesta(ingesta: ResultadoIngesta, session: Session, storage: Storage, llm: ClienteLLM, notificador: Notificador):
     doc = ingesta.documento
     if ingesta.duplicado_exacto:
         return JSONResponse({**_resumen(doc), "duplicado": True}, status_code=200)  # RN-O1
-    _orquestador(session, storage, llm).procesar(doc)
+    _orquestador(session, storage, llm, notificador).procesar(doc)
     if doc.estado == E.RECHAZADO:
         return JSONResponse({**_resumen(doc), "codigo_error": doc.codigo_error}, status_code=400)  # RN-A1, RN-O5, RN-I5
     return _resumen(doc)
@@ -80,8 +82,9 @@ def recibir_documento(
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
 ):
-    return _responder_ingesta(_ingesta(session, storage).recibir(request), session, storage, llm)
+    return _responder_ingesta(_ingesta(session, storage).recibir(request), session, storage, llm, notificador)
 
 
 @router.post("/archivo")
@@ -94,6 +97,7 @@ async def recibir_archivo(
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
 ):
     """Carga multipart validada por contenido (RN-A1). Mismo pipeline que la ruta JSON."""
     binario = await archivo.read()
@@ -101,7 +105,7 @@ async def recibir_archivo(
         archivo.filename, binario, documento_id=documento_id.strip(), canal_origen=canal_origen.value,
         pais_origen=pais_origen.upper(), cobertura_paciente=cobertura_paciente.value if cobertura_paciente else None,
     )
-    return _responder_ingesta(ingesta, session, storage, llm)
+    return _responder_ingesta(ingesta, session, storage, llm, notificador)
 
 
 @router.get("")
@@ -229,9 +233,10 @@ def confirmar_entrega(
     session: Session = Depends(get_session),
     storage: Storage = Depends(get_storage),
     llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
 ):
     doc = _documento_o_404(session, documento_id)
     try:
-        return _orquestador(session, storage, llm).entregar(doc, cuerpo.destino)
+        return _orquestador(session, storage, llm, notificador).entregar(doc, cuerpo.destino)
     except ErrorDeRevision as error:
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
