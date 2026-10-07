@@ -86,6 +86,8 @@ def definir_clave(usuario: str, cuerpo: ClaveRequest, session: Session = Depends
         raise HTTPException(status_code=error.codigo, detail=error.detalle) from error
     u.clave_hash = hash_clave(cuerpo.clave)
     u.debe_cambiar_clave = True
+    u.bloqueado_hasta = None  # una clave nueva destraba el bloqueo por intentos: el administrador ya intervino
+    u.intentos_fallidos = 0
     cerrar_sesiones_de(u, session)
     session.commit()
     return _usuario(u)

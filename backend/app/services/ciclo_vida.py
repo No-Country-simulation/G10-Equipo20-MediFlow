@@ -21,7 +21,8 @@ TRANSICIONES: dict[E, frozenset[E]] = {
     # RN-I4: bloqueado para el agente; solo una persona lo resuelve o lo rechaza con motivo (RN-I5).
     E.EN_REVISION_HUMANA: frozenset({E.RESUELTO, E.RECHAZADO}),
     # RN-J4: tras una corrección se re-ejecutan las reglas (EVALUADO); si se aprueba, sigue a ENRUTADO.
-    E.RESUELTO: frozenset({E.EVALUADO, E.ENRUTADO}),
+    # RN-P2: tras un fallo técnico, una persona puede pedir que el LLM vuelva a leer (CLASIFICADO) y puede fallar otra vez.
+    E.RESUELTO: frozenset({E.EVALUADO, E.ENRUTADO, E.CLASIFICADO, E.FALLO_TECNICO}),
     E.ENRUTADO: frozenset({E.ENTREGADO, E.FALLO_TECNICO}),
     E.ENTREGADO: frozenset(),
     E.RECHAZADO: frozenset(),

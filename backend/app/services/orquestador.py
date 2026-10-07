@@ -225,7 +225,9 @@ class Orquestador:
         es_imagen = any(p.get("tipo") == "imagen" for p in doc.paginas_json or [])
         nivel = N.CRITICO if (detecciones or es_imagen) else N.RUTINA
         error = estado.get("error") or "fallo"
-        historial = [DecisionRegistrada(regla="RN-T1" if error.startswith("RN-T1") else "RN-P2", evidencia=error, decision="revision_humana:fallo_tecnico")]
+        revision = estado.get("revision")
+        historial = [DecisionRegistrada.model_validate(d) for d in revision["historial_previo"]] if revision else []  # RN-G2: nada se pierde
+        historial.append(DecisionRegistrada(regla="RN-T1" if error.startswith("RN-T1") else "RN-P2", evidencia=error, decision="revision_humana:fallo_tecnico"))
         for d in detecciones:
             historial.append(DecisionRegistrada(regla="RN-P4", evidencia=f"{d.concepto}: {d.evidencia}", decision="alerta sin LLM"))
         if es_imagen:
@@ -358,6 +360,11 @@ class Orquestador:
             if doc.propuesta_json:
                 raise ErrorDeRevision(409, "el documento ya tiene lectura del LLM; use la acción corregir")
             self._propuesta_transcrita(doc, decision.get("transcripcion") or {})
+        elif accion == "reintentar":
+            if doc.propuesta_json:
+                raise ErrorDeRevision(409, "el documento ya tiene lectura del LLM; use la acción corregir")
+            if resultado.evaluacion.motivo_auditoria is not M.FALLO_TECNICO:
+                raise ErrorDeRevision(409, "solo se reintenta la lectura de un documento en revisión por fallo técnico")
         else:
             raise ErrorDeRevision(422, f"acción desconocida: {accion}")
 
@@ -393,6 +400,15 @@ class Orquestador:
             self._persistir(doc, resultado, emitir_alerta=False)
             return {"resultado": resultado.model_dump(mode="json"), "revision": None}
 
+        if accion == "reintentar":
+            # RN-P2: el fallo fue del servicio, no del documento. En vez de transcribir a mano, el LLM vuelve a leer;
+            # si vuelve a fallar, el caso regresa a revisión por fallo técnico con todo su historial.
+            self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "reintento de lectura")
+            revision = self._revision(resultado, usuario=usuario, rol=rol, prioridad_humana=None,
+                                      motivo_evaluado="RN-P2: reglas sobre la lectura reintentada",
+                                      decision_rn_j3=DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) pidió reintentar la lectura: {motivo}", decision="reintento"))
+            return {"propuesta": None, "error": None, "revision": {**revision, "reintentar": True}}
+
         if accion == "corregir":
             return self._corregir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, correcciones=decision["correcciones"])
         return self._transcribir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, transcripcion=decision.get("transcripcion") or {})
@@ -404,8 +420,8 @@ class Orquestador:
     def _cerrar_alerta(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, motivo: str) -> None:
         """RN-F1, RN-J7: una alerta pendiente de un documento que una persona rechaza o baja de Crítico no sigue
         escalando: queda a nombre de esa persona, con el motivo en el historial de la alerta y del documento."""
-        alerta = self.repo.alerta_activa(doc)
-        if alerta is None or alerta.estado_acuse == "acusado":
+        alerta = self.repo.alerta_pendiente_de(doc)
+        if alerta is None:
             return
         self.repo.cerrar_alerta(alerta, usuario=usuario, motivo=motivo)
         resultado.historial_decisiones.append(DecisionRegistrada(regla="RN-F1", evidencia=f"{usuario}: {motivo}", decision="alerta cerrada"))
@@ -514,7 +530,8 @@ class Orquestador:
     def acusar(self, doc: Documento, usuario: str) -> dict[str, Any]:
         if not usuario.strip():
             raise ErrorDeRevision(422, "RN-Q5: el acuse lo da un usuario identificado")
-        alerta = self.repo.alerta_activa(doc)
+        # RN-O2: si la versión nueva no volvió a alertar, la alerta viva es la de la versión anterior y el acuse es sobre esa.
+        alerta = self.repo.alerta_activa(doc) or self.repo.alerta_por_documento_id(doc.documento_id)
         if alerta is None:
             raise ErrorDeRevision(404, "el documento no tiene alerta crítica")
         if alerta.estado_acuse != "acusado":
@@ -525,9 +542,13 @@ class Orquestador:
         return {"documento_id": doc.documento_id, "estado_acuse": alerta.estado_acuse, "acusado_por": alerta.acusado_por, "estado": doc.estado}
 
     def entregar(self, doc: Documento, destino: str) -> dict[str, Any]:
+        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
+        if (doc.entregas_json or {}).get(destino) and doc.estado in (E.ENRUTADO, E.ENTREGADO):
+            # Confirmar dos veces el mismo destino (doble clic, reintento de red) no es un error: ya está entregado.
+            return {"documento_id": doc.documento_id, "estado": doc.estado, "entregas": dict(doc.entregas_json or {}),
+                    "retenidas": resultado.enrutamiento.entregas_retenidas, "pendientes": self._pendientes_de_cierre(doc)}
         if doc.estado != E.ENRUTADO:
             raise ErrorDeRevision(409, f"solo se confirma la entrega de un documento ENRUTADO; está en {doc.estado}")
-        resultado = ResultadoTriaje.model_validate(doc.resultado_json)
         plan = [resultado.enrutamiento.destino_principal.value, *(d.value for d in resultado.enrutamiento.destinos_secundarios)]
         if destino not in plan:
             raise ErrorDeRevision(400, f"{destino} no está en el plan de enrutamiento {plan}")
@@ -627,8 +648,7 @@ class Orquestador:
         entregas = doc.entregas_json or {}
         retenidas = resultado.enrutamiento.entregas_retenidas
         pendientes = [d for d in plan if d not in retenidas and not entregas.get(d)]
-        alerta = self.repo.alerta_activa(doc)
-        if alerta is not None and alerta.estado_acuse != "acusado":
+        if self.repo.alerta_pendiente_de(doc) is not None:  # también la de una versión anterior (RN-O2, RN-J7)
             pendientes.append("acuse_alerta")
         return pendientes
 

@@ -89,6 +89,9 @@ class ServicioUsuarios:
         u = self.buscar(usuario)
         if u is None:
             raise ErrorDeRevision(404, "usuario no encontrado")
+        if not activo and u.activo and u.rol == "administrador" and self.activos_con_rol("administrador") <= 1:
+            # Sin un administrador activo nadie puede crear cuentas ni definir claves: la instalación quedaría cerrada.
+            raise ErrorDeRevision(409, "RN-S3: debe quedar al menos un administrador activo; crea otro antes de desactivar este")
         u.activo = activo
         u.desactivado_en = None if activo else datetime.now(timezone.utc)  # RN-K4: efecto inmediato
         self.session.commit()

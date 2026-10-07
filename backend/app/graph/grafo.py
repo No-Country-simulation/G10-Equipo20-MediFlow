@@ -36,7 +36,10 @@ def _rama_tras_enrutar(estado: EstadoGrafo) -> str:
 
 
 def _rama_tras_revision(estado: EstadoGrafo) -> str:
-    if estado.get("revision"):
+    revision = estado.get("revision")
+    if revision and revision.get("reintentar"):
+        return "clasificar_extraer"  # RN-P2: la persona pidió que el LLM vuelva a leer
+    if revision:
         return "evaluar"
     return "entrega" if _estado_resultado(estado) == "ENRUTADO" else "fin"
 
@@ -62,7 +65,8 @@ def construir_grafo(orquestador, memoria=None):
     grafo.add_edge("evaluar", "enrutar")  # RN-I2
     grafo.add_conditional_edges("enrutar", _rama_tras_enrutar, {"revision_humana": "revision_humana", "entrega": "entrega"})
     grafo.add_edge("fallo_tecnico", "revision_humana")  # RN-P2: a revisión humana; RN-P4: ya alertó si había hallazgo
-    grafo.add_conditional_edges("revision_humana", _rama_tras_revision, {"evaluar": "evaluar", "entrega": "entrega", "fin": END})
+    grafo.add_conditional_edges("revision_humana", _rama_tras_revision,
+                                {"evaluar": "evaluar", "clasificar_extraer": "clasificar_extraer", "entrega": "entrega", "fin": END})
     # Enrutado es una decisión; Entregado, un hecho (sección 3.3). Cada confirmación vuelve a esperar hasta cerrar.
     grafo.add_conditional_edges("entrega", _rama_tras_entrega, {"entrega": "entrega", "fin": END})
     return grafo.compile(checkpointer=memoria)

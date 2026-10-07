@@ -41,13 +41,14 @@ def test_aristas_no_saltan_etapas_RN_I2():
         ("enrutar", "revision_humana"),  # requiere_auditoria_humana: el grafo espera a la persona (RN-I4)
         ("fallo_tecnico", "revision_humana"),  # RN-P4: a revisión humana, con la detección determinística
         ("revision_humana", "evaluar"),  # corregir o transcribir: las reglas se re-ejecutan sin LLM (RN-J4)
+        ("revision_humana", "clasificar_extraer"),  # reintentar: tras un fallo técnico, la persona pide que el LLM vuelva a leer (RN-P2)
         ("revision_humana", "entrega"),  # aprobar: enrutado, a esperar las confirmaciones
         ("revision_humana", "__end__"),  # rechazar
         ("entrega", "entrega"),  # cada confirmación vuelve a esperar hasta que no quede nada pendiente
         ("entrega", "__end__"),  # ENTREGADO: estado final (RN-I1)
     }
-    # RN-J4: tras una decisión humana las reglas se re-ejecutan; nunca se vuelve al LLM.
-    assert ("revision_humana", "clasificar_extraer") not in aristas
+    # RN-J4: corregir y transcribir re-ejecutan las reglas sin LLM; al LLM solo se vuelve si la persona pide reintentar (RN-P2).
+    assert all(e.conditional for e in _grafo().edges if e.source == "revision_humana" and e.target == "clasificar_extraer")
     # RN-I2: nada llega a enrutar sin pasar por evaluar.
     assert all(origen == "evaluar" for origen, destino in aristas if destino == "enrutar")
 

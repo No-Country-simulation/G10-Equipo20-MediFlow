@@ -48,7 +48,7 @@ def revisores(session: Session = Depends(get_session)):
 
 
 class ResolucionRequest(BaseModel):
-    accion: Literal["aprobar", "corregir", "rechazar", "transcribir", "reasignar", "escalar"]  # RN-J3
+    accion: Literal["aprobar", "corregir", "rechazar", "transcribir", "reintentar", "reasignar", "escalar"]  # RN-J3, RN-P2
     motivo: str = ""
     version: int | None = None  # RN-O2: la versión que la persona tenía en pantalla; si llegó otra, no se decide a ciegas
     asignar_a: str | None = None  # reasignar: cuenta del revisor que toma el caso

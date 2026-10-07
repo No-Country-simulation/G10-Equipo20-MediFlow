@@ -156,6 +156,15 @@ class RepositorioDocumentos:
         consulta = consulta.order_by(orden, Alerta.emitida_en, Alerta.id).limit(limit)
         return list(self.session.scalars(consulta))
 
+    def alerta_pendiente_de(self, documento: Documento) -> Alerta | None:
+        """La alerta crítica sin acuse del documento, en esta versión o en una anterior (RN-O2: una versión nueva
+        no vuelve a alertar, así que la alerta viva puede ser la de la versión que reemplazó)."""
+        propia = self.alerta_activa(documento)
+        if propia is not None:
+            return propia if propia.estado_acuse != "acusado" else None
+        ultima = self.alerta_por_documento_id(documento.documento_id)
+        return ultima if ultima is not None and ultima.estado_acuse != "acusado" else None
+
     def alerta_por_documento_id(self, documento_id: str) -> Alerta | None:
         consulta = select(Alerta).where(Alerta.documento_id == documento_id).order_by(Alerta.id.desc()).limit(1)
         return self.session.scalars(consulta).first()
