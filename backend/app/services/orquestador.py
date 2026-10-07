@@ -220,7 +220,8 @@ class Orquestador:
         """RN-P2: reintentos agotados -> revisión humana. RN-P4: la detección determinística sigue alertando."""
         doc = self._doc(estado)
         texto = doc.texto_seudonimizado or ""
-        detecciones = detectar_en_texto(texto, self.pack)
+        descartes: list[str] = []
+        detecciones = detectar_en_texto(texto, self.pack, descartes)
         # RN-P4: solo lo que el sistema no pudo leer (páginas escaneadas) va con prioridad máxima; un PDF con texto se evalúa por su texto.
         es_imagen = any(p.get("tipo") == "imagen" for p in doc.paginas_json or [])
         nivel = N.CRITICO if (detecciones or es_imagen) else N.RUTINA
@@ -230,6 +231,8 @@ class Orquestador:
         historial.append(DecisionRegistrada(regla="RN-T1" if error.startswith("RN-T1") else "RN-P2", evidencia=error, decision="revision_humana:fallo_tecnico"))
         for d in detecciones:
             historial.append(DecisionRegistrada(regla="RN-P4", evidencia=f"{d.concepto}: {d.evidencia}", decision="alerta sin LLM"))
+        for descarte in descartes:
+            historial.append(DecisionRegistrada(regla="RN-D2", evidencia=descarte, decision="término sin alerta: antecedente o negado en el texto"))
         if es_imagen:
             historial.append(DecisionRegistrada(regla="RN-P4", evidencia="imagen sin lectura del LLM", decision="revisión humana con prioridad máxima"))
         # Sin propuesta del LLM, la prioridad que declara el documento ordena la cola (RN-J1). Solo sube (RN-D8).

@@ -359,9 +359,13 @@ class _Evaluador:
         self.clasificacion()
         identidad = self.identidad()
         self.campos_obligatorios(identidad)
+        descartes: list[str] = []
         detecciones = detectar_hallazgos(
-            diagnosticos=e.diagnosticos, texto=self.ctx.texto or "", declarados=e.hallazgos_criticos_detectados, pack=self.pack
+            diagnosticos=e.diagnosticos, texto=self.ctx.texto or "", declarados=e.hallazgos_criticos_detectados, pack=self.pack,
+            descartes=descartes,
         )
+        for descarte in descartes:
+            self._registrar("RN-D2", descarte, "término sin alerta: antecedente o negado en el texto")
         self.confianzas(detecciones)
         medicamentos = self.medicamentos()
         fecha = self.fecha()
