@@ -43,8 +43,15 @@ export interface Medicamento {
   dci: string;
   dosis: string | null;
   dosis_valor: string | null;
+  concentracion?: string | null;
+  forma_farmaceutica?: string | null;
   via: string | null;
   frecuencia: string | null;
+  duracion?: string | null;
+  cantidad_numeros?: string | null;
+  cantidad_letras?: string | null;
+  /** Cuántas unidades van en cada toma: "2 tabletas". */
+  unidades_por_toma?: string | null;
   alto_riesgo: boolean;
   control_especial: boolean;
 }

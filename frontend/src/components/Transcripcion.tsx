@@ -8,12 +8,13 @@ const TIPOS = ["Receta Médica", "Informe de Imágenes", "Informe de Laboratorio
 const DOCUMENTOS_PACIENTE = ["CC", "TI", "RC", "CE", "PA", "PT", "CN", "CD", "SC", "DE", "MS", "AS"];
 
 interface Medicamento {
-  dci: string; dosis: string; via: string; frecuencia: string; duracion: string; cantidad_numeros: string; cantidad_letras: string;
+  dci: string; dosis: string; unidades_por_toma: string; via: string; frecuencia: string; duracion: string; cantidad_numeros: string; cantidad_letras: string;
 }
-const MEDICAMENTO_VACIO: Medicamento = { dci: "", dosis: "", via: "", frecuencia: "", duracion: "", cantidad_numeros: "", cantidad_letras: "" };
+const MEDICAMENTO_VACIO: Medicamento = { dci: "", dosis: "", unidades_por_toma: "", via: "", frecuencia: "", duracion: "", cantidad_numeros: "", cantidad_letras: "" };
 const COLUMNAS_MEDICAMENTO: { clave: keyof Medicamento; etiqueta: string; cabecera: string }[] = [
   { clave: "dci", etiqueta: "DCI", cabecera: "DCI" },
   { clave: "dosis", etiqueta: "dosis", cabecera: "Dosis" },
+  { clave: "unidades_por_toma", etiqueta: "unidades por toma", cabecera: "Por toma" },
   { clave: "via", etiqueta: "vía", cabecera: "Vía" },
   { clave: "frecuencia", etiqueta: "frecuencia", cabecera: "Frecuencia" },
   { clave: "duracion", etiqueta: "duración", cabecera: "Duración" },

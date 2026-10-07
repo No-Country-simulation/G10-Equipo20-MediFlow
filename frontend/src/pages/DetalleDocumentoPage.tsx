@@ -12,6 +12,7 @@ import { rolPorId, rolPuedeVer } from "../app/roles";
 import { enmascarar, useUsuario } from "../app/usuario";
 import { AccionAcuse } from "../components/AccionAcuse";
 import { TagsAsignacion } from "../components/Asignacion";
+import { EditorMedicamentos } from "../components/EditorMedicamentos";
 import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { HistorialDecisiones } from "../components/HistorialDecisiones";
 import { TagEstado, TagPrioridad } from "../components/Tags";
@@ -88,6 +89,7 @@ export function DetalleDocumentoPage() {
   const [cola, setCola] = useState<ItemCola[]>([]);
   const [motivo, setMotivo] = useState("");
   const [correccion, setCorreccion] = useState<Correccion | null>(null);
+  const [editandoMedicamentos, setEditandoMedicamentos] = useState(false);
   const [confirmacion, setConfirmacion] = useState<Decision | null>(null);
   const [revisores, setRevisores] = useState<Revisor[] | null>(null);
   const [reasignando, setReasignando] = useState(false);
@@ -113,7 +115,7 @@ export function DetalleDocumentoPage() {
   useEffect(() => {
     // Al cambiar de documento no queda nada del anterior en pantalla mientras carga el siguiente.
     setDetalle(null); setTranscripcionSucia(false);
-    setPagina(1); setCorreccion(null); setMensaje(null); setPendientes(null); setConfirmacion(null); setCierre(null); setMotivo("");
+    setPagina(1); setCorreccion(null); setEditandoMedicamentos(false); setMensaje(null); setPendientes(null); setConfirmacion(null); setCierre(null); setMotivo("");
     setReasignando(false); setAsignarA("");
     cargar();
   }, [cargar]);
@@ -159,6 +161,7 @@ export function DetalleDocumentoPage() {
         correcciones: extra.correcciones ?? null, transcripcion: extra.transcripcion ?? null, asignar_a: extra.asignar_a ?? null,
       });
       setCorreccion(null);
+      setEditandoMedicamentos(false);
       setReasignando(false);
       setMotivo("");
       if (accion === "corregir") setMensaje({ texto: `${PASADO[accion]}. Queda en ${etiquetaEstado(resp.estado)}.` });
@@ -397,13 +400,14 @@ export function DetalleDocumentoPage() {
                 <div data-testid="campo-medicamento_dosis" className={bajo("medicamento_dosis") ? "dudoso" : ""}>
                   <dt>Medicamentos</dt>
                   {r.extraccion.medicamentos.map((m, i) => (
-                    <dd key={i}>{m.dci} {m.dosis ?? ""} {m.dosis_valor && <span className="muted">(leído {m.dosis_valor})</span>} {m.via ?? ""} {m.frecuencia ?? ""}
+                    <dd key={i}>{[m.dci, m.dosis, m.unidades_por_toma, m.via, m.frecuencia, m.duracion].filter(Boolean).join(" · ")} {m.dosis_valor && <span className="muted">(leído {m.dosis_valor})</span>}
                       {m.alto_riesgo && <span className="chip critico"> alto riesgo</span>}{m.control_especial && <span className="chip urgente"> control especial</span>}
                       {i === 0 && <PildoraConfianza valor={conf.medicamento_dosis} umbral={umb.medicamento_dosis} />}
                     </dd>
                   ))}
                   {r.extraccion.medicamentos.length === 0 && <dd className="muted">ninguno</dd>}
-                  {bajo("medicamento_dosis") && <dd className="aviso">Bajo el umbral {umb.medicamento_dosis?.toFixed(2)} <button type="button" className="enlace" onClick={() => setCorreccion({ campo: "extraccion.medicamentos[0].dosis", valor: r.extraccion.medicamentos[0]?.dosis ?? "" })}>Corregir</button></dd>}
+                  {bajo("medicamento_dosis") && <dd className="aviso">Bajo el umbral {umb.medicamento_dosis?.toFixed(2)} <button type="button" className="enlace" onClick={() => { setCorreccion(null); setEditandoMedicamentos(true); }}>Corregir</button></dd>}
+                  {enRevision && !transcribiendo && !bajo("medicamento_dosis") && <dd><button type="button" className="enlace" onClick={() => { setCorreccion(null); setEditandoMedicamentos(true); }}>{r.extraccion.medicamentos.length ? "Corregir medicamentos" : "Agregar medicamentos"}</button></dd>}
                 </div>
                 <div>
                   <dt>Hallazgos críticos</dt>
@@ -453,6 +457,11 @@ export function DetalleDocumentoPage() {
                 <span id="etiqueta-motivo">{transcribiendo ? "Motivo (obligatorio para rechazar o escalar)" : "Motivo (obligatorio para rechazar, escalar o bajar la prioridad)"}</span>
                 <input value={motivo} onChange={(e) => setMotivo(e.target.value)} aria-labelledby="etiqueta-motivo" />
               </label>
+              {editandoMedicamentos && !transcribiendo && r && (
+                <EditorMedicamentos key={`${detalle.documento_id}-${detalle.version}`} medicamentos={r.extraccion.medicamentos} enviando={enviando}
+                  onAplicar={(correcciones) => void resolver("corregir", { correcciones })} onCancelar={() => setEditandoMedicamentos(false)} />
+              )}
+
               {correccion && !transcribiendo && (
                 <div className="tarjeta correccion">
                   <SelectorCampo correccion={correccion} onChange={setCorreccion} />
