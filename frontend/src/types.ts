@@ -251,7 +251,7 @@ export interface DatosArchivo {
   paginas_por_documento?: string | null;
 }
 
-export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir" | "reasignar" | "escalar";
+export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir" | "reintentar" | "reasignar" | "escalar";
 
 export interface ResolucionRequest {
   accion: AccionRevision;

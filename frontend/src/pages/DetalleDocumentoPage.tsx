@@ -70,7 +70,7 @@ function VerificacionProfesionalTag({ verificacion }: { verificacion: Verificaci
   );
 }
 
-const PASADO: Record<AccionRevision, string> = { aprobar: "Aprobado", corregir: "Corregido y reevaluado", rechazar: "Rechazado", transcribir: "Transcrito y evaluado", reasignar: "Reasignado", escalar: "Escalado" };
+const PASADO: Record<AccionRevision, string> = { aprobar: "Aprobado", corregir: "Corregido y reevaluado", rechazar: "Rechazado", transcribir: "Transcrito y evaluado", reintentar: "Leído de nuevo y evaluado", reasignar: "Reasignado", escalar: "Escalado" };
 
 export function DetalleDocumentoPage() {
   const { id = "" } = useParams();
@@ -168,6 +168,7 @@ export function DetalleDocumentoPage() {
       // Reasignar y escalar no cierran el caso: sigue en revisión, a cargo de otra persona o del siguiente rol (RN-J3).
       else if (accion === "reasignar") setMensaje({ texto: `Reasignado a ${extra.asignar_a}. Sigue en revisión.` });
       else if (accion === "escalar") setMensaje({ texto: `Escalado a ${rolPorId(ROL_ESCALAMIENTO).nombre}. Sigue en revisión, a cargo de ese rol.` });
+      else if (accion === "reintentar" && resp.estado === "EN_REVISION_HUMANA") setMensaje({ texto: "El motor volvió a fallar. El caso sigue en revisión: puedes transcribirlo o reintentar más tarde.", error: true });
       else setCierre({ accion, estado: resp.estado, prioridad: resp.resultado?.clasificacion.nivel_prioridad, alerta: !!resp.resultado?.notificacion_generada });
       cargar();
     } catch (e) {
@@ -451,7 +452,12 @@ export function DetalleDocumentoPage() {
               <p className="aviso">Requiere revisión: <strong>{etiquetaMotivo(r.evaluacion.motivo_auditoria)}</strong>{r.evaluacion.campos_dudosos.length > 0 && <> · dudosos: {r.evaluacion.campos_dudosos.join(", ")}</>}</p>
               {(detalle.asignado_a || detalle.escalado_a_rol) && <p className="asignacion" data-testid="asignacion"><TagsAsignacion asignadoA={detalle.asignado_a} escaladoARol={detalle.escalado_a_rol} /></p>}
               {transcribiendo
-                ? <p className="muted">La acción principal es completar la transcripción en el panel central. Si el documento no corresponde, recházalo con su motivo.</p>
+                ? (
+                  <div className="tarjeta correccion" data-testid="reintento">
+                    <p className="muted" style={{ marginTop: 0 }}>La acción principal es completar la transcripción en el panel central. Si el fallo fue del motor de lectura (servicio caído, límite de llamadas), pide que lo lea de nuevo en vez de transcribir a mano. Si el documento no corresponde, recházalo con su motivo.</p>
+                    <button type="button" className="secundario" disabled={!firma || enviando} onClick={() => resolver("reintentar")}>Reintentar la lectura automática</button>
+                  </div>
+                )
                 : <p><span className="muted">Plan tras revisión:</span> {plan.map(etiquetaDestino).join(" + ") || "sin plan"}</p>}
               <label>
                 <span id="etiqueta-motivo">{transcribiendo ? "Motivo (obligatorio para rechazar o escalar)" : "Motivo (obligatorio para rechazar, escalar o bajar la prioridad)"}</span>
