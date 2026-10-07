@@ -72,7 +72,7 @@ def test_metricas_RN_R5_y_RN_T3_versiones_y_tokens_por_documento(client, llm_fal
     poblar(client, jefe, llm_falso)
     m = gestor.get("/metricas").json()
     assert m["versiones"]["modelo_llm"] == {"falso": 3}
-    assert m["versiones"]["version_prompt"] == {"triaje_v1": 3}
+    assert m["versiones"]["version_prompt"] == {"triaje_v2": 3}
     assert m["versiones"]["version_reglas"] == {"8": 3}
     assert list(m["versiones"]["pack"]) and m["tokens"]["entrada"] == 300 and m["tokens"]["salida"] == 150
 

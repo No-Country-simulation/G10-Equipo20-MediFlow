@@ -234,6 +234,7 @@ class Medicamento(BaseModel):
     duracion: str | None = None
     cantidad_numeros: str | None = None
     cantidad_letras: str | None = None
+    unidades_por_toma: str | None = None  # cuántas unidades en cada toma ("2 tabletas")
     alto_riesgo: bool = False
     control_especial: bool = False
 

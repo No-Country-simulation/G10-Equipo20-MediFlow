@@ -11,6 +11,7 @@ from app.services.escalamiento import escalar_una_vuelta
 from app.services.revision_humana import ServicioRevision, _utc
 from app.services.usuarios import ServicioUsuarios
 from tests.conftest import crear_cuenta
+from tests.test_aceptacion import med, receta, TEXTO_RECETA
 from tests.test_llm import propuesta_caso_1
 
 TEXTO = "Paciente: Carlos Eduardo Mendes, 52 años. Fecha: 03/04/2026. TC de tórax: tromboembolismo pulmonar agudo. FR 28, SpO2 88 %. Dr. Andrés Rojas, RM 45678."
@@ -294,3 +295,95 @@ def test_vencido_el_plazo_en_cola_el_caso_escala_solo_al_siguiente_rol_RN_J2(cli
     # la vuelta periódica hace lo mismo con la Rutina cuando vence su plazo
     assert "DOC-RUT-1" in escalar_una_vuelta(session, notificador_falso, ahora=entrada + timedelta(hours=cola.rutina_h_habiles, minutes=1))
     assert repo.ultima_version("DOC-RUT-1").escalado_a_rol == "jefe_urgencias"
+
+
+# --- Corregir medicamentos: la corrección humana cierra la duda (RN-J4, RN-J8, RN-CO8) -----------
+
+
+def receta_dudosa() -> dict:
+    """Dos medicamentos; la confianza de dosis (0.90) está bajo el umbral 0.95: va a revisión por campo dudoso."""
+    return receta([med("acetaminofen", "500 mg", frecuencia="cada 8 h", duracion="5 días si dolor"),
+                   med("naproxeno", "250 mg", frecuencia="cada 12 h")], **{"confianzas.medicamento_dosis": 0.90})
+
+
+def corregir(client, documento_id, correcciones, motivo="según el plan de egreso"):
+    return client.post(f"/revision/{documento_id}/resolver", json={"accion": "corregir", "motivo": motivo, "correcciones": correcciones})
+
+
+def test_corregir_un_campo_del_medicamento_lo_deja_verificado_y_el_caso_sale_de_revision(client, llm_falso):
+    enviar(client, llm_falso, "REC-1", receta_dudosa(), texto=TEXTO_RECETA, canal="Consulta_Ambulatoria")
+    assert client.get("/documentos/REC-1").json()["resultado"]["evaluacion"]["motivo_auditoria"] == "campo_dudoso"
+    r = corregir(client, "REC-1", {"extraccion.medicamentos[0].unidades_por_toma": "2 tabletas"})
+    assert r.status_code == 200, r.text
+    assert r.json()["estado"] == "ENRUTADO"  # antes volvía a la cola con la misma duda
+    medicamentos = r.json()["resultado"]["extraccion"]["medicamentos"]
+    assert medicamentos[0]["unidades_por_toma"] == "2 tabletas" and medicamentos[1]["unidades_por_toma"] is None
+    detalle = client.get("/documentos/REC-1").json()
+    assert detalle["confianzas"]["medicamento_dosis"] == 1.0  # verificado por la persona
+    assert detalle["correcciones"] == [{"campo": "extraccion.medicamentos[0].unidades_por_toma", "extraido": None, "corregido": "2 tabletas", "usuario": "aud.ana"}]
+    rn_j3 = [d for d in detalle["resultado"]["historial_decisiones"] if d["regla"] == "RN-J3"][-1]
+    assert "verificado por la persona: medicamento_dosis 0.9->1.0" in rn_j3["evidencia"]
+
+
+def test_una_confianza_fijada_por_la_persona_se_respeta(client, llm_falso):
+    enviar(client, llm_falso, "REC-1", receta_dudosa(), texto=TEXTO_RECETA, canal="Consulta_Ambulatoria")
+    r = corregir(client, "REC-1", {"extraccion.medicamentos[0].dosis": "1 g", "confianzas.medicamento_dosis": 0.92}, motivo="sigo con dudas")
+    assert r.json()["estado"] == "EN_REVISION_HUMANA"  # ella misma dijo que la duda sigue
+    assert client.get("/documentos/REC-1").json()["confianzas"]["medicamento_dosis"] == 0.92
+
+
+def test_una_correccion_invalida_se_rechaza_con_422_y_el_caso_sigue_intacto(client, llm_falso):
+    enviar(client, llm_falso, "REC-1", receta_dudosa(), texto=TEXTO_RECETA, canal="Consulta_Ambulatoria")
+    r = corregir(client, "REC-1", {"extraccion.paciente.edad": "cincuenta y ocho"})
+    assert r.status_code == 422 and "forma esperada" in r.json()["detail"]
+    r = corregir(client, "REC-1", {"extraccion.medicamentos[5].dosis": "1 g"})  # fuera de la lista
+    assert r.status_code == 422 and "fuera de la lista" in r.json()["detail"]
+    r = corregir(client, "REC-1", {"extraccion.pacinte.nombre": "Ana"})  # ruta con error de tipeo
+    assert r.status_code == 422
+    r = corregir(client, "REC-1", {"extraccion.medicamentos[0].campo_inventado": "x"})  # campo que la propuesta no tiene
+    assert r.status_code == 422 and "forma esperada" in r.json()["detail"]
+    detalle = client.get("/documentos/REC-1").json()
+    assert detalle["estado"] == "EN_REVISION_HUMANA" and detalle["correcciones"] == []
+    assert corregir(client, "REC-1", {"extraccion.medicamentos[0].unidades_por_toma": "2 tabletas"}).status_code == 200  # el hilo sigue sano
+
+
+def test_se_puede_agregar_un_medicamento_que_el_llm_no_leyo_y_quitar_uno_que_invento(client, llm_falso):
+    enviar(client, llm_falso, "REC-A", receta_dudosa(), texto=TEXTO_RECETA, canal="Consulta_Ambulatoria")
+    nuevo = {"dci": "omeprazol", "dosis": "20 mg", "concentracion": None, "forma_farmaceutica": "cápsula", "via": "oral",
+             "frecuencia": "cada 24 h", "duracion": "30 días", "cantidad_numeros": "30", "cantidad_letras": "treinta", "unidades_por_toma": "1 cápsula"}
+    r = corregir(client, "REC-A", {"extraccion.medicamentos[2]": nuevo})
+    assert r.status_code == 200, r.text
+    assert [m["dci"] for m in r.json()["resultado"]["extraccion"]["medicamentos"]] == ["acetaminofen", "naproxeno", "omeprazol"]
+    assert client.get("/documentos/REC-A").json()["correcciones"][0] == {"campo": "extraccion.medicamentos[2]", "extraido": None, "corregido": nuevo, "usuario": "aud.ana"}
+
+    enviar(client, llm_falso, "REC-B", receta_dudosa(), texto=TEXTO_RECETA + " Segunda hoja.", canal="Consulta_Ambulatoria")
+    r = corregir(client, "REC-B", {"extraccion.medicamentos[1]": None})
+    assert r.status_code == 200, r.text
+    assert [m["dci"] for m in r.json()["resultado"]["extraccion"]["medicamentos"]] == ["acetaminofen"]
+    quitado = client.get("/documentos/REC-B").json()["correcciones"][0]
+    assert quitado["campo"] == "extraccion.medicamentos[1]" and quitado["extraido"]["dci"] == "naproxeno" and quitado["corregido"] is None
+
+
+def test_la_lista_entera_de_medicamentos_se_puede_reemplazar_en_una_sola_correccion(client, llm_falso):
+    enviar(client, llm_falso, "REC-1", receta_dudosa(), texto=TEXTO_RECETA, canal="Consulta_Ambulatoria")
+    lista = [{"dci": "acetaminofen", "dosis": "500 mg", "concentracion": "500 mg", "forma_farmaceutica": "tableta", "via": "VO",
+              "frecuencia": "cada 8 horas", "duracion": "5 días si dolor", "cantidad_numeros": "30", "cantidad_letras": "treinta", "unidades_por_toma": "2 tabletas"}]
+    r = corregir(client, "REC-1", {"extraccion.medicamentos": lista})
+    assert r.status_code == 200, r.text
+    assert r.json()["estado"] == "ENRUTADO" and len(r.json()["resultado"]["extraccion"]["medicamentos"]) == 1
+
+
+def test_corregir_el_cie10_tambien_verifica_la_confianza_del_diagnostico(client, llm_falso):
+    enviar(client, llm_falso, "DOC-CRIT", propuesta_para_revision())  # diagnostico_codigo 0.5
+    r = corregir(client, "DOC-CRIT", {"extraccion.diagnosticos[0].cie10_sugerido": "I26.0"}, motivo="código confirmado en el informe")
+    assert r.status_code == 200 and r.json()["estado"] == "ENRUTADO"
+    assert client.get("/documentos/DOC-CRIT").json()["confianzas"]["diagnostico_codigo"] == 1.0
+
+
+def test_el_llm_puede_leer_las_unidades_por_toma_y_la_metrica_agrupa_las_rutas_con_corchetes(client, llm_falso):
+    from app.services.metricas import normalizar_campo
+
+    propuesta = receta([med("acetaminofen", "500 mg", unidades_por_toma="2 tabletas")])
+    enviar(client, llm_falso, "REC-OK", propuesta, texto=TEXTO_RECETA, canal="Consulta_Ambulatoria")
+    assert client.get("/documentos/REC-OK").json()["resultado"]["extraccion"]["medicamentos"][0]["unidades_por_toma"] == "2 tabletas"
+    assert normalizar_campo("extraccion.medicamentos[0].dosis") == normalizar_campo("extraccion.medicamentos.0.dosis") == "extraccion.medicamentos.*.dosis"

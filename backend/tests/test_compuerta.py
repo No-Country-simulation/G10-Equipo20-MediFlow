@@ -116,7 +116,7 @@ def test_el_script_compara_con_la_linea_base_y_sale_con_1_si_empeora(client, llm
     documento_corregido(client, llm_falso)
     informe, codigo = ejecutar(session)
     assert codigo == 0 and informe["modo"] == "reglas" and informe["documentos"] == 1 and informe["falsos_negativos"] == 0
-    assert informe["version_prompt"] == "triaje_v1"
+    assert informe["version_prompt"] == "triaje_v2"
 
     monkeypatch.setattr(ServicioConfiguracion, "pack", lambda self, pais: pack_sin_hallazgos())
     informe, codigo = ejecutar(session, linea_base={"detalle": []})

@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     slack_webhook_url: str = ""  # canal general: avisos de nivel Urgente al solicitante (RN-F3)
     slack_webhook_url_urgente: str = ""  # canal de guardia: alertas críticas y sus escalamientos (RN-F1, RN-F2)
     slack_timeout_s: float = 5.0  # pasado este tiempo, el canal cuenta como caído y se prueba el siguiente (RN-P7)
-    prompt_version: str = "triaje_v1"  # RN-R5
+    prompt_version: str = "triaje_v2"  # RN-R5: v2 pide las unidades por toma de cada medicamento
     # RN-S3: requisitos declarativos de la instalación. Se completan en .env antes de producción.
     base_legal_tratamiento: str = ""  # RN-M8
     contrato_transmision_internacional: bool = False  # RN-CO19

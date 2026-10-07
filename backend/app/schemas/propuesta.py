@@ -77,6 +77,7 @@ class MedicamentoPropuesto(_Estricto):
     duracion: str | None = None
     cantidad_numeros: str | None = None
     cantidad_letras: str | None = None
+    unidades_por_toma: str | None = None  # "2 tabletas", "1 tableta con alimentos": cuántas unidades en cada toma
 
 
 class ExtraccionPropuesta(_Estricto):

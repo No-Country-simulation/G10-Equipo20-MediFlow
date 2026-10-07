@@ -291,7 +291,7 @@ class _Evaluador:
                 Medicamento(
                     dci=dci, dosis=m.dosis, dosis_valor=dosis_valor, concentracion=m.concentracion,
                     forma_farmaceutica=m.forma_farmaceutica, via=m.via, frecuencia=m.frecuencia, duracion=m.duracion,
-                    cantidad_numeros=m.cantidad_numeros, cantidad_letras=m.cantidad_letras,
+                    cantidad_numeros=m.cantidad_numeros, cantidad_letras=m.cantidad_letras, unidades_por_toma=m.unidades_por_toma,
                     alto_riesgo=es_alto, control_especial=es_control,
                 )
             )

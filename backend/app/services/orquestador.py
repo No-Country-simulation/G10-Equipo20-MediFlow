@@ -61,6 +61,14 @@ _ORDEN = {N.RUTINA: 0, N.URGENTE: 1, N.CRITICO: 2}
 _SETTING_POR_CANAL = {"Guardia_Emergencias": Setting.URGENCIA, "Hospitalizado": Setting.HOSPITALIZADO}
 _MIME_POR_EXTENSION = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "pdf": "application/pdf"}
 _ROLES_CLINICOS = {"auditor_clinico", "jefe_urgencias"}
+# Familia del campo corregido -> confianza que lo gobierna. Lo que una persona corrigió ya no es dudoso (RN-J4):
+# sin esto, el mismo umbral de confianza devolvería el documento a la cola después de corregirlo.
+_CONFIANZA_POR_FAMILIA = (
+    ("extraccion.medicamentos", "medicamento_dosis"),
+    ("extraccion.paciente", "identidad_paciente"),
+    ("extraccion.diagnosticos", "diagnostico_codigo"),
+    ("extraccion.profesional", "profesional"),
+)
 
 
 __all__ = ["ErrorDeRevision", "Orquestador", "ACTOR_SISTEMA"]
@@ -342,6 +350,7 @@ class Orquestador:
             if not decision.get("correcciones"):
                 raise ErrorDeRevision(422, "corregir exige al menos una corrección")
             self._prioridad_corregida(doc, rol=rol, motivo=motivo, correcciones=decision["correcciones"])
+            self._propuesta_corregida(doc, decision["correcciones"])  # una corrección inválida no llega al hilo del grafo
         elif accion == "transcribir":
             if doc.propuesta_json:
                 raise ErrorDeRevision(409, "el documento ya tiene lectura del LLM; use la acción corregir")
@@ -406,23 +415,43 @@ class Orquestador:
                 raise ErrorDeRevision(422, "RN-J5: bajar la prioridad exige justificación escrita")
         return nueva
 
-    def _corregir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any]) -> EstadoGrafo:
-        prioridad_humana = self._prioridad_corregida(doc, rol=rol, motivo=motivo, correcciones=correcciones)
+    def _propuesta_corregida(self, doc: Documento, correcciones: dict[str, Any]) -> tuple[dict[str, Any], list[tuple[str, Any]], list[str]]:
+        """Aplica las correcciones sobre una copia de la propuesta y la valida con el esquema estricto del LLM.
+        Devuelve la propuesta, el valor anterior de cada campo (RN-J8) y qué confianzas quedaron verificadas por la persona."""
         propuesta = json.loads(json.dumps(doc.propuesta_json))
+        anteriores: list[tuple[str, Any]] = []
         for campo, valor in correcciones.items():
             if campo == "nivel_prioridad":
-                self.repo.registrar_correccion(doc, campo=campo, extraido=doc.nivel_prioridad, corregido=valor, usuario=usuario)
                 continue
-            anterior = _asignar(propuesta, campo, valor)
-            self.repo.registrar_correccion(doc, campo=campo, extraido=anterior, corregido=valor, usuario=usuario)  # RN-J8
+            try:
+                anteriores.append((campo, _asignar(propuesta, campo, valor)))
+            except (KeyError, IndexError, TypeError) as error:
+                raise ErrorDeRevision(422, f"la corrección de {campo} no se puede aplicar: la ruta no existe en la propuesta o está fuera de la lista") from error
+        verificadas = _verificar_familias(propuesta, correcciones)
+        try:
+            PropuestaLLM.model_validate(propuesta)
+        except ValueError as error:
+            raise ErrorDeRevision(422, f"la corrección no tiene la forma esperada: {str(error)[:300]}") from error
+        return propuesta, anteriores, verificadas
+
+    def _corregir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any]) -> EstadoGrafo:
+        prioridad_humana = self._prioridad_corregida(doc, rol=rol, motivo=motivo, correcciones=correcciones)
+        propuesta, anteriores, verificadas = self._propuesta_corregida(doc, correcciones)
+        if "nivel_prioridad" in correcciones:
+            self.repo.registrar_correccion(doc, campo="nivel_prioridad", extraido=doc.nivel_prioridad, corregido=correcciones["nivel_prioridad"], usuario=usuario)
+        for campo, anterior in anteriores:
+            self.repo.registrar_correccion(doc, campo=campo, extraido=anterior, corregido=correcciones[campo], usuario=usuario)  # RN-J8
 
         doc.propuesta_json = propuesta
         self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "corregido")
+        evidencia = f"{usuario} ({rol}) corrigió {list(correcciones)}: {motivo}"
+        if verificadas:
+            evidencia += "; verificado por la persona: " + ", ".join(verificadas)
         # RN-J4: el grafo vuelve a evaluar con esta propuesta; no se vuelve a llamar al LLM.
         return {"propuesta": propuesta, "revision": self._revision(
             resultado, usuario=usuario, rol=rol, prioridad_humana=prioridad_humana,
             motivo_evaluado=f"RN-J4: reglas re-ejecutadas tras corrección de {list(correcciones)}",
-            decision_rn_j3=DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}) corrigió {list(correcciones)}: {motivo}", decision="corregido"))}
+            decision_rn_j3=DecisionRegistrada(regla="RN-J3", evidencia=evidencia, decision="corregido"))}
 
     def _propuesta_transcrita(self, doc: Documento, transcripcion: dict[str, Any]) -> PropuestaLLM:
         """La transcripción tiene la forma de la propuesta del LLM y se valida con el mismo esquema estricto (RN-P3)."""
@@ -701,16 +730,68 @@ class Orquestador:
 
 
 def _asignar(estructura: dict[str, Any], ruta: str, valor: Any) -> Any:
-    """Asigna `valor` en una ruta con puntos y devuelve el valor anterior. Soporta índices: medicamentos[0].dosis."""
+    """Asigna `valor` en una ruta con puntos y devuelve el valor anterior. Soporta índices: medicamentos[0].dosis.
+    En una lista, el índice siguiente al último agrega un elemento (un medicamento que el LLM no leyó) y None quita uno
+    (un medicamento que el LLM inventó). Una ruta que no existe falla: nunca se crean ramas nuevas en la propuesta."""
     partes = [p for p in re.split(r"\.|\[(\d+)\]", ruta) if p]
+    if not partes:
+        raise KeyError(ruta)
     nodo: Any = estructura
     for parte in partes[:-1]:
-        nodo = nodo[int(parte)] if parte.isdigit() else nodo.setdefault(parte, {})
+        if parte.isdigit():
+            if not isinstance(nodo, list) or int(parte) >= len(nodo):
+                raise IndexError(ruta)
+            nodo = nodo[int(parte)]
+        else:
+            if not isinstance(nodo, dict) or parte not in nodo:
+                raise KeyError(ruta)
+            nodo = nodo[parte]
     ultima = partes[-1]
-    clave: Any = int(ultima) if ultima.isdigit() else ultima
-    anterior = nodo[clave] if (isinstance(nodo, list) or clave in nodo) else None
-    nodo[clave] = valor
+    if ultima.isdigit():
+        if not isinstance(nodo, list):
+            raise KeyError(ruta)
+        indice = int(ultima)
+        if valor is None:
+            if indice >= len(nodo):
+                raise IndexError(ruta)
+            return nodo.pop(indice)
+        if indice == len(nodo):
+            nodo.append(valor)
+            return None
+        if indice > len(nodo):
+            raise IndexError(ruta)
+        anterior = nodo[indice]
+        nodo[indice] = valor
+        return anterior
+    if not isinstance(nodo, dict):
+        raise KeyError(ruta)
+    anterior = nodo.get(ultima)
+    nodo[ultima] = valor
     return anterior
+
+
+def _verificar_familias(propuesta: dict[str, Any], correcciones: dict[str, Any]) -> list[str]:
+    """RN-J4: la confianza de la familia que una persona corrigió sube a 1.0, salvo que ella misma la haya fijado;
+    y el campo corregido sale de la lista de dudosos del LLM. Devuelve qué confianzas cambiaron, para el historial."""
+    verificadas: list[str] = []
+    confianzas = propuesta.setdefault("confianzas", {})
+    for campo in correcciones:
+        if campo == "clasificacion.tipo" and "clasificacion.score_confianza" not in correcciones:
+            actual = propuesta.get("clasificacion", {}).get("score_confianza")
+            if actual is None or actual < 1.0:
+                propuesta["clasificacion"]["score_confianza"] = 1.0
+                verificadas.append(f"clasificacion.score_confianza {actual}->1.0")
+            continue
+        for familia, clave in _CONFIANZA_POR_FAMILIA:
+            if campo.startswith(familia) and f"confianzas.{clave}" not in correcciones:
+                actual = confianzas.get(clave)
+                if actual is None or actual < 1.0:
+                    confianzas[clave] = 1.0
+                    verificadas.append(f"{clave} {actual}->1.0")
+                break
+    ultimos = {campo.rsplit(".", 1)[-1] for campo in correcciones}
+    propuesta["campos_dudosos"] = [d for d in propuesta.get("campos_dudosos", []) if d.rsplit(".", 1)[-1] not in ultimos]
+    return verificadas
 
 
 def _fusionar(base: dict[str, Any], encima: dict[str, Any]) -> dict[str, Any]:

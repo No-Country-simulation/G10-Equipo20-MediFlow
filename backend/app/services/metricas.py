@@ -32,8 +32,8 @@ _UMBRAL_POR_FAMILIA = (
 
 
 def normalizar_campo(campo: str) -> str:
-    """extraccion.medicamentos.0.dosis -> extraccion.medicamentos.*.dosis"""
-    return re.sub(r"\.\d+(?=\.|$)", ".*", campo)
+    """extraccion.medicamentos.0.dosis y extraccion.medicamentos[0].dosis -> extraccion.medicamentos.*.dosis"""
+    return re.sub(r"(\.\d+|\[\d+\])(?=\.|$)", ".*", campo)
 
 
 def umbral_relacionado(campo: str) -> str | None:
