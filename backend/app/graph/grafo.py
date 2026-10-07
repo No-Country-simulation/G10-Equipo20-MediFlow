@@ -7,7 +7,8 @@
                                                       aprobar / rechazar <-- revision_humana <-- EN_REVISION_HUMANA (RN-I4)
 
 El grafo entra por la etapa en que está el documento: RECIBIDO valida primero; VALIDADO va directo al LLM;
-EN_REVISION_HUMANA espera la decisión; ENRUTADO espera las confirmaciones. En revision_humana el grafo se interrumpe
+EN_REVISION_HUMANA espera la decisión; ENRUTADO espera las confirmaciones; FALLO_TECNICO (el worker agotó sus
+intentos) entra por fallo_tecnico. En revision_humana el grafo se interrumpe
 (RN-I4) y reanuda con la decisión de la persona: rechazar cierra; aprobar pasa a entrega; corregir y transcribir vuelven
 a evaluar sin tocar el LLM (RN-J4). En entrega se interrumpe por cada confirmación, verificación o acuse, y cierra en
 ENTREGADO cuando no queda nada pendiente: un crítico nunca sin acuse (RN-J7).
@@ -59,7 +60,8 @@ def construir_grafo(orquestador, memoria=None):
     grafo.add_node("entrega", orquestador.nodo_entrega)
 
     grafo.add_conditional_edges(START, orquestador.etapa_de_entrada,
-                                {"validar": "validar", "clasificar_extraer": "clasificar_extraer", "revision_humana": "revision_humana", "entrega": "entrega"})
+                                {"validar": "validar", "clasificar_extraer": "clasificar_extraer", "revision_humana": "revision_humana",
+                                 "entrega": "entrega", "fallo_tecnico": "fallo_tecnico"})
     grafo.add_conditional_edges("validar", _rama_tras_validar, {"clasificar_extraer": "clasificar_extraer", "rechazado": END, "fallo_tecnico": "fallo_tecnico"})
     grafo.add_conditional_edges("clasificar_extraer", _rama_tras_llm, {"evaluar": "evaluar", "fallo_tecnico": "fallo_tecnico"})
     grafo.add_edge("evaluar", "enrutar")  # RN-I2

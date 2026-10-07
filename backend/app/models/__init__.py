@@ -4,6 +4,7 @@ from app.models.gobierno import AccesoDocumento, SesionUsuario, Usuario, Version
 from app.models.paciente import Paciente, SolicitudTitular
 from app.models.profesional import ProfesionalRegistrado
 from app.models.referencia import CasoReferencia
+from app.models.trabajo import TrabajoProcesamiento
 
-__all__ = ["AccesoDocumento", "Alerta", "Correccion", "Documento", "Paciente", "SesionUsuario", "TransicionEstado", "Usuario",
+__all__ = ["AccesoDocumento", "Alerta", "Correccion", "Documento", "Paciente", "SesionUsuario", "TrabajoProcesamiento", "TransicionEstado", "Usuario",
            "VersionConfiguracion"]

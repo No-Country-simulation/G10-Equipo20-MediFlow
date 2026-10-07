@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     llm_limite_llamadas_por_periodo: int = 0
     llm_periodo_h: float = 24.0
     limite_documentos_por_minuto: int = 0  # RN-T2 (0 = sin límite)
+    # Cola persistente de procesamiento (RN-P2, RN-P5). En falso, el triaje corre dentro de la petición que recibe el documento;
+    # en verdadero, la petición termina al guardar el original (RN-P1) y un worker aparte (python -m app.worker) hace el resto.
+    procesamiento_en_worker: bool = False
+    worker_arriendo_s: int = 300  # lo que un worker retiene un trabajo sin dar señales antes de que otro lo retome
+    worker_intentos_maximos: int = 3  # agotados, el documento sigue la ruta de fallo técnico (RN-P2, RN-P4)
+    worker_espera_s: float = 2.0  # pausa del worker cuando la cola está vacía
     zona_horaria: str = "America/Bogota"  # los filtros por día del listado se interpretan en la hora de la instalación
     escalamiento_cada_s: int = 60  # RN-F2: cada cuánto se revisan las alertas sin acuse (0 = solo por script)
     # Slack por webhooks (RN-F1, RN-F3, RN-Q2). Cada dirección es un secreto: nunca se versiona ni se escribe en el log.

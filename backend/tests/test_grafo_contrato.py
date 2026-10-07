@@ -31,6 +31,7 @@ def test_aristas_no_saltan_etapas_RN_I2():
         ("__start__", "clasificar_extraer"),  # un documento ya VALIDADO entra por su etapa
         ("__start__", "revision_humana"),  # un documento EN_REVISION_HUMANA sin hilo (anterior a la memoria) entra a esperar la decisión
         ("__start__", "entrega"),  # un documento ENRUTADO sin hilo entra a esperar las confirmaciones
+        ("__start__", "fallo_tecnico"),  # el worker agotó sus intentos: FALLO_TECNICO entra por su ruta (RN-P2)
         ("validar", "clasificar_extraer"),
         ("validar", "__end__"),  # RECHAZADO: único rechazo del sistema (RN-I5)
         ("validar", "fallo_tecnico"),  # el original no se pudo leer
@@ -55,7 +56,7 @@ def test_aristas_no_saltan_etapas_RN_I2():
 
 def test_el_grafo_entra_por_la_etapa_en_que_esta_el_documento():
     entradas = {e.target for e in _grafo().edges if e.source == "__start__"}
-    assert entradas == {"validar", "clasificar_extraer", "revision_humana", "entrega"}
+    assert entradas == {"validar", "clasificar_extraer", "revision_humana", "entrega", "fallo_tecnico"}
 
 
 def test_la_decision_tras_el_llm_es_condicional():

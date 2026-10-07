@@ -12,4 +12,5 @@ def healthcheck() -> dict:
         "status": "ok",
         "pack_pais": settings.pais_instalacion,
         "version_reglas": settings.version_reglas,
+        "procesamiento": "worker" if settings.procesamiento_en_worker else "en_linea",
     }

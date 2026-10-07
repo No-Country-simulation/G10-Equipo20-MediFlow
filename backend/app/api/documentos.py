@@ -24,6 +24,7 @@ from app.services.llm import ClienteLLM, ServicioExtraccion
 from app.services.orquestador import ErrorDeRevision, Orquestador
 from app.services.solicitudes_titular import ServicioSolicitudesTitular
 from app.services.storage import Storage
+from app.services.trabajos import ESTADOS_QUE_PROCESA, ServicioTrabajos
 
 router = APIRouter(prefix="/documentos", tags=["documentos"])
 
@@ -76,10 +77,38 @@ def _partes(session: Session, doc: Documento) -> dict:
     return {"sub_documentos": [_resumen(h, con_resultado=False) for h in hijos]} if hijos else {}
 
 
+def _trabajo(trabajo) -> dict | None:
+    """Estado del trabajo de la cola persistente, si el documento pasó por ella."""
+    if trabajo is None:
+        return None
+    return {"id": trabajo.id, "estado": trabajo.estado, "intento": trabajo.intento, "codigo_error": trabajo.codigo_error,
+            "creado_en": trabajo.creado_en.isoformat() if trabajo.creado_en else None,
+            "actualizado_en": trabajo.actualizado_en.isoformat() if trabajo.actualizado_en else None,
+            "proximo_intento_en": trabajo.proximo_intento_en.isoformat() if trabajo.proximo_intento_en else None}
+
+
+def _encolar(ingesta: ResultadoIngesta, session: Session):
+    """Modo worker: la petición termina con el original guardado (RN-P1); el worker corre el grafo. 202: aceptado, en proceso."""
+    doc = ingesta.documento
+    trabajos = ServicioTrabajos(session)
+    if ingesta.hijos:
+        partes = []
+        for hijo in ingesta.hijos:
+            trabajo = trabajos.encolar(hijo.documento) if not hijo.duplicado_exacto else None
+            partes.append({**_resumen(hijo.documento), "trabajo": _trabajo(trabajo)})
+        session.commit()
+        return JSONResponse({**_resumen(doc), "sub_documentos": partes}, status_code=202)
+    trabajo = trabajos.encolar(doc)
+    session.commit()
+    return JSONResponse({**_resumen(doc), "trabajo": _trabajo(trabajo)}, status_code=202)
+
+
 def _responder_ingesta(ingesta: ResultadoIngesta, session: Session, storage: Storage, llm: ClienteLLM, notificador: Notificador):
     doc = ingesta.documento
     if ingesta.duplicado_exacto:
         return JSONResponse({**_resumen(doc), "duplicado": True, **_partes(session, doc)}, status_code=200)  # RN-O1
+    if get_settings().procesamiento_en_worker:
+        return _encolar(ingesta, session)
     if ingesta.hijos:
         # RN-O4: el padre no se clasifica; cada sub-documento corre el pipeline completo y alerta por su cuenta.
         orquestador = _orquestador(session, storage, llm, notificador)
@@ -149,6 +178,39 @@ def listar_documentos(
     return {"items": [_resumen(d, con_resultado=False) for d in documentos], "total": total, "limit": limit, "offset": offset}
 
 
+@router.get("/{documento_id}/trabajo")
+def consultar_trabajo(documento_id: str, session: Session = Depends(get_session), cuenta=Depends(cuenta_actual)):
+    """Estado del último trabajo de la cola persistente del documento."""
+    trabajo = ServicioTrabajos(session).ultimo(_documento_o_404(session, documento_id, cuenta))
+    if trabajo is None:
+        raise HTTPException(status_code=404, detail="el documento no pasó por la cola de procesamiento")
+    return _trabajo(trabajo)
+
+
+@router.post("/{documento_id}/procesar")
+def procesar_documento(
+    documento_id: str,
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+    llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
+    cuenta=Depends(cuenta_actual),
+):
+    """Un documento que quedó RECIBIDO o VALIDADO sin procesar (por ejemplo, recibido con el worker apagado) se procesa ahora:
+    en modo worker se encola (202); si no, corre en esta misma petición."""
+    doc = _documento_o_404(session, documento_id, cuenta)
+    if doc.estado not in ESTADOS_QUE_PROCESA:
+        raise HTTPException(status_code=409, detail=f"el documento está en {doc.estado}; solo se procesa lo que sigue RECIBIDO o VALIDADO")
+    if get_settings().procesamiento_en_worker:
+        trabajo = ServicioTrabajos(session).encolar(doc, solicitado_por=cuenta.usuario if cuenta else None)
+        session.commit()
+        return JSONResponse({**_resumen(doc), "trabajo": _trabajo(trabajo)}, status_code=202)
+    if ServicioTrabajos(session).vivo(doc) is not None:
+        raise HTTPException(status_code=409, detail="el documento ya está en la cola de procesamiento")
+    _orquestador(session, storage, llm, notificador).procesar(doc)
+    return _resumen(doc)
+
+
 def _tipos_visibles(session: Session, cuenta) -> list[str] | None:
     """RN-J9: un revisor ve solo los tipos de documento de su rol; solo el rol de auditoría ve todo. Sin sesión, sin acotar."""
     if cuenta is None:
@@ -181,6 +243,7 @@ def consultar_documento(documento_id: str, session: Session = Depends(get_sessio
         "umbrales": ServicioConfiguracion(session).umbrales().confianza.model_dump(),
         # RN-M1: lo único que viajó al LLM. Sin mapa: nunca se expone.
         "texto_enviado_llm": doc.texto_seudonimizado,
+        "trabajo": _trabajo(ServicioTrabajos(session).ultimo(doc)),
         "entregas": doc.entregas_json or {},
         "paciente_id": doc.paciente_id,  # RN-M6: ficha del directorio a la que quedó vinculado
         "asignado_a": doc.asignado_a,  # RN-J3

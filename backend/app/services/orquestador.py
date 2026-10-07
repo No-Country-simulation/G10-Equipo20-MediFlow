@@ -121,6 +121,14 @@ class Orquestador:
         """Retoma el hilo del documento en la etapa donde quedó (RN-P2)."""
         return self._resultado_de(self.grafo.invoke(None, config=hilo(documento)))
 
+    def fallar(self, documento: Documento, motivo: str) -> ResultadoTriaje | None:
+        """RN-P2: el worker agotó sus intentos sin que el motor terminara. El documento pasa a FALLO_TECNICO y el grafo
+        entra por esa etapa: detección determinística, alerta si hay hallazgo y revisión humana (RN-P4)."""
+        if documento.estado != E.FALLO_TECNICO:
+            self.repo.transicionar(documento, E.FALLO_TECNICO, actor=ACTOR_SISTEMA, motivo=f"fallo_tecnico: {motivo}"[:500])
+            self.repo.guardar()
+        return self._resultado_de(self.grafo.invoke({"documento_pk": documento.id, "error": motivo, "revision": None}, config=hilo(documento)))
+
     @staticmethod
     def _resultado_de(final: EstadoGrafo) -> ResultadoTriaje | None:
         volcado = final.get("resultado")
@@ -131,12 +139,15 @@ class Orquestador:
 
     def etapa_de_entrada(self, estado: EstadoGrafo) -> str:
         """El grafo entra por la etapa del documento: RECIBIDO valida primero; VALIDADO va directo al LLM;
-        EN_REVISION_HUMANA (sin hilo, anterior a la memoria del grafo) entra a esperar la decisión."""
+        EN_REVISION_HUMANA (sin hilo, anterior a la memoria del grafo) entra a esperar la decisión;
+        FALLO_TECNICO (el worker agotó sus intentos) entra por la ruta de fallo técnico (RN-P2)."""
         estado_doc = self._doc(estado).estado
         if estado_doc == E.RECIBIDO:
             return "validar"
         if estado_doc == E.EN_REVISION_HUMANA:
             return "revision_humana"
+        if estado_doc == E.FALLO_TECNICO:
+            return "fallo_tecnico"
         if estado_doc == E.ENRUTADO:
             return "entrega"
         return "clasificar_extraer"
