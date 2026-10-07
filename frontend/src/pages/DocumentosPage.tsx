@@ -2,7 +2,8 @@ import { Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { enviarArchivo, enviarDocumento, ErrorApi, listarDocumentos } from "../api";
+import { consultarDocumento, enviarArchivo, enviarDocumento, ErrorApi, listarDocumentos } from "../api";
+import { enProceso, INTERVALO_SONDEO_MS, textoTrabajo } from "../app/cola";
 import { ETIQUETA_ESTADO, ETIQUETA_TIPO, etiquetaMotivo, mensajeDeRechazo } from "../app/mensajes";
 import { plazoDeRevision } from "../app/plazos";
 import { ChipPlazo, TagEstado, TagPrioridad } from "../components/Tags";
@@ -72,6 +73,17 @@ export function DocumentosPage() {
   }, [q, estado, nivel, tipo, fechaDesde, fechaHasta, orden, offset, rangoInvertido]);
 
   useEffect(() => { cargarLista(); }, [cargarLista]);
+
+  // Modo worker: la API aceptó (202) y un worker corre el triaje; se pregunta cada pocos segundos hasta que haya resultado.
+  useEffect(() => {
+    if (!ultimo || !enProceso(ultimo)) return;
+    const t = setTimeout(() => {
+      consultarDocumento(ultimo.documento_id)
+        .then((d) => { setUltimo(d); if (!enProceso(d)) cargarLista(); })
+        .catch(() => undefined);  // sin conexión: se vuelve a preguntar en el siguiente turno
+    }, INTERVALO_SONDEO_MS);
+    return () => clearTimeout(t);
+  }, [ultimo, cargarLista]);
 
   const listo = documentoId.trim() !== "" && (modoTexto ? texto.trim() !== "" : archivo !== null) && !enviando;
 
@@ -205,6 +217,7 @@ export function DocumentosPage() {
               <TagPrioridad nivel={ultimo.nivel_prioridad} />
               <TagEstado estado={ultimo.estado} />
               {ultimo.duplicado && <span className="muted">Ya se había procesado; se muestra el resultado previo (RN-O1).</span>}
+              {ultimo.trabajo && (enProceso(ultimo) || ultimo.trabajo.estado === "FALLIDO") && <span className="muted" data-testid="en-cola">{textoTrabajo(ultimo)}</span>}
               <Link to={`/documentos/${encodeURIComponent(ultimo.documento_id)}`}>Abrir ›</Link>
             </div>
           )}

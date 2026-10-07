@@ -1,9 +1,10 @@
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CircleCheckBig, Keyboard, Maximize2, Minimize2, PanelLeftOpen, Pencil, ShieldCheck, UserRound, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CircleCheckBig, Hourglass, Keyboard, Maximize2, Minimize2, PanelLeftOpen, Pencil, ShieldCheck, UserRound, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { colaRevision, confirmarEntrega, consultarDocumento, listarRevisores, resolverRevision, urlOriginal, urlVistaPrevia } from "../api";
 import { etiquetaConcepto, etiquetaDestino, etiquetaEstado, etiquetaMotivo, etiquetaTipo, motivoLegible, tituloHallazgos } from "../app/mensajes";
+import { enProceso, INTERVALO_SONDEO_MS, textoTrabajo } from "../app/cola";
 import { usePared } from "../app/pared";
 import { fechaCorta, PRESENTADA_POR } from "../app/titular";
 import { calcularPlazo, PLAZO_ACUSE_MIN } from "../app/plazos";
@@ -126,6 +127,12 @@ export function DetalleDocumentoPage() {
     const reloj = setInterval(() => setAhora(new Date()), 15_000);
     return () => clearInterval(reloj);
   }, []);
+  useEffect(() => {
+    // Modo worker: mientras el documento esté en la cola o en curso, la pantalla se actualiza sola.
+    if (!enProceso(detalle)) return;
+    const t = setTimeout(cargar, INTERVALO_SONDEO_MS);
+    return () => clearTimeout(t);
+  }, [detalle, cargar]);
   useEffect(() => {
     if (!detalle || detalle.formato !== "txt") { setTextoOriginal(null); return; }
     let activo = true;
@@ -284,6 +291,16 @@ export function DetalleDocumentoPage() {
       </header>
 
       <EstadoMensaje mensaje={mensaje} />
+
+      {enProceso(detalle) && (
+        <section className="aviso-sistema" data-testid="en-cola" role="status">
+          <Hourglass size={22} aria-hidden="true" />
+          <div>
+            <strong>Todavía no hay resultado.</strong>
+            <p>{textoTrabajo(detalle)} La pantalla se actualiza sola cuando el triaje termine.</p>
+          </div>
+        </section>
+      )}
 
       {detalle.sub_documentos && detalle.sub_documentos.length > 0 && (
         <section className="tarjeta" data-testid="sub-documentos" style={{ marginBottom: 12 }}>

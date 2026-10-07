@@ -137,6 +137,17 @@ export interface Alerta {
   emitida_en: string;
 }
 
+/** Trabajo de la cola persistente de procesamiento (RN-P2): la API acepta el documento y un worker aparte corre el triaje. */
+export interface TrabajoProcesamiento {
+  id: number;
+  estado: "EN_COLA" | "EN_CURSO" | "TERMINADO" | "FALLIDO";
+  intento: number;
+  codigo_error: string | null;
+  creado_en: string | null;
+  actualizado_en: string | null;
+  proximo_intento_en: string | null;
+}
+
 /** Respuesta de POST /documentos y GET /documentos/{id}. */
 export interface DocumentoDetalle {
   documento_id: string;
@@ -175,6 +186,8 @@ export interface DocumentoDetalle {
   documento_padre?: string | null;
   /** RN-O4: las partes de un PDF compuesto; solo las trae el padre. */
   sub_documentos?: ItemListado[];
+  /** Último trabajo de la cola de procesamiento, si el documento pasó por ella (modo worker). */
+  trabajo?: TrabajoProcesamiento | null;
 }
 
 export interface ItemCola {

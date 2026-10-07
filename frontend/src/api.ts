@@ -28,6 +28,7 @@ import type {
   RespuestaEntrega,
   RespuestaVerificacion,
   ResultadoTriaje,
+  TrabajoProcesamiento,
   Resumen,
   Simulacion,
   SolicitudTitular,
@@ -99,6 +100,16 @@ export function enviarDocumento(request: DocumentoRequest): Promise<DocumentoDet
 
 export function consultarDocumento(documentoId: string): Promise<DocumentoDetalle> {
   return llamar<DocumentoDetalle>(`/documentos/${encodeURIComponent(documentoId)}`);
+}
+
+/** Estado del último trabajo de la cola de procesamiento del documento (modo worker). */
+export function consultarTrabajo(documentoId: string): Promise<TrabajoProcesamiento> {
+  return llamar<TrabajoProcesamiento>(`/documentos/${encodeURIComponent(documentoId)}/trabajo`);
+}
+
+/** Un documento que quedó sin procesar (recibido con el worker apagado) se procesa ahora: en cola o en línea, según el modo. */
+export function procesarDocumento(documentoId: string): Promise<DocumentoDetalle> {
+  return llamar<DocumentoDetalle>(`/documentos/${encodeURIComponent(documentoId)}/procesar`, { method: "POST" });
 }
 
 export function colaRevision(): Promise<ItemCola[]> {
