@@ -367,6 +367,13 @@ class _Evaluador:
         fecha = self.fecha()
         news2 = self.news2()
         prioridad = self.prioridad(detecciones, news2)
+        hallazgos_finales = [d.concepto for d in detecciones]
+        if hallazgos_finales and prioridad is not N.CRITICO and self.ctx.prioridad_humana is not None:
+            # RN-J5 sobre RN-D8: la persona con rol clínico y justificación bajó la prioridad, así que los hallazgos que
+            # el motor detectó quedan descartados por ella. El JSON no puede declarar hallazgos críticos con otra prioridad.
+            self._registrar("RN-J5", f"hallazgos {hallazgos_finales} descartados por {self.ctx.usuario_humano} al fijar {prioridad.value}",
+                            "hallazgos_criticos_detectados=[]")
+            hallazgos_finales = []
 
         tipo_doc = TipoDocumentoPaciente(identidad.tipo) if identidad.tipo in TipoDocumentoPaciente.__members__ else TipoDocumentoPaciente.AUSENTE
         paciente = Paciente(
@@ -396,7 +403,7 @@ class _Evaluador:
             diagnosticos=[Diagnostico(texto=d.texto, cie10_sugerido=d.cie10_sugerido, cie11_sugerido=d.cie11_sugerido) for d in e.diagnosticos],
             procedimientos=[Procedimiento(texto=p.texto, cups=p.cups) for p in e.procedimientos],
             medicamentos=medicamentos,
-            hallazgos=[d.concepto for d in detecciones],
+            hallazgos=hallazgos_finales,
             detecciones=detecciones,
             news2=news2,
             identidad=identidad,

@@ -176,6 +176,10 @@ class ServicioIngesta:
         self._respaldar(documento, contenido, E.RECIBIDO)
         contenido.nombres_conocidos = datos.nombres_conocidos
         documento.contenido_recibido = contenido  # transitorio: el grafo lo valida en esta misma petición
+        if previo is not None and previo.estado == E.EN_REVISION_HUMANA:
+            # RN-O2: la versión anterior queda reemplazada. Si esperaba revisión, nadie debe seguir trabajándola:
+            # la cola muestra solo la versión nueva y su alerta, si la tenía, sigue viva hasta el acuse.
+            self.repositorio.transicionar(previo, E.RECHAZADO, actor=ACTOR_SISTEMA, motivo=f"RN-O2: reemplazada por la versión {version}")
         self.repositorio.guardar()
         resultado = ResultadoIngesta(documento, codigo_error=contenido.codigo_error)
         if segmentos:

@@ -344,6 +344,9 @@ class Orquestador:
         elif accion == "aprobar":
             if not resultado.enrutamiento.destinos_tras_revision:
                 raise ErrorDeRevision(409, "no hay plan de enrutamiento; corrija la propuesta con la acción corregir")
+            if not self._destinos_activos(resultado.enrutamiento.destinos_tras_revision):
+                raise ErrorDeRevision(409, "RN-L1: ningún destino del plan está activo en la configuración vigente; "
+                                           "corrija el tipo de documento, reactive el destino en Configuración o rechace el documento")
         elif accion == "corregir":
             if not doc.propuesta_json:
                 raise ErrorDeRevision(409, "sin propuesta que corregir (fallo técnico sin lectura del LLM)")
@@ -366,11 +369,17 @@ class Orquestador:
             self.repo.transicionar(doc, E.RECHAZADO, actor=usuario, motivo=motivo)
             resultado.estado = E.RECHAZADO
             resultado.historial_decisiones.append(DecisionRegistrada(regla="RN-J3", evidencia=f"{usuario} ({rol}): {motivo}", decision="rechazado"))
+            self._cerrar_alerta(doc, resultado, usuario=usuario, motivo=f"documento rechazado: {motivo}")
             self._persistir(doc, resultado, emitir_alerta=False)
             return {"resultado": resultado.model_dump(mode="json"), "revision": None}
 
         if accion == "aprobar":
-            plan = resultado.enrutamiento.destinos_tras_revision
+            plan_completo = resultado.enrutamiento.destinos_tras_revision
+            plan = self._destinos_activos(plan_completo)
+            omitidos = [d.value for d in plan_completo if d not in plan]
+            if omitidos:
+                resultado.historial_decisiones.append(DecisionRegistrada(
+                    regla="RN-L1", evidencia=f"destino desactivado en la configuración vigente: {', '.join(omitidos)}", decision="omitido del plan al aprobar"))
             self.repo.transicionar(doc, E.RESUELTO, actor=usuario, motivo=motivo or "aprobado")
             resultado.enrutamiento = resultado.enrutamiento.model_copy(update={
                 "destino_principal": plan[0], "destinos_secundarios": plan[1:], "destinos_tras_revision": [],
@@ -387,6 +396,19 @@ class Orquestador:
         if accion == "corregir":
             return self._corregir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, correcciones=decision["correcciones"])
         return self._transcribir(doc, resultado, usuario=usuario, rol=rol, motivo=motivo, transcripcion=decision.get("transcripcion") or {})
+
+    def _destinos_activos(self, plan: list) -> list:
+        """RN-L1: lo que la clínica desactivó después de evaluar no recibe el documento al aprobar."""
+        return [d for d in plan if d.value not in self.pack.destinos_inactivos]
+
+    def _cerrar_alerta(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, motivo: str) -> None:
+        """RN-F1, RN-J7: una alerta pendiente de un documento que una persona rechaza o baja de Crítico no sigue
+        escalando: queda a nombre de esa persona, con el motivo en el historial de la alerta y del documento."""
+        alerta = self.repo.alerta_activa(doc)
+        if alerta is None or alerta.estado_acuse == "acusado":
+            return
+        self.repo.cerrar_alerta(alerta, usuario=usuario, motivo=motivo)
+        resultado.historial_decisiones.append(DecisionRegistrada(regla="RN-F1", evidencia=f"{usuario}: {motivo}", decision="alerta cerrada"))
 
     @staticmethod
     def _revision(resultado: ResultadoTriaje, *, usuario: str, rol: str, prioridad_humana: N | None, motivo_evaluado: str,
@@ -437,6 +459,8 @@ class Orquestador:
     def _corregir(self, doc: Documento, resultado: ResultadoTriaje, *, usuario: str, rol: str, motivo: str, correcciones: dict[str, Any]) -> EstadoGrafo:
         prioridad_humana = self._prioridad_corregida(doc, rol=rol, motivo=motivo, correcciones=correcciones)
         propuesta, anteriores, verificadas = self._propuesta_corregida(doc, correcciones)
+        if prioridad_humana is not None and doc.nivel_prioridad == N.CRITICO.value and _ORDEN[prioridad_humana] < _ORDEN[N.CRITICO]:
+            self._cerrar_alerta(doc, resultado, usuario=usuario, motivo=f"prioridad bajada a {prioridad_humana.value} por la persona: {motivo}")
         if "nivel_prioridad" in correcciones:
             self.repo.registrar_correccion(doc, campo="nivel_prioridad", extraido=doc.nivel_prioridad, corregido=correcciones["nivel_prioridad"], usuario=usuario)
         for campo, anterior in anteriores:

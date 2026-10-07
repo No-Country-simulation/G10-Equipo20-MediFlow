@@ -50,6 +50,7 @@ def revisores(session: Session = Depends(get_session)):
 class ResolucionRequest(BaseModel):
     accion: Literal["aprobar", "corregir", "rechazar", "transcribir", "reasignar", "escalar"]  # RN-J3
     motivo: str = ""
+    version: int | None = None  # RN-O2: la versión que la persona tenía en pantalla; si llegó otra, no se decide a ciegas
     asignar_a: str | None = None  # reasignar: cuenta del revisor que toma el caso
     correcciones: dict[str, Any] | None = None
     # Fallo técnico (RN-P2): sin lectura del LLM, la persona transcribe con la misma forma de la propuesta.
@@ -71,6 +72,9 @@ def resolver(
     doc = repo.ultima_version(documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="documento no encontrado")
+    if cuerpo.version is not None and cuerpo.version != doc.version:
+        raise HTTPException(status_code=409, detail=f"RN-O2: llegó la versión {doc.version} de este documento mientras revisabas la {cuerpo.version}; "
+                                                    "recarga el caso y decide sobre la versión nueva")
     try:
         if cuerpo.accion == "reasignar":  # RN-J3: no decide nada; el grafo sigue esperando a la persona
             resultado = ServicioRevision(repo).reasignar(doc, usuario=quien.usuario, rol=quien.rol, a_usuario=cuerpo.asignar_a or "", motivo=cuerpo.motivo)

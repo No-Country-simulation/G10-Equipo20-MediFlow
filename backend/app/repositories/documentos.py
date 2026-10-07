@@ -173,6 +173,17 @@ class RepositorioDocumentos:
         self.session.flush()
         return alerta
 
+    def cerrar_alerta(self, alerta: Alerta, *, usuario: str, motivo: str) -> Alerta:
+        """RN-F1, RN-J7: la persona que rechaza el documento o le baja la prioridad se hace cargo de la alerta.
+        Queda como acusada por ella, con el cierre en el historial de la alerta; no sigue escalando (RN-F2)."""
+        ahora = datetime.now(timezone.utc)
+        alerta.estado_acuse = "acusado"
+        alerta.acusado_por = usuario
+        alerta.acusado_en = ahora
+        alerta.escalamientos = [*(alerta.escalamientos or []), {"tipo": "cierre", "por": usuario, "motivo": motivo, "fecha_hora": ahora.isoformat()}]
+        self.session.flush()
+        return alerta
+
     # --- revisión humana (RN-J1, RN-J8) -----------------------------------------------
 
     def en_revision(self) -> list[Documento]:
@@ -182,8 +193,14 @@ class RepositorioDocumentos:
             (Documento.nivel_prioridad == "Urgente", 1),
             else_=2,
         )
+        ultima = (
+            select(Documento.documento_id, func.max(Documento.version).label("version"))
+            .group_by(Documento.documento_id)
+            .subquery()
+        )
         consulta = (
             select(Documento)
+            .join(ultima, (Documento.documento_id == ultima.c.documento_id) & (Documento.version == ultima.c.version))
             .where(Documento.estado == EstadoDocumento.EN_REVISION_HUMANA)
             .order_by(orden_prioridad, Documento.creado_en, Documento.id)
         )
