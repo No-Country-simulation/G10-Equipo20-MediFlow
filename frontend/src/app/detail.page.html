@@ -24,7 +24,7 @@
     >
     <div>
       <a class="secondary" href="#historial">Ver historial</a>
-      @if (api.can("DOCUMENTS_DELETE")) { <button class="danger" (click)="deleteDocument()" [disabled]="busy() || loading()">
+      @if (api.can("DOCUMENTS_DELETE")) { <button class="danger" (click)="deleteDocument()" [disabled]="busy() || loading() || activeJob()">
         Eliminar documento
       </button> }
       <button class="secondary" (click)="load()" [disabled]="loading() || busy()">
@@ -49,12 +49,16 @@
     @else { {{ d.patient_match_reason ? label(d.patient_match_reason) : 'Paciente no identificado.' }} }</span>
     @if (result()?.routing; as routing) { <span>Destino: <a [routerLink]="['/destinations', routing.destination, 'documents']">{{ label(routing.destination) }}</a></span> }
   </div>
-  @if (busy()) {
-    <p class="notice" role="status">
-      Leyendo y analizando el documento. Puede tardar varios minutos. El historial se actualizará al
-      finalizar.
-    </p>
+  @if (job(); as j) {
+    <section class="panel processing-progress" aria-live="polite">
+      <strong>{{ j.status === 'QUEUED' ? 'En cola' : j.status === 'RUNNING' ? 'Análisis en curso' : j.status === 'SUCCEEDED' ? 'Análisis completado' : 'Análisis interrumpido' }}</strong>
+      <p>{{ j.active_node ? nodeLabels[j.active_node] || j.active_node : 'Consulta el resultado y el historial.' }}</p>
+      <div class="processing-steps">@for (node of j.completed_nodes; track node) { <span>✓ {{ nodeLabels[node] || node }}</span> }</div>
+      <small>Ejecución #{{ j.attempt || 'pendiente' }} · Llamadas al proveedor: OCR {{ j.provider_calls['ocr'] || 0 }}, clasificación {{ j.provider_calls['classify'] || 0 }}, extracción {{ j.provider_calls['extract'] || 0 }}. Puedes cerrar la página.</small>
+      @if (j.error_code) { <p class="error">{{ label(j.error_code) }}</p> }
+    </section>
   }
+  @if (backups().length) { <div class="document-context"><span>Respaldo JSON en R2: {{ backups()[0].status === 'SYNCED' ? 'Guardado' : backups()[0].status === 'PENDING' ? 'Pendiente' : 'Reintento pendiente' }}</span>@if (backups()[0].status === 'FAILED' && api.can('DOCUMENTS_PROCESS')) { <button class="secondary" (click)="retryBackup()">Reintentar respaldo</button> }</div> }
   @if (d.rejection_reason) {
     <p class="error">
       {{ d.rejection_reason }}.
@@ -78,7 +82,9 @@
         <p class="error" role="alert">{{ fileError() }}</p>
         <button class="secondary" (click)="loadOriginal()">Reintentar lectura</button>
       } @else if (original()) {
-        @if (d.format === "pdf") {
+        @if (d.format === "text") {
+          <pre class="transcription">{{ textOriginal() }}</pre>
+        } @else if (d.format === "pdf") {
           <div class="preview-toolbar">
             <button
               class="secondary"
@@ -148,7 +154,7 @@
                   : "Sin prioridad explícita; valor administrativo inicial"
               }}</small>
               @if (priority.evidence) {
-                <small>Pág. {{ priority.evidence.page }} · «{{ priority.evidence.quote }}»</small>
+                <small>{{ priority.evidence.page === null ? 'Texto · posición ' + priority.evidence.start : 'Pág. ' + priority.evidence.page }} · «{{ priority.evidence.quote }}»</small>
               }
             </div>
           }
@@ -187,6 +193,12 @@
               </ul>
             </div>
           }
+          @if (r.routing?.reason) { <p class="muted">Asignación: {{ r.routing!.reason }} @if (r.routing!.matched_rule_id) { Regla #{{ r.routing!.matched_rule_id }}. }</p> }
+          @if (r.validation?.details?.length) { <details><summary>Comprobaciones y advertencias</summary><ul>@for (issue of r.validation!.details; track $index) { <li>{{ issue.category === 'WARNING' ? 'Advertencia' : issue.category === 'MISSING' ? 'Faltante' : 'Inconsistencia' }} · {{ issue.field ? label(issue.field) + ': ' : '' }}{{ label(issue.code) }}</li> }</ul></details> }
+          @if (r.clinical_data; as c) {
+            @if (c.medications.length) { <h3>Medicamentos documentados</h3><div class="table-scroll"><table><thead><tr><th>Medicamento</th><th>Dosis</th><th>Frecuencia / vía</th></tr></thead><tbody>@for (m of c.medications; track $index) { <tr><td>{{ m.name?.value || 'No consta' }}<small>{{ m.name?.evidence?.quote }}</small></td><td>{{ m.dose?.value || 'No consta' }} {{ m.dose?.unit }}</td><td>{{ m.frequency?.value || 'No consta' }} · {{ m.route?.value || 'No consta' }}</td></tr> }</tbody></table></div> }
+            @if (c.tests.length) { <h3>Resultados de laboratorio</h3><div class="table-scroll"><table><thead><tr><th>Prueba</th><th>Resultado / unidad</th><th>Referencia</th></tr></thead><tbody>@for (t of c.tests; track $index) { <tr><td>{{ t.name?.value || 'No consta' }}</td><td>{{ t.result?.value || 'No consta' }} {{ t.result?.unit }}</td><td>{{ t.reference_range?.value || 'No consta' }}</td></tr> }</tbody></table></div> }
+          }
           @if (r.extraction?.fields?.length) {
             <h3>Datos extraídos</h3>
             <dl class="extracted-fields">
@@ -195,7 +207,7 @@
                   <dt>{{ label(field.name) }}</dt>
                   <dd>
                     {{ field.value }} {{ field.unit
-                    }}<small>Pág. {{ field.evidence.page }} · «{{ field.evidence.quote }}»</small>
+                    }}<small>{{ label(r.validation?.field_checks?.[$index]?.status || '') }}</small><small>{{ field.evidence.page === null ? 'Texto · posición ' + field.evidence.start : 'Pág. ' + field.evidence.page }} · «{{ field.evidence.quote }}»</small>
                   </dd>
                 </div>
               }
@@ -206,9 +218,9 @@
               <summary>Texto leído por página</summary>
               @for (page of r.content.pages; track page.page) {
                 <h4>
-                  Página {{ page.page }} ·
+                  {{ page.page === null ? 'Texto recibido' : 'Página ' + page.page }} ·
                   {{
-                    page.method === "embedded_text"
+                    page.method === "submitted_text" ? "Texto recibido" : page.method === "embedded_text"
                       ? "Texto
           digital"
                       : page.method === "human_corrected"

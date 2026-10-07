@@ -1173,3 +1173,10 @@ a.metric-card:hover { border-color: #5289ad; box-shadow: 0 4px 16px #243c4c09; }
 .badge[data-priority="URGENT"], .badge[data-priority="CRITICAL"] { color: #8f2434; background: #fde9ec; }
 .badge[data-priority="ROUTINE"] { color: #245b4d; background: #e7f4ef; }
 @media (max-width: 900px) { .admin-grid, .form-grid { grid-template-columns: 1fr; } .directory-search { width: 100%; } .detail-heading .detail-status { font-size: .95rem; } }
+
+.input-tabs, .processing-steps, .policy-weights {display:flex;flex-wrap:wrap;gap:.6rem;}
+.input-tabs .active {background:#243C4C;color:white;}
+.processing-progress {margin-bottom:1rem;padding:1.2rem;}
+.processing-steps span {padding:.4rem .65rem;background:#eaf3f6;color:#243C4C;border-radius:.5rem;}
+.processing-progress small {display:block;margin-top:.8rem;}
+.policy-weights label {flex:1;min-width:140px;}

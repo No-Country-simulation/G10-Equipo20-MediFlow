@@ -75,14 +75,14 @@ export class Api {
         this.selectCountry(config.default_country);
     })().catch((error) => { this.configuration = undefined; throw error; });
   }
-  list(status: string, q: string, offset: number, destination = "", priority = "") {
+  list(status: string, q: string, offset: number, destination = "", priority = "", filters: Record<string,string> = {}) {
     return this.request<{
       items: DocumentRecord[];
       total: number;
       limit: number;
       offset: number;
     }>(
-      `/documents?limit=20&offset=${offset}&country=${encodeURIComponent(this.country())}&q=${encodeURIComponent(q)}${status ? "&status=" + encodeURIComponent(status) : ""}${destination ? "&destination=" + encodeURIComponent(destination) : ""}${priority ? "&priority=" + encodeURIComponent(priority) : ""}`,
+      `/documents?limit=20&offset=${offset}&country=${encodeURIComponent(this.country())}&q=${encodeURIComponent(q)}${Object.entries(filters).filter(([,v]) => v !== "").map(([k,v]) => "&" + encodeURIComponent(k) + "=" + encodeURIComponent(v)).join("")}${status ? "&status=" + encodeURIComponent(status) : ""}${destination ? "&destination=" + encodeURIComponent(destination) : ""}${priority ? "&priority=" + encodeURIComponent(priority) : ""}`,
     );
   }
   summary() {
@@ -109,6 +109,11 @@ export class Api {
       body: form,
     });
   }
+  uploadText(text: string, origin_channel: string) {return this.write<DocumentRecord>("/documents/text", "POST", {text, origin_channel, country: this.country()});}
+  enqueue(id: string) {return this.write<import("./models").ProcessingJob>(`/documents/${id}/processing-jobs`, "POST");}
+  latestJob(id: string) {return this.request<import("./models").ProcessingJob>(`/documents/${id}/processing-jobs/latest`);}
+  backups(id: string) {return this.request<import("./models").Backup[]>(`/documents/${id}/backups`);}
+  retryBackups(id: string) {return this.write(`/documents/${id}/backups/retry`, "POST");}
   process(id: string) {
     return this.request<Result>(`/documents/${id}/process`, { method: "POST" });
   }

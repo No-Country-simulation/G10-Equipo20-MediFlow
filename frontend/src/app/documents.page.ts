@@ -20,6 +20,14 @@ export class DocumentsPage {
   uploadError = signal("");
   file = signal<File | null>(null);
   offset = signal(0);
+  inputMode = "file";
+  clinicalText = "";
+  originChannel = "MANUAL";
+  documentType = "";
+  specialty = "";
+  dateFrom = "";
+  dateTo = "";
+  maxQuality = "";
   status = "";
   priority = "";
   search = "";
@@ -38,7 +46,12 @@ export class DocumentsPage {
     this.loading.set(true);
     this.error.set("");
     try {
-      const data = await this.api.list(this.status, this.search, this.offset(), "", this.priority);
+      const data = await this.api.list(this.status, this.search, this.offset(), "", this.priority, {
+        document_type: this.documentType, specialty: this.specialty,
+        date_from: this.dateFrom ? this.dateFrom + "T00:00:00-05:00" : "",
+        date_to: this.dateTo ? this.dateTo + "T23:59:59.999999-05:00" : "",
+        max_quality: this.maxQuality,
+      });
       if (seq === this.sequence) {
         this.items.set(data.items);
         this.total.set(data.total);
@@ -72,14 +85,18 @@ export class DocumentsPage {
   }
   async upload(analyze = false) {
     const file = this.file();
-    if (!file || this.uploading()) return;
+    if (this.uploading() || (this.inputMode === "file" ? !file : !this.clinicalText.trim())) return;
     this.uploading.set(true);
     this.uploadError.set("");
     try {
-      const id = analyze
-        ? (await this.api.triage(file)).document_id
-        : (await this.api.upload(file)).document_id;
-      await this.router.navigate(["/documents", id]);
+      const doc = this.inputMode === "text"
+        ? await this.api.uploadText(this.clinicalText, this.originChannel)
+        : await this.api.upload(file!);
+      if (analyze) {
+        try { await this.api.enqueue(doc.document_id); }
+        catch { await this.router.navigate(["/documents", doc.document_id]); return; }
+      }
+      await this.router.navigate(["/documents", doc.document_id]);
     } catch (e) {
       const saved =
         e instanceof ApiError && typeof e.detail === "object" && e.detail !== null

@@ -42,8 +42,8 @@ SPECIALTY_LABELS = {
     "LABORATORY": "Laboratorio", "GENERAL_MEDICINE": "Medicina general", "RADIOLOGY": "Radiología",
     "OTHER": "Otro", "UNKNOWN": "Sin determinar",
 }
-COMMON_FIELDS = ("patient_name", "patient_age", "patient_identity", "professional_name", "document_date",
-                 "diagnosis", "diagnosis_code", "study_name", "findings", "conclusion")
+COMMON_FIELDS = ("patient_name", "patient_age", "patient_identity", "professional_name", "professional_license", "document_date",
+                 "diagnosis", "diagnosis_code", "study_name", "findings", "conclusion", "priority_signal")
 TYPE_FIELDS = {
     "DISCHARGE_SUMMARY": DISCHARGE_REQUIRED_FIELDS,
     "LABORATORY_RESULT": ("test_name", "test_result", "reference_range"),
@@ -61,7 +61,7 @@ def document_catalog():
                        "required_groups": [list(group) for group in REQUIRED_GROUPS.get(code, ())]}
                       for code, name in LABELS.items()],
             "specialties": [{"code": code, "name": name} for code, name in SPECIALTY_LABELS.items()],
-            "rule_version": "documentary-v3"}
+            "rule_version": "documentary-v4"}
 
 
 def completeness(kind: str | None, fields) -> float:

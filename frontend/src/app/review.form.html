@@ -28,7 +28,7 @@
         <div class="correction">
           <h3>Clasificación</h3>
           <label
-            >Tipo<select name="type" [(ngModel)]="classification.document_type">
+            >Tipo<select name="type" [(ngModel)]="classification.document_type" (ngModelChange)="loadPolicy()">
               @for (type of types; track type) {
                 <option [value]="type">{{ label(type) }}</option>
               }
@@ -42,12 +42,12 @@
           ><label>Motivo<input name="reason" [(ngModel)]="classification.reason" required /></label>
           @if (classification.evidence; as evidence) {
             <label
-              >Página de la evidencia<input
+              >Página de la evidencia (solo archivos)<input
                 type="number"
                 min="1"
                 name="classPage"
                 [(ngModel)]="evidence.page"
-                required /></label
+                [disabled]="pages[0].page === null" [required]="pages[0].page !== null" /></label
             ><label
               >Cita que respalda el tipo<textarea
                 name="classQuote"
@@ -98,7 +98,7 @@
                     min="1"
                     [name]="'fieldPage' + i"
                     [(ngModel)]="field.evidence.page"
-                    required
+                    [disabled]="pages[0].page === null" [required]="pages[0].page !== null"
                 /></label>
               </div>
               <label

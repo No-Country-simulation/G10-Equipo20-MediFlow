@@ -20,9 +20,23 @@ export class ReviewForm implements OnInit {
   pages: Page[] = [];
   fields: ExtractedField[] = [];
   classification!: Classification;
+  policyGroups = signal<Record<string, string[][]>>({});
   get types() { return this.api.catalog().types.map(item => item.code); }
   get specialties() { return this.api.catalog().specialties.map(item => item.code); }
-  get requiredGroups() { return this.api.catalog().types.find(item => item.code === this.classification?.document_type)?.required_groups || []; }
+  get requiredGroups() {
+    const kind = this.classification?.document_type;
+    const applied = this.result.quality?.policy;
+    if (applied?.document_type === kind) return applied.required_groups;
+    return this.policyGroups()[kind] ?? this.api.catalog().types.find(item => item.code === kind)?.required_groups ?? [];
+  }
+  async loadPolicy() {
+    const kind = this.classification?.document_type;
+    if (!kind || this.result.quality?.policy?.document_type === kind) return;
+    try {
+      const policy = await this.api.request<{required_groups: string[][]}>(`/document-policies/${kind}`);
+      if (Array.isArray(policy.required_groups)) this.policyGroups.update(groups => ({...groups, [kind]: policy.required_groups}));
+    } catch { /* Older results and unknown types use the catalog fallback. */ }
+  }
   get suggestedFields() { return this.api.catalog().types.find(item => item.code === this.classification?.document_type)?.fields || []; }
   label = label;
   ngOnInit() {
@@ -43,17 +57,18 @@ export class ReviewForm implements OnInit {
         document_type: "UNKNOWN",
         specialty: "UNKNOWN",
         reason: "",
-        evidence: { page: 1, quote: "" },
+        evidence: { page: this.pages[0]?.page ?? null, quote: "" },
       },
     );
-    if (!this.classification.evidence) this.classification.evidence = { page: 1, quote: "" };
+    if (!this.classification.evidence) this.classification.evidence = { page: this.pages[0]?.page ?? null, quote: "" };
+    void this.loadPolicy();
   }
   addField() {
     this.fields.push({
       name: "",
       value: "",
       unit: null,
-      evidence: { page: 1, quote: "" },
+      evidence: { page: this.pages[0]?.page ?? null, quote: "" },
     });
   }
   async submit() {

@@ -1,4 +1,6 @@
 import logging
+import hashlib
+import json
 import re
 import unicodedata
 from datetime import UTC, datetime
@@ -45,6 +47,7 @@ class DocumentService:
                 path, size = LocalDocumentStorage(Path(temporary)).save(key, source, self.max_bytes)
                 document.size_bytes = size
                 detected = validate_content(path, expected_format, size)
+                document.sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
                 if self.storage.backend == "r2":
                     stem = unicodedata.normalize("NFKD", Path(name).stem).encode("ascii", "ignore").decode()
                     slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", stem).strip("-_")[:100] or "documento"
@@ -82,4 +85,34 @@ class DocumentService:
                         self.storage.delete(key)
                     except OSError:
                         logger.error("No se pudo limpiar el archivo de documento %s", document_id)
+            raise
+
+    def ingest_text(self, text: str, origin_channel: str) -> DocumentResponse:
+        document_id = uuid4()
+        data = json.dumps({"text": text, "country": self.country, "origin_channel": origin_channel}, ensure_ascii=False).encode("utf-8")
+        if len(data) > self.max_bytes:
+            raise DocumentError(413, "FILE_TOO_LARGE")
+        key = f"{document_id}_texto.json"
+        if self.storage.backend == "r2":
+            key = self.storage.object_key(f"{self.country}/originals/{key}")
+        document = Document(document_id=document_id, original_filename="Texto clínico.json", format="text",
+            size_bytes=len(data), received_at=datetime.now(UTC), storage_key=key, country=self.country,
+            origin_channel=origin_channel, sha256=hashlib.sha256(data).hexdigest(),
+            storage_backend=self.storage.backend, storage_bucket=self.storage.bucket)
+        initialize_history(document)
+        saved = False
+        try:
+            with TemporaryDirectory(prefix="mediflow-text-") as temporary:
+                path = Path(temporary) / "texto.json"
+                path.write_bytes(data)
+                self.storage.put_file(key, path, self.max_bytes)
+                saved = True
+            transition(document, DocumentStatus.VALIDADO, "TEXT_VALIDATED")
+            self.repository.add(document)
+            self.repository.commit()
+            return DocumentResponse.model_validate(document)
+        except Exception:
+            self.repository.rollback()
+            if saved:
+                self.storage.delete(key)
             raise

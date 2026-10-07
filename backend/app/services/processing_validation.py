@@ -18,8 +18,47 @@ def literal_present(value: str, source: str) -> bool:
     return bool(value and re.search(pattern, normalized(source)))
 
 
+def evidence_supported(content, evidence):
+    if evidence is None:
+        return False
+    if content.pages and content.pages[0].page is None:
+        text = content.pages[0].text
+        return (evidence.page is None and evidence.start is not None and evidence.end is not None
+                and evidence.start < evidence.end <= len(text)
+                and text[evidence.start:evidence.end] == evidence.quote)
+    return literal_present(evidence.quote, next((p.text for p in content.pages if p.page == evidence.page), ""))
+
+
+def describe_validation(validation, extraction):
+    from app.schemas.processing import ValidationIssue, FieldCheck
+    fields = extraction.fields if extraction else []
+    validation.details = []
+    validation.field_checks = []
+    for index, field in enumerate(fields):
+        problems = [code for code in validation.issues if code.startswith(f"FIELD_{index}_")]
+        if f"FIELD_CONFLICT:{field.name}" in validation.issues:
+            problems.append(f"FIELD_CONFLICT:{field.name}")
+        validation.field_checks.append(FieldCheck(index=index, name=field.name,
+            status="CONFLICT" if any("CONFLICT" in p for p in problems) else "UNVERIFIABLE" if problems else "SUPPORTED", issues=problems))
+    for code in validation.issues:
+        name, evidence = None, None
+        match = re.match(r"FIELD_(\d+)_", code)
+        if match and int(match[1]) < len(fields):
+            field = fields[int(match[1])]
+            name, evidence = field.name, field.evidence
+        if code.startswith("MISSING_REQUIRED_FIELD:"):
+            name = code.split(":", 1)[1]
+            validation.field_checks.append(FieldCheck(name=name, status="MISSING", issues=[code]))
+        if code.startswith("FIELD_CONFLICT:"):
+            name = code.split(":", 1)[1]
+        validation.details.append(ValidationIssue(code=code, category="MISSING" if code.startswith("MISSING_") or code == "NO_EXTRACTED_FIELDS" else "INCONSISTENCY", field=name, evidence=evidence))
+    if fields and not any(f.name == "professional_license" for f in fields):
+        validation.details.append(ValidationIssue(code="PROFESSIONAL_LICENSE_NOT_PRESENT", category="WARNING", field="professional_license"))
+    return validation
+
+
 def validate_processing(content: ContentResult, classification: ClassificationResult | None,
-                        extraction: ExtractionResult | None) -> ValidationResult:
+                        extraction: ExtractionResult | None, policy: dict | None = None) -> ValidationResult:
     pages = {page.page: page.text for page in content.pages}
     issues = []
     if not pages or any(not text.strip() for text in pages.values()):
@@ -39,14 +78,13 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
         if expected_specialty and classification.specialty not in (expected_specialty, "CARDIOPULMONARY"):
             issues.append("CLASSIFICATION_SPECIALTY_CONFLICT")
         evidence = classification.evidence
-        if evidence is None or not literal_present(evidence.quote, pages.get(evidence.page, "")):
+        if not evidence_supported(content, evidence):
             issues.append("CLASSIFICATION_EVIDENCE_NOT_FOUND")
     if extraction is None or not extraction.fields:
         issues.append("NO_EXTRACTED_FIELDS")
     else:
         for index, field in enumerate(extraction.fields):
-            source = pages.get(field.evidence.page, "")
-            if not literal_present(field.evidence.quote, source):
+            if not evidence_supported(content, field.evidence):
                 issues.append(f"FIELD_{index}_EVIDENCE_NOT_FOUND")
             elif not literal_present(field.value, field.evidence.quote):
                 issues.append(f"FIELD_{index}_VALUE_NOT_SUPPORTED")
@@ -54,7 +92,7 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
                 issues.append(f"FIELD_{index}_UNIT_NOT_SUPPORTED")
     if classification:
         present = {field.name for field in extraction.fields if field.value.strip()} if extraction else set()
-        for group in REQUIRED_GROUPS.get(classification.document_type, ()):
+        for group in (policy["required_groups"] if policy else REQUIRED_GROUPS.get(classification.document_type, ())):
             if not any(name in present for name in group):
                 issues.append("MISSING_REQUIRED_FIELD:" + group[0])
         # Pair each repeated drug/test rather than borrowing a dose or result from another.
@@ -69,4 +107,10 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
                 names = {field.name for field in relevant if field.entity_id == entity_id}
                 if not set(paired).issubset(names):
                     issues.append("INCOMPLETE_ENTITY:" + entity_id)
-    return ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues, rule_version="documentary-v3")
+    if extraction:
+        for name in ("patient_identity", "patient_name", "patient_age"):
+            values = {normalized(f.value) for f in extraction.fields if f.name == name}
+            if len(values) > 1:
+                issues.append("FIELD_CONFLICT:" + name)
+    return describe_validation(ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues,
+                              rule_version="documentary-v4"), extraction)

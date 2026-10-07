@@ -3,7 +3,7 @@ services:
     build:
       context: ./backend
       target: runtime
-    environment:
+    environment: &api-environment
       POSTGRES_HOST: db
       POSTGRES_DB: ${POSTGRES_DB:-mediflow}
       POSTGRES_USER: ${POSTGRES_USER:-mediflow}
@@ -40,6 +40,17 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    command: ["python", "-m", "app.worker"]
+    environment: *api-environment
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend

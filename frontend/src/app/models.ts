@@ -42,15 +42,17 @@ export interface RoutingRule extends RoutingRuleInput {
   id: number;
 }
 export interface Page {
-  page: number;
+  page: number | null;
   text: string;
-  method: "embedded_text" | "gemini_ocr" | "openai_ocr" | "human_corrected";
+  method: "embedded_text" | "gemini_ocr" | "openai_ocr" | "human_corrected" | "submitted_text";
   engine: "pymupdf" | "gemini" | "openai" | null;
   uncertain: boolean;
 }
 export interface Evidence {
-  page: number;
+  page: number | null;
   quote: string;
+  start?: number | null;
+  end?: number | null;
 }
 export interface Classification {
   document_type: string;
@@ -92,6 +94,8 @@ export interface Result {
     valid: boolean;
     requires_human_review: boolean;
     issues: string[];
+    details?: {code: string; category: string; field: string | null; evidence: Evidence | null}[];
+    field_checks?: {index: number | null; name: string; status: string; issues: string[]}[];
   } | null;
   priority?: {
     level: "ROUTINE" | "URGENT" | "CRITICAL";
@@ -109,6 +113,7 @@ export interface Result {
       consistency: number;
     };
     rule_version: string;
+    policy?: DocumentaryPolicy | null;
   } | null;
   local_alert?: {
     level: "URGENT" | "CRITICAL";
@@ -116,7 +121,8 @@ export interface Result {
     evidence: Evidence;
     status: "REGISTERED_LOCAL";
   } | null;
-  routing: { destination: string; delivery_status: string; external_delivery_status?: string } | null;
+  clinical_data?: {medications: ClinicalEntity[]; tests: ClinicalEntity[]; procedures: ClinicalEntity[]} | null;
+  routing: { destination: string; delivery_status: string; external_delivery_status?: string; reason?: string; matched_rule_id?: number | null } | null;
   patient?: { status: string; identity_type: string | null; identity_number: string | null;
               patient_id: number | null; reason: string | null } | null;
   error_code: string | null;
@@ -224,6 +230,15 @@ export function label(value: string): string {
         PATIENT_NAME_MISSING: "Se detectó una identificación, pero falta el nombre del paciente",
         LOCAL_INBOX_DELIVERED: "Disponible en la bandeja local del destino",
         professional_name: "Profesional firmante",
+        professional_license: "Matrícula profesional",
+        SUPPORTED: "Respaldado por evidencia",
+        UNVERIFIABLE: "No comprobable",
+        MISSING: "Ausente",
+        CONFLICT: "Contradictorio",
+        PROFESSIONAL_LICENSE_NOT_PRESENT: "No consta matrícula profesional; dato opcional",
+        TEXT_VALIDATED: "Texto validado y guardado",
+        DOCUMENT_ALREADY_PROCESSING: "El documento ya tiene un análisis en curso o en cola",
+        POLICY_VERSION_CONFLICT: "La configuración cambió. Recarga antes de guardar.",
         document_date: "Fecha del documento",
         discharge_diagnosis: "Diagnóstico de egreso",
         discharge_treatment: "Tratamiento al alta",
@@ -280,3 +295,8 @@ export function label(value: string): string {
     )[value] ?? value.replaceAll("_", " ")
   );
 }
+
+export interface ClinicalEntity {entity_id: string | null; name?: ExtractedField | null; dose?: ExtractedField | null; frequency?: ExtractedField | null; route?: ExtractedField | null; duration?: ExtractedField | null; concentration?: ExtractedField | null; result?: ExtractedField | null; reference_range?: ExtractedField | null; indication?: ExtractedField | null;}
+export interface ProcessingJob {id: string; document_id: string; status: string; active_node: string | null; completed_nodes: string[]; provider_calls: Record<string,number>; attempt: number; error_code: string | null; updated_at: string;}
+export interface DocumentaryPolicy {document_type: string; version: number; required_groups: string[][]; weights: Record<string,number>; threshold: number;}
+export interface Backup {id: number; status: string; attempts: number; error_code: string | null;}
