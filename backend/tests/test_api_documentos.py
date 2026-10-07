@@ -149,6 +149,36 @@ def test_get_documentos_lista_paginada_con_filtros(client, llm_falso):
     assert "resultado" not in buscados["items"][0]
 
 
+def test_get_documentos_filtra_por_tipo_fecha_y_ordena_para_revision(client, llm_falso):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from app.services.llm import ErrorTransitorioLLM
+    from tests.test_llm import propuesta_caso_1
+
+    llm_falso.respuestas.append(propuesta_caso_1())
+    client.post("/documentos", json={**CUERPO, "documento_id": "DOC-F-CRITICO"})
+    llm_falso.respuestas.extend([ErrorTransitorioLLM("x")] * 3)
+    client.post("/documentos", json={**CUERPO, "documento_id": "DOC-F-RUTINA", "contenido_texto": "Control de rutina. Fecha: 03/04/2026."})
+
+    por_tipo = client.get("/documentos", params={"tipo": "Informe de Imágenes"}).json()
+    assert [d["documento_id"] for d in por_tipo["items"]] == ["DOC-F-CRITICO"]
+    assert client.get("/documentos", params={"tipo": "Receta Médica"}).json()["total"] == 0
+
+    hoy = datetime.now(ZoneInfo(get_settings().zona_horaria)).date()
+    assert client.get("/documentos", params={"desde": hoy.isoformat(), "hasta": hoy.isoformat()}).json()["total"] == 2
+    ayer = (hoy - timedelta(days=1)).isoformat()
+    assert client.get("/documentos", params={"hasta": ayer}).json()["total"] == 0
+    manana = (hoy + timedelta(days=1)).isoformat()
+    assert client.get("/documentos", params={"desde": manana}).json()["total"] == 0
+    assert client.get("/documentos", params={"desde": manana, "hasta": ayer}).status_code == 422
+
+    # Orden de revisión: lo más grave primero aunque sea más antiguo; por defecto, lo más reciente primero.
+    assert [d["documento_id"] for d in client.get("/documentos").json()["items"]] == ["DOC-F-RUTINA", "DOC-F-CRITICO"]
+    assert [d["documento_id"] for d in client.get("/documentos", params={"orden": "revision"}).json()["items"]] == ["DOC-F-CRITICO", "DOC-F-RUTINA"]
+    assert client.get("/documentos", params={"orden": "otro"}).status_code == 422
+
+
 def test_get_original_y_vista_previa(client, llm_falso):
     from tests.test_llm import propuesta_caso_1
 

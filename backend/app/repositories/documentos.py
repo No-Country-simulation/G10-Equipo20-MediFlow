@@ -1,5 +1,6 @@
 """Capa de persistencia de documentos. No contiene reglas clínicas."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -8,6 +9,11 @@ from app.models.alerta import Alerta, Correccion
 from app.models.documento import Documento, TransicionEstado
 from app.schemas.resultado import EstadoDocumento
 from app.services.ciclo_vida import validar_transicion
+
+
+def _inicio_del_dia(dia: date, zona: str) -> datetime:
+    """Medianoche de ese día en la zona de la instalación, expresada en UTC para comparar con `creado_en`."""
+    return datetime(dia.year, dia.month, dia.day, tzinfo=ZoneInfo(zona)).astimezone(timezone.utc)
 
 
 class RepositorioDocumentos:
@@ -56,8 +62,11 @@ class RepositorioDocumentos:
         return transicion
 
     def listar(self, *, estado: str | None = None, nivel: str | None = None, q: str = "", limit: int = 20, offset: int = 0,
-               tipos: list[str] | None = None) -> tuple[list[Documento], int]:
-        """Última versión de cada documento, más reciente primero, con filtros y paginación. `tipos` acota lo que ve un rol (RN-J9)."""
+               tipos: list[str] | None = None, tipo: str | None = None, desde: date | None = None, hasta: date | None = None,
+               orden: str = "recientes", zona: str = "UTC") -> tuple[list[Documento], int]:
+        """Última versión de cada documento, con filtros y paginación. `tipos` acota lo que ve un rol (RN-J9); `tipo` es el
+        filtro que elige la persona dentro de eso. `desde` y `hasta` son días completos en la hora de la instalación.
+        `orden="revision"` pone primero lo más grave y, dentro de cada nivel, lo que lleva más tiempo esperando (RN-J1)."""
         ultima = (
             select(Documento.documento_id, func.max(Documento.version).label("version"))
             .group_by(Documento.documento_id)
@@ -70,11 +79,23 @@ class RepositorioDocumentos:
             consulta = consulta.where(Documento.nivel_prioridad == nivel)
         if tipos is not None:
             consulta = consulta.where(Documento.tipo.in_(tipos))
+        if tipo:
+            consulta = consulta.where(Documento.tipo == tipo)
+        if desde is not None:
+            consulta = consulta.where(Documento.creado_en >= _inicio_del_dia(desde, zona))
+        if hasta is not None:
+            consulta = consulta.where(Documento.creado_en < _inicio_del_dia(hasta + timedelta(days=1), zona))
         if q.strip():
             patron = f"%{q.strip()}%"
             consulta = consulta.where(Documento.documento_id.ilike(patron) | Documento.nombre_archivo.ilike(patron))
         total = self.session.scalar(select(func.count()).select_from(consulta.subquery())) or 0
-        filas = self.session.scalars(consulta.order_by(Documento.creado_en.desc(), Documento.id.desc()).limit(limit).offset(offset))
+        if orden == "revision":
+            gravedad = case((Documento.nivel_prioridad == "Crítico", 0), (Documento.nivel_prioridad == "Urgente", 1),
+                            (Documento.nivel_prioridad == "Rutina", 2), else_=3)
+            ordenado = consulta.order_by(gravedad, Documento.creado_en.asc(), Documento.id.asc())
+        else:
+            ordenado = consulta.order_by(Documento.creado_en.desc(), Documento.id.desc())
+        filas = self.session.scalars(ordenado.limit(limit).offset(offset))
         return list(filas), total
 
     # --- PDF compuesto (RN-O4) -------------------------------------------------------

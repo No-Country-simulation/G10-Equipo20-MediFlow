@@ -149,7 +149,21 @@ export async function enviarArchivo(archivo: File, datos: DatosArchivo): Promise
   return cuerpo as DocumentoDetalle;
 }
 
-export function listarDocumentos(filtros: { estado?: string; nivel?: string; q?: string; limit?: number; offset?: number } = {}): Promise<Listado> {
+export interface FiltrosListado {
+  estado?: string;
+  nivel?: string;
+  tipo?: string;
+  /** Días completos (AAAA-MM-DD) en la hora de la instalación, ambos inclusive. */
+  desde?: string;
+  hasta?: string;
+  /** "revision": lo más grave primero y, dentro de cada nivel, lo que lleva más tiempo esperando. */
+  orden?: "recientes" | "revision";
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function listarDocumentos(filtros: FiltrosListado = {}): Promise<Listado> {
   const params = new URLSearchParams();
   for (const [clave, valor] of Object.entries(filtros)) {
     if (valor !== undefined && valor !== "" && valor !== null) params.set(clave, String(valor));

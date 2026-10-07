@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { Link } from "react-router-dom";
 
 import { enviarArchivo, enviarDocumento, ErrorApi, listarDocumentos } from "../api";
-import { ETIQUETA_ESTADO, etiquetaMotivo, mensajeDeRechazo } from "../app/mensajes";
+import { ETIQUETA_ESTADO, ETIQUETA_TIPO, etiquetaMotivo, mensajeDeRechazo } from "../app/mensajes";
 import { plazoDeRevision } from "../app/plazos";
 import { ChipPlazo, TagEstado, TagPrioridad } from "../components/Tags";
 import type { CanalOrigen, Cobertura, DocumentoDetalle, EstadoDocumento, Listado, NivelPrioridad } from "../types";
@@ -16,6 +16,7 @@ const ETIQUETA_COBERTURA: Record<string, string> = {
 const COBERTURAS: Cobertura[] = ["contributivo", "subsidiado", "especial_excepcion", "soat", "arl", "plan_voluntario", "no_afiliado"];
 const ESTADOS: EstadoDocumento[] = ["RECIBIDO", "VALIDADO", "EN_REVISION_HUMANA", "ENRUTADO", "ENTREGADO", "RECHAZADO", "FALLO_TECNICO"];
 const NIVELES: NivelPrioridad[] = ["Crítico", "Urgente", "Rutina"];
+const TIPOS = Object.keys(ETIQUETA_TIPO);
 const LIMITE = 20;
 const TAMANO_MAXIMO = 10 * 1024 * 1024;
 
@@ -53,15 +54,22 @@ export function DocumentosPage() {
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<EstadoDocumento | "">("");
   const [nivel, setNivel] = useState<NivelPrioridad | "">("");
+  const [tipo, setTipo] = useState("");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
+  const [orden, setOrden] = useState<"recientes" | "revision">("recientes");
   const [offset, setOffset] = useState(0);
   const [listado, setListado] = useState<Listado | null>(null);
   const [errorLista, setErrorLista] = useState<string | null>(null);
+  const rangoInvertido = fechaDesde !== "" && fechaHasta !== "" && fechaDesde > fechaHasta;
 
   const cargarLista = useCallback(() => {
-    listarDocumentos({ q, estado: estado || undefined, nivel: nivel || undefined, limit: LIMITE, offset })
+    if (rangoInvertido) return;
+    listarDocumentos({ q, estado: estado || undefined, nivel: nivel || undefined, tipo: tipo || undefined,
+      desde: fechaDesde || undefined, hasta: fechaHasta || undefined, orden: orden === "recientes" ? undefined : orden, limit: LIMITE, offset })
       .then((l) => { setListado(l); setErrorLista(null); })
       .catch((e) => setErrorLista(e instanceof ErrorApi ? e.detalle : "No hay conexión con la API."));
-  }, [q, estado, nivel, offset]);
+  }, [q, estado, nivel, tipo, fechaDesde, fechaHasta, orden, offset, rangoInvertido]);
 
   useEffect(() => { cargarLista(); }, [cargarLista]);
 
@@ -227,7 +235,30 @@ export function DocumentosPage() {
                 {NIVELES.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
+            <label>
+              Tipo
+              <select value={tipo} onChange={(e) => { setOffset(0); setTipo(e.target.value); }}>
+                <option value="">Todos los tipos</option>
+                {TIPOS.map((t) => <option key={t} value={t}>{ETIQUETA_TIPO[t]}</option>)}
+              </select>
+            </label>
+            <label>
+              Desde
+              <input type="date" value={fechaDesde} max={fechaHasta || undefined} onChange={(e) => { setOffset(0); setFechaDesde(e.target.value); }} />
+            </label>
+            <label>
+              Hasta
+              <input type="date" value={fechaHasta} min={fechaDesde || undefined} onChange={(e) => { setOffset(0); setFechaHasta(e.target.value); }} />
+            </label>
+            <label>
+              Orden
+              <select value={orden} onChange={(e) => { setOffset(0); setOrden(e.target.value as "recientes" | "revision"); }}>
+                <option value="recientes">Más recientes primero</option>
+                <option value="revision">Más graves y más antiguos primero</option>
+              </select>
+            </label>
           </div>
+          {rangoInvertido && <p className="error" role="alert">El día inicial no puede ser posterior al día final.</p>}
         </div>
         {errorLista && <p className="error" style={{ padding: "0 16px" }}>{errorLista}</p>}
         <div className="scroll">

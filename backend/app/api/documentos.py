@@ -1,6 +1,7 @@
 """Endpoints de documentos: ingesta JSON y multipart (RN-A), consulta (RN-I3), listado, original,
 vista previa y entrega."""
-from typing import Annotated
+from datetime import date
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
@@ -130,14 +131,21 @@ async def recibir_archivo(
 def listar_documentos(
     estado: str | None = None,
     nivel: str | None = None,
+    tipo: Annotated[str | None, Query(max_length=64)] = None,
+    desde: Annotated[date | None, Query(description="día inicial, inclusive, en la hora de la instalación")] = None,
+    hasta: Annotated[date | None, Query(description="día final, inclusive")] = None,
+    orden: Literal["recientes", "revision"] = "recientes",
     q: Annotated[str, Query(max_length=128)] = "",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     session: Session = Depends(get_session),
     cuenta=Depends(cuenta_actual),
 ):
+    if desde is not None and hasta is not None and desde > hasta:
+        raise HTTPException(status_code=422, detail="el día inicial no puede ser posterior al día final")
     documentos, total = RepositorioDocumentos(session).listar(estado=estado, nivel=nivel, q=q, limit=limit, offset=offset,
-                                                              tipos=_tipos_visibles(session, cuenta))
+                                                              tipos=_tipos_visibles(session, cuenta), tipo=tipo, desde=desde, hasta=hasta,
+                                                              orden=orden, zona=get_settings().zona_horaria)
     return {"items": [_resumen(d, con_resultado=False) for d in documentos], "total": total, "limit": limit, "offset": offset}
 
 

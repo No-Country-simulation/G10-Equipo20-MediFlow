@@ -195,8 +195,9 @@ button.enlace { background: none; border: none; color: var(--primario-tinta); pa
 .secundaria { display: block; color: var(--muted); font-size: 0.875rem; font-weight: 400; }
 .scroll { overflow-x: auto; }
 .paginacion { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; color: var(--muted); font-size: 0.9375rem; flex-wrap: wrap; }
-.filtros { display: grid; grid-template-columns: minmax(200px, 2fr) repeat(2, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
-@media (max-width: 720px) { .filtros { grid-template-columns: minmax(0, 1fr); } }
+.filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+.filtros > label:first-child { grid-column: span 2; }
+@media (max-width: 720px) { .filtros { grid-template-columns: minmax(0, 1fr); } .filtros > label:first-child { grid-column: auto; } }
 
 /* --- Zona de carga --------------------------------------------------------- */
 .carga { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr); gap: 12px; }
