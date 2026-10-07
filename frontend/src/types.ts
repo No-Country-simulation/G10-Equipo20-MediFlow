@@ -256,6 +256,8 @@ export type AccionRevision = "aprobar" | "corregir" | "rechazar" | "transcribir"
 export interface ResolucionRequest {
   accion: AccionRevision;
   motivo: string;
+  /** RN-O2: la versión que se tenía en pantalla; si llegó otra, la API responde 409 y hay que recargar. */
+  version?: number;
   correcciones?: Record<string, unknown> | null;
   /** reasignar: cuenta del revisor que toma el caso (RN-J3). */
   asignar_a?: string | null;

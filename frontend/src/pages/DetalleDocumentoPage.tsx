@@ -157,7 +157,7 @@ export function DetalleDocumentoPage() {
     setConfirmacion(null);
     try {
       const resp = await resolverRevision(detalle.documento_id, {
-        accion, motivo: motivo || (accion === "transcribir" ? "transcrito desde el original" : ""),
+        accion, version: detalle.version, motivo: motivo || (accion === "transcribir" ? "transcrito desde el original" : ""),
         correcciones: extra.correcciones ?? null, transcripcion: extra.transcripcion ?? null, asignar_a: extra.asignar_a ?? null,
       });
       setCorreccion(null);
@@ -606,6 +606,7 @@ const CAMPOS_CORREGIBLES: { ruta: string; etiqueta: string }[] = [
   { ruta: "extraccion.fecha_documento", etiqueta: "Fecha del documento" },
   { ruta: "extraccion.paciente.documento.tipo", etiqueta: "Tipo de documento del paciente" },
   { ruta: "extraccion.paciente.documento.valor", etiqueta: "Número de documento del paciente" },
+  { ruta: "extraccion.paciente.nombre", etiqueta: "Nombre del paciente" },
   { ruta: "extraccion.paciente.edad", etiqueta: "Edad del paciente" },
   { ruta: "extraccion.diagnosticos[0].texto", etiqueta: "Diagnóstico principal" },
   { ruta: "extraccion.diagnosticos[0].cie10_sugerido", etiqueta: "Código CIE-10 del diagnóstico" },
