@@ -193,6 +193,15 @@ export interface ItemCola {
   escalado_a_rol?: string | null;
 }
 
+/** RN-P2: resultado del reintento en lote de los casos por fallo técnico. */
+export interface InformeReintento {
+  candidatos: number;
+  leidos: string[];
+  fallidos: string[];
+  detenido: boolean;
+  sin_intentar: number;
+}
+
 /** RN-J3: a quién se puede reasignar un caso. */
 export interface Revisor {
   usuario: string;

@@ -2,12 +2,13 @@ import { ClipboardCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { colaRevision } from "../api";
+import { colaRevision, reintentarFallos } from "../api";
 import { etiquetaMotivo, etiquetaTipo, tituloHallazgos } from "../app/mensajes";
 import { resumirFalloTecnico } from "../app/motor";
 import { calcularPlazo } from "../app/plazos";
 import { TagsAsignacion } from "../components/Asignacion";
 import { AvisoSistemaDegradado, tituloCaida } from "../components/AvisoSistema";
+import { EstadoMensaje, textoDeError, type Mensaje } from "../components/EstadoMensaje";
 import { ChipPlazo, TagPrioridad } from "../components/Tags";
 import { Vacio } from "../components/Vacio";
 import type { ItemCola } from "../types";
@@ -47,10 +48,28 @@ function Cabecera() {
 export function RevisionPage() {
   const [cola, setCola] = useState<ItemCola[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+  const [reintentando, setReintentando] = useState(false);
 
-  useEffect(() => {
-    colaRevision().then(setCola).catch(() => setError("No hay conexión con la API. La cola se mostrará cuando vuelva."));
-  }, []);
+  const cargar = () => colaRevision().then(setCola).catch(() => setError("No hay conexión con la API. La cola se mostrará cuando vuelva."));
+  useEffect(() => { void cargar(); }, []);
+
+  async function reintentar() {
+    setReintentando(true);
+    setMensaje(null);
+    try {
+      const informe = await reintentarFallos();
+      const texto = `${informe.leidos.length} de ${informe.candidatos} casos leídos y enrutados; ${informe.fallidos.length} siguen sin lectura.`;
+      setMensaje(informe.detenido
+        ? { texto: `${texto} El motor sigue caído: se detuvo tras tres fallos seguidos. ${informe.sin_intentar} sin intentar.`, error: true }
+        : { texto });
+      await cargar();
+    } catch (e) {
+      setMensaje({ texto: textoDeError(e), error: true });
+    } finally {
+      setReintentando(false);
+    }
+  }
 
   const esFallo = (c: ItemCola) => c.motivo_auditoria === "fallo_tecnico";
   const porFallo = (cola ?? []).filter(esFallo);
@@ -67,10 +86,12 @@ export function RevisionPage() {
         </div>
       </header>
       {error && <p className="error">{error}</p>}
+      <EstadoMensaje mensaje={mensaje} />
 
       {degradado && (
         <AvisoSistemaDegradado titulo={tituloCaida(desde)}>
           <p>{porFallo.length} documentos pasaron a revisión manual por esa sola causa.{criticosFallo > 0 && ` ${criticosFallo === 1 ? "El crítico queda" : `Los ${criticosFallo} críticos quedan`} arriba, en la cola.`} La detección de hallazgos críticos por texto sigue activa y sus alertas salen igual.</p>
+          <p><button type="button" className="secundario" disabled={reintentando} onClick={reintentar}>{reintentando ? "Reintentando…" : "Reintentar la lectura de todos"}</button> <span className="muted">Si el motor ya volvió, los casos se leen y se enrutan solos; si sigue caído, se detiene tras tres fallos.</span></p>
         </AvisoSistemaDegradado>
       )}
 

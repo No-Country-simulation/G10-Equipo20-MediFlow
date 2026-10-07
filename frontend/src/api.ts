@@ -11,6 +11,7 @@ import type {
   DocumentoDetalle,
   DocumentoRequest,
   FichaPack,
+  InformeReintento,
   ItemCola,
   Listado,
   ListadoPacientes,
@@ -102,6 +103,11 @@ export function consultarDocumento(documentoId: string): Promise<DocumentoDetall
 
 export function colaRevision(): Promise<ItemCola[]> {
   return llamar<ItemCola[]>("/revision");
+}
+
+/** RN-P2: vuelve a leer en lote los casos que cayeron a revisión por fallo técnico. */
+export function reintentarFallos(): Promise<InformeReintento> {
+  return llamar<InformeReintento>("/revision/reintentar_fallos", { method: "POST" });
 }
 
 /** RN-J3: personas activas cuyo rol resuelve la revisión. */
