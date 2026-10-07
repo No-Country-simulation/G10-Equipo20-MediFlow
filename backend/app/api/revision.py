@@ -41,6 +41,44 @@ def cola_de_revision(session: Session = Depends(get_session)):
     ]
 
 
+@router.post("/reintentar_fallos")
+def reintentar_fallos(
+    session: Session = Depends(get_session),
+    storage: Storage = Depends(get_storage),
+    llm: ClienteLLM = Depends(get_llm),
+    notificador: Notificador = Depends(get_notificador),
+    cuenta=Depends(cuenta_actual),
+):
+    """RN-P2: cuando el motor de lectura vuelve, los casos que cayeron a revisión por fallo técnico se vuelven a leer en lote,
+    a nombre de quien lo pide. Si tres seguidos vuelven a fallar, el motor sigue caído y se detiene para no insistir."""
+    quien = firmante(session, cuenta, "resolver_revision")
+    repo = RepositorioDocumentos(session)
+    orquestador = Orquestador(repo, storage, ServicioExtraccion(llm, max_intentos=get_settings().llm_max_intentos), memoria=get_memoria(),
+                              notificador=notificador)
+    candidatos = [d for d in repo.en_revision()
+                  if not d.propuesta_json and (d.resultado_json or {}).get("evaluacion", {}).get("motivo_auditoria") == "fallo_tecnico"]
+    leidos: list[str] = []
+    fallidos: list[str] = []
+    seguidos = 0
+    detenido = False
+    for doc in candidatos:
+        try:
+            orquestador.resolver_revision(doc, accion="reintentar", usuario=quien.usuario, rol=quien.rol, motivo="reintento en lote")
+        except ErrorDeRevision:
+            continue
+        if doc.propuesta_json:
+            leidos.append(doc.documento_id)
+            seguidos = 0
+        else:
+            fallidos.append(doc.documento_id)
+            seguidos += 1
+            if seguidos >= 3:
+                detenido = True
+                break
+    pendientes = len(candidatos) - len(leidos) - len(fallidos)
+    return {"candidatos": len(candidatos), "leidos": leidos, "fallidos": fallidos, "detenido": detenido, "sin_intentar": pendientes}
+
+
 @router.get("/revisores")
 def revisores(session: Session = Depends(get_session)):
     """RN-J3: a quién se puede reasignar un caso. Sin claves ni hashes: solo cuenta, nombre y rol."""

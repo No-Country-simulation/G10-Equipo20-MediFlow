@@ -140,3 +140,59 @@ def test_confirmar_dos_veces_el_mismo_destino_es_idempotente_y_otro_destino_tras
     final = client.get("/documentos/REC-1").json()
     assert final["estado"] == "ENTREGADO"
     assert client.post("/documentos/REC-1/entregar", json={"destino": "Cola_Emergencia_Medica"}).status_code in (400, 409)  # otro destino, ya es final
+
+
+# --- el motor vuelve: reintento en lote (RN-P2) --------------------------------------------------------------
+
+
+def test_RN_P2_el_reintento_en_lote_lee_lo_que_puede_y_se_detiene_si_el_motor_sigue_caido(client, llm_falso):
+    for i in range(1, 6):
+        enviar_con_fallo(client, llm_falso, f"DOC-FT-{i}", TEXTO + f" Ref {i}.")
+    assert len(client.get("/revision").json()) == 5
+    # el motor vuelve a medias: lee dos y después falla tres veces seguidas (una llamada por documento, con 3 reintentos cada una)
+    llm_falso.respuestas.extend([propuesta_caso_1(), propuesta_caso_1()] + [ErrorTransitorioLLM("caído")] * 9)
+    r = client.post("/revision/reintentar_fallos")
+    assert r.status_code == 200, r.text
+    informe = r.json()
+    assert informe["candidatos"] == 5 and len(informe["leidos"]) == 2 and len(informe["fallidos"]) == 3
+    assert informe["detenido"] is True and informe["sin_intentar"] == 0
+    assert len(client.get("/revision").json()) == 3  # los dos leídos salieron de la cola
+    for documento_id in informe["leidos"]:
+        assert client.get(f"/documentos/{documento_id}").json()["estado"] == "ENRUTADO"
+
+
+def test_el_reintento_en_lote_no_toca_lo_que_ya_tiene_lectura(client, llm_falso):
+    enviar(client, llm_falso, "DOC-CRIT", propuesta_para_revision())  # en revisión, pero con lectura: no es candidato
+    informe = client.post("/revision/reintentar_fallos").json()
+    assert informe["candidatos"] == 0 and informe["leidos"] == [] and informe["detenido"] is False
+    assert len(llm_falso.llamadas) == 1
+
+
+# --- un revisor desactivado con casos asignados (RN-K4, RN-J3) ---------------------------------------------
+
+
+def test_RN_K4_desactivar_a_un_revisor_libera_sus_casos_asignados(client, llm_falso, jefe, admin):
+    enviar(client, llm_falso, "DOC-CRIT", propuesta_para_revision())
+    assert resolver(client, "DOC-CRIT", accion="reasignar", asignar_a="jefe.rojas").status_code == 200
+    assert client.get("/revision").json()[0]["asignado_a"] == "jefe.rojas"
+    assert admin.post("/administracion/usuarios/jefe.rojas/desactivar").status_code == 200
+    assert client.get("/revision").json()[0]["asignado_a"] is None  # vuelve al grupo
+
+
+# --- la purga manual no borra lo que un documento vivo todavía necesita (RN-P1, RN-I4) -------------------------
+
+
+def test_la_purga_protege_el_original_y_las_paginas_de_un_documento_sin_cerrar(client, llm_falso, session, storage):
+    from datetime import datetime, timedelta, timezone
+
+    from scripts.purgar_storage import purgar, rutas_protegidas
+
+    enviar(client, llm_falso, "DOC-CRIT", propuesta_para_revision())  # en revisión: su original sigue en uso
+    enviar(client, llm_falso, "DOC-OK")  # enrutado y con alerta pendiente: tampoco cerró
+    protegidas = rutas_protegidas(session)
+    assert {"co/recibidos/DOC-CRIT.txt", "co/recibidos/DOC-OK.txt"} <= protegidas
+    futuro = datetime.now(timezone.utc) + timedelta(days=400)
+    borrados = purgar(storage, dias=365, confirmar=True, ahora=futuro, protegidas=protegidas)
+    assert all(o.ruta not in protegidas for o in borrados)
+    assert storage.leer("co/recibidos/DOC-CRIT.txt")  # sigue ahí
+    assert client.get("/documentos/DOC-CRIT/original").status_code == 200

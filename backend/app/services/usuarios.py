@@ -5,10 +5,11 @@ RN-K3: cada acceso a un documento se registra con quién, cuándo y qué vio.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.models.documento import Documento
 from app.models.gobierno import AccesoDocumento, EventoSesion, Rol, Usuario
 from app.services.errores import ErrorDeRevision
 from app.services.roles_base import ROLES_BASE
@@ -94,6 +95,10 @@ class ServicioUsuarios:
             raise ErrorDeRevision(409, "RN-S3: debe quedar al menos un administrador activo; crea otro antes de desactivar este")
         u.activo = activo
         u.desactivado_en = None if activo else datetime.now(timezone.utc)  # RN-K4: efecto inmediato
+        if not activo:
+            # RN-J3: lo que tenía asignado en la cola vuelve al grupo; nadie espera a una cuenta que ya no entra.
+            self.session.execute(update(Documento).where(Documento.asignado_a == u.usuario, Documento.estado == "EN_REVISION_HUMANA")
+                                 .values(asignado_a=None))
         self.session.commit()
         self.session.refresh(u)
         return u
