@@ -15,7 +15,7 @@ def route_classification(classification: ClassificationResult, priority: Priorit
             if destination is None or not destination.active:
                 raise DocumentError(422, "NO_ROUTING_RULE")
             return RoutingResult(destination=destination.code, routed_at=datetime.now(UTC),
-                                 rule_version="explicit-priority-v1")
+                                 rule_version="evidence-priority-v2", reason="La prioridad explícita prevalece sobre las reglas por tipo y especialidad.")
         if classification.specialty in ("OTHER", "UNKNOWN"):
             raise DocumentError(422, "NO_ROUTING_RULE")
         rules = session.scalars(select(RoutingRule).join(Destination).where(
@@ -26,7 +26,8 @@ def route_classification(classification: ClassificationResult, priority: Priorit
         if rules:
             rule = sorted(rules, key=lambda item: item.specialty != classification.specialty)[0]
             return RoutingResult(destination=rule.destination_code, routed_at=datetime.now(UTC),
-                                 rule_version="catalog-v1")
+                                 rule_version="catalog-v1", matched_rule_id=rule.id, matched_specialty=rule.specialty,
+                                 reason="Regla específica de especialidad." if rule.specialty != "ANY" else "Regla general del tipo documental; no hay asignación específica activa.")
         raise DocumentError(422, "NO_ROUTING_RULE")
     if priority and priority.level in ("URGENT", "CRITICAL"):
         return RoutingResult(destination="COLA_URGENCIAS_MEDICAS", routed_at=datetime.now(UTC),

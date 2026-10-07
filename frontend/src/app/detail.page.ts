@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit, OnDestroy } from "@angular/core";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { DatePipe, JsonPipe } from "@angular/common";
 import { Api, ApiError } from "./api";
-import { DocumentRecord, Result, StateEvent, ReviewAudit, label } from "./models";
+import { DocumentRecord, Result, StateEvent, ReviewAudit, ProcessingJob, Backup, label } from "./models";
 import { ReviewForm } from "./review.form";
 import { Subscription } from "rxjs";
 @Component({
@@ -26,6 +26,13 @@ export class DetailPage implements OnInit, OnDestroy {
   result = signal<Result | null>(null);
   history = signal<StateEvent[]>([]);
   reviews = signal<ReviewAudit[]>([]);
+  job = signal<ProcessingJob | null>(null);
+  backups = signal<Backup[]>([]);
+  textOriginal = signal("");
+  private pollTimer?: ReturnType<typeof setTimeout>;
+  nodeLabels: Record<string,string> = {ingest: "Original disponible", read_content: "Lectura / OCR", classify: "Clasificación", extract: "Extracción", validate: "Validación", assess_priority: "Prioridad", score_quality: "Calidad", assess_patient: "Identificación", route: "Enrutamiento"};
+  activeJob() { return !!this.job() && ["QUEUED", "RUNNING"].includes(this.job()!.status); }
+  async retryBackup() { await this.api.retryBackups(this.id); await this.load(); }
   busy = signal(false);
   loading = signal(true);
   error = signal("");
@@ -42,6 +49,7 @@ export class DetailPage implements OnInit, OnDestroy {
     this.routeSubscription = this.route.paramMap.subscribe(params => {
       this.id = params.get('id')!;
       this.sequence++;
+      clearTimeout(this.pollTimer); this.job.set(null); this.textOriginal.set("");
       this.doc.set(null); this.result.set(null); this.history.set([]); this.reviews.set([]); this.error.set('');
       this.fileError.set(''); this.previewError.set(''); this.pageNumber.set(1); this.pageCount.set(1);
       if (this.original()) URL.revokeObjectURL(this.original()!);
@@ -85,6 +93,11 @@ export class DetailPage implements OnInit, OnDestroy {
       this.doc.set(doc); this.result.set(result);
       this.history.set(history);
       this.reviews.set(reviews);
+      const [job, backups] = await Promise.all([this.api.latestJob(id).catch(() => null), this.api.backups(id).catch(() => [])]);
+      if (seq !== this.sequence || this.destroyed) return;
+      this.job.set(job?.id ? job : null); this.backups.set(Array.isArray(backups) ? backups : []);
+      clearTimeout(this.pollTimer);
+      if (this.activeJob() || this.backups().some(b => b.status === 'PENDING')) this.pollTimer = setTimeout(() => void this.load(), 2000);
     } catch (e) {
       if (seq === this.sequence) this.error.set((e as Error).message);
     } finally {
@@ -98,6 +111,10 @@ export class DetailPage implements OnInit, OnDestroy {
       const blob = await this.api.original(this.id);
       if (this.destroyed || seq !== this.sequence) return;
       if (this.original()) URL.revokeObjectURL(this.original()!);
+      if (this.doc()?.format === "text") {
+        const payload = JSON.parse(await blob.text());
+        if (seq === this.sequence) this.textOriginal.set(payload.text || "");
+      }
       const url = URL.createObjectURL(blob);
       this.original.set(url);
       if (this.doc()?.format === "pdf") await this.showPage(1);
@@ -124,14 +141,14 @@ export class DetailPage implements OnInit, OnDestroy {
     }
   }
   canProcess() {
-    return this.api.can("DOCUMENTS_PROCESS") && this.doc() && ["VALIDADO", "FALLO_TECNICO", "EVALUADO"].includes(this.doc()!.status);
+    return !this.activeJob() && this.api.can("DOCUMENTS_PROCESS") && this.doc() && ["VALIDADO", "FALLO_TECNICO", "EVALUADO"].includes(this.doc()!.status);
   }
   async process() {
     if (this.busy()) return;
     this.busy.set(true);
     this.error.set("");
     try {
-      await this.api.process(this.id);
+      const job = await this.api.enqueue(this.id); this.job.set(job);
     } catch (e) {
       this.error.set((e as Error).message);
     } finally {
@@ -159,6 +176,7 @@ export class DetailPage implements OnInit, OnDestroy {
   }
   ngOnDestroy() {
     this.destroyed = true;
+    clearTimeout(this.pollTimer);
     this.routeSubscription?.unsubscribe();
     if (this.previewImage()) URL.revokeObjectURL(this.previewImage()!);
     if (this.original()) URL.revokeObjectURL(this.original()!);

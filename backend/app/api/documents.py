@@ -6,7 +6,10 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query, Response
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, cast, String, Float, case
+from datetime import datetime
+from app.models.patient import Patient
+from app.models.execution import ResultBackup
 from app.models.document import Document
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -136,8 +139,30 @@ def list_documents(
     q: Annotated[str, Query(max_length=255)] = "",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    document_type: Annotated[str | None, Query(max_length=50)] = None,
+    specialty: Annotated[str | None, Query(max_length=50)] = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    min_quality: Annotated[float | None, Query(ge=0, le=1)] = None,
+    max_quality: Annotated[float | None, Query(ge=0, le=1)] = None,
+    sort: Literal["recent", "review"] = "recent",
 ) -> DocumentList:
     query = select(Document)
+    if date_from and date_to and date_from > date_to or min_quality is not None and max_quality is not None and min_quality > max_quality:
+        raise HTTPException(422, "INVALID_FILTER_RANGE")
+    if document_type:
+        query = query.where(Document.processing_result["classification"]["document_type"].astext == document_type)
+    if specialty:
+        query = query.where(Document.processing_result["classification"]["specialty"].astext == specialty)
+    if date_from:
+        query = query.where(Document.received_at >= date_from)
+    if date_to:
+        query = query.where(Document.received_at <= date_to)
+    quality_value = cast(Document.processing_result["quality"]["score"].astext, Float)
+    if min_quality is not None:
+        query = query.where(quality_value >= min_quality)
+    if max_quality is not None:
+        query = query.where(quality_value <= max_quality)
     if country is not None:
         if country not in COUNTRY_CODES:
             raise HTTPException(422, "UNSUPPORTED_COUNTRY")
@@ -149,10 +174,19 @@ def list_documents(
     if destination is not None:
         query = query.where(Document.processing_result["routing"]["destination"].astext == destination)
     if q.strip():
-        query = query.where(Document.original_filename.icontains(q.strip(), autoescape=True))
+        query = query.outerjoin(Patient, Document.patient_id == Patient.id).where(or_(
+            Document.original_filename.icontains(q.strip(), autoescape=True),
+            cast(Document.document_id, String).icontains(q.strip(), autoescape=True),
+            Patient.name.icontains(q.strip(), autoescape=True), Patient.identity_number.icontains(q.strip(), autoescape=True)))
     try:
         total = session.scalar(select(func.count()).select_from(query.subquery()))
-        rows = session.scalars(query.order_by(Document.received_at.desc(), Document.document_id.desc()).limit(limit).offset(offset))
+        if sort == "review" or status == DocumentStatus.EN_REVISION_HUMANA:
+            rank = case((Document.processing_result["priority"]["level"].astext == "CRITICAL", 0),
+                        (Document.processing_result["priority"]["level"].astext == "URGENT", 1), else_=2)
+            order = (rank, quality_value.asc().nullsfirst(), Document.received_at.asc(), Document.document_id)
+        else:
+            order = (Document.received_at.desc(), Document.document_id.desc())
+        rows = session.scalars(query.order_by(*order).limit(limit).offset(offset))
         return DocumentList(items=[DocumentResponse.model_validate(row) for row in rows], total=total, limit=limit, offset=offset)
     except SQLAlchemyError:
         raise HTTPException(503, "DOCUMENT_LIST_UNAVAILABLE") from None
@@ -228,7 +262,7 @@ def get_original(document_id: UUID, session: Annotated[Session, Depends(get_sess
             raise HTTPException(404, "DOCUMENT_FILE_NOT_FOUND")
         with get_storage(settings, document.storage_backend, document.storage_bucket).materialize(document.storage_key, settings.max_upload_bytes) as path:
             data = path.read_bytes()
-        return Response(data, media_type={"pdf": "application/pdf", "png": "image/png", "jpeg": "image/jpeg"}[document.format],
+        return Response(data, media_type={"pdf": "application/pdf", "png": "image/png", "jpeg": "image/jpeg", "text": "application/json"}[document.format],
                         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
                                  "Content-Disposition": f'inline; filename="{document_id}.{document.format}"'})
     except DocumentError as exc:
@@ -260,8 +294,15 @@ def delete_document(
 ):
     try:
         document = locked_document(document_id, session)
+        from app.services.jobs import active_job
+        if active_job(session, document_id):
+            raise DocumentError(409, "DOCUMENT_ALREADY_PROCESSING")
+        backups = session.scalars(select(ResultBackup).where(ResultBackup.document_id == document_id).with_for_update()).all()
+        storage = get_storage(settings, document.storage_backend, document.storage_bucket)
+        for backup in backups:
+            storage.delete(backup.storage_key)
         if document.storage_key:
-            get_storage(settings, document.storage_backend, document.storage_bucket).delete(document.storage_key)
+            storage.delete(document.storage_key)
         session.delete(document)
         session.commit()
         return Response(status_code=204)

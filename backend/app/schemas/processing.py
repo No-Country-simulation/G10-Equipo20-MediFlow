@@ -22,9 +22,9 @@ class OCRResult(StructuredModel):
 
 
 class ContentPage(StructuredModel):
-    page: int = Field(ge=1)
+    page: int | None = Field(default=None, ge=1)
     text: str
-    method: Literal["embedded_text", "gemini_ocr", "openai_ocr", "human_corrected"]
+    method: Literal["embedded_text", "gemini_ocr", "openai_ocr", "human_corrected", "submitted_text"]
     engine: Literal["pymupdf", "gemini", "openai"] | None = None
     uncertain: bool = False
 
@@ -34,8 +34,10 @@ class ContentResult(StructuredModel):
 
 
 class Evidence(StructuredModel):
-    page: int = Field(ge=1)
+    page: int | None = Field(default=None, ge=1)
     quote: str = Field(min_length=1)
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=1)
 
 
 class ClassificationResult(StructuredModel):
@@ -63,6 +65,22 @@ class ValidationResult(StructuredModel):
     requires_human_review: bool
     issues: list[str]
     rule_version: str = "documentary-v1"
+    details: list["ValidationIssue"] = Field(default_factory=list)
+    field_checks: list["FieldCheck"] = Field(default_factory=list)
+
+
+class ValidationIssue(StructuredModel):
+    code: str
+    category: Literal["MISSING", "INCONSISTENCY", "WARNING"]
+    field: str | None = None
+    evidence: Evidence | None = None
+
+
+class FieldCheck(StructuredModel):
+    index: int | None = None
+    name: str
+    status: Literal["SUPPORTED", "MISSING", "CONFLICT", "UNVERIFIABLE"]
+    issues: list[str] = Field(default_factory=list)
 
 
 class PriorityResult(StructuredModel):
@@ -71,6 +89,7 @@ class PriorityResult(StructuredModel):
     evidence: Evidence | None = None
     ambiguous: bool = False
     rule_version: str = "explicit-priority-v1"
+    reason: str | None = None
 
 
 class QualityComponents(StructuredModel):
@@ -85,6 +104,7 @@ class QualityResult(StructuredModel):
     threshold: float = Field(ge=0, le=1)
     components: QualityComponents
     rule_version: str = "document-quality-v1"
+    policy: dict | None = None
 
 
 class LocalAlert(StructuredModel):
@@ -100,6 +120,9 @@ class RoutingResult(StructuredModel):
     rule_version: str = "cardiopulmonary-v1"
     delivery_status: Literal["PENDING_INTEGRATION", "DELIVERED_LOCAL"] = "PENDING_INTEGRATION"
     external_delivery_status: Literal["PENDING_INTEGRATION"] = "PENDING_INTEGRATION"
+    reason: str | None = None
+    matched_rule_id: int | None = None
+    matched_specialty: str | None = None
 
 
 class PatientMatch(StructuredModel):
@@ -127,6 +150,49 @@ class ProcessingResult(StructuredModel):
     error_code: str | None = None
     routing: RoutingResult | None = None
     patient: PatientMatch | None = None
+    clinical_data: "ClinicalData | None" = None
+
+
+class ClinicalData(StructuredModel):
+    patient: "PatientData" = Field(default_factory=lambda: PatientData())
+    professional: "ProfessionalData" = Field(default_factory=lambda: ProfessionalData())
+    medications: list["MedicationData"] = Field(default_factory=list)
+    tests: list["LaboratoryData"] = Field(default_factory=list)
+    procedures: list["ProcedureData"] = Field(default_factory=list)
+
+
+class PatientData(StructuredModel):
+    name: ExtractedField | None = None
+    age: ExtractedField | None = None
+    identity: ExtractedField | None = None
+
+
+class ProfessionalData(StructuredModel):
+    name: ExtractedField | None = None
+    license: ExtractedField | None = None
+
+
+class MedicationData(StructuredModel):
+    entity_id: str | None = None
+    name: ExtractedField | None = None
+    dose: ExtractedField | None = None
+    frequency: ExtractedField | None = None
+    route: ExtractedField | None = None
+    duration: ExtractedField | None = None
+    concentration: ExtractedField | None = None
+
+
+class LaboratoryData(StructuredModel):
+    entity_id: str | None = None
+    name: ExtractedField | None = None
+    result: ExtractedField | None = None
+    reference_range: ExtractedField | None = None
+
+
+class ProcedureData(StructuredModel):
+    entity_id: str | None = None
+    name: ExtractedField | None = None
+    indication: ExtractedField | None = None
 
 
 class ReviewRequest(StructuredModel):

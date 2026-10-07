@@ -15,7 +15,7 @@ class Document(Base):
     __table_args__ = (
         Index("ix_documents_patient_id", "patient_id"),
         CheckConstraint("size_bytes >= 0", name="ck_documents_size_positive"),
-        CheckConstraint("format IN ('pdf', 'jpeg', 'png')", name="ck_documents_format"),
+        CheckConstraint("format IN ('pdf', 'jpeg', 'png', 'text')", name="ck_documents_format"),
         CheckConstraint("status IN ('RECIBIDO', 'VALIDADO', 'CLASIFICADO', 'EXTRAIDO', 'EVALUADO', 'ENRUTADO', 'ENTREGADO', 'RECHAZADO', 'FALLO_TECNICO', 'EN_REVISION_HUMANA', 'RESUELTO')", name="ck_documents_status"),
     )
 
@@ -34,6 +34,8 @@ class Document(Base):
     storage_backend: Mapped[str] = mapped_column(String(10), default="local", server_default="local")
     storage_bucket: Mapped[str | None] = mapped_column(String(63))
     country: Mapped[str] = mapped_column(String(2), default="EC", server_default="EC")
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    origin_channel: Mapped[str | None] = mapped_column(String(100))
     patient_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("patients.id", ondelete="SET NULL"))
     patient_match_status: Mapped[str] = mapped_column(String(24), default="NOT_EVALUATED", server_default="NOT_EVALUATED")
     patient_match_reason: Mapped[str | None] = mapped_column(String(100))

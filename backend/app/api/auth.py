@@ -135,5 +135,5 @@ def my_document_file(document_id: UUID, account: Annotated[Account, Depends(requ
             data = path.read_bytes()
     except (DocumentError, OSError):
         raise HTTPException(503, "DOCUMENT_STORAGE_UNAVAILABLE") from None
-    return Response(data, media_type={"pdf": "application/pdf", "jpeg": "image/jpeg", "png": "image/png"}[document.format],
+    return Response(data, media_type={"pdf": "application/pdf", "jpeg": "image/jpeg", "png": "image/png", "text": "application/json"}[document.format],
                     headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})

@@ -49,8 +49,13 @@ class R2DocumentStorage:
         elif writing:
             raise OSError("R2_KEY_OUTSIDE_PREFIX")
         # Legacy country/originals keys remain readable/deletable through DB references.
-        if (len(parts) != 3 or parts[0] not in COUNTRY_CODES or parts[1] != "originals"
-                or not re.fullmatch(r"[A-Za-z0-9_-]+\.(pdf|jpg|png)", parts[2])):
+        original = (len(parts) == 3 and parts[1] == "originals"
+                    and re.fullmatch(r"[A-Za-z0-9_-]+\.(pdf|jpg|png|json)", parts[2]))
+        backup = (len(parts) == 5 and parts[1] == "results"
+                  and re.fullmatch(r"[0-9a-f-]{36}", parts[2])
+                  and parts[3] in ("ENTREGADO", "EN_REVISION_HUMANA", "FALLO_TECNICO", "RECHAZADO", "EVALUADO", "ENRUTADO")
+                  and re.fullmatch(r"[0-9a-f-]{36}\.json", parts[4]))
+        if (not parts or parts[0] not in COUNTRY_CODES or not (original or backup)):
             raise OSError("R2_KEY_OUTSIDE_PREFIX")
 
     def put_file(self, key: str, path: Path, max_bytes: int) -> None:
@@ -60,8 +65,10 @@ class R2DocumentStorage:
         try:
             with path.open("rb") as source:
                 self.client.put_object(Bucket=self.bucket, Key=key, Body=source,
-                                       ContentType={".pdf": "application/pdf", ".jpg": "image/jpeg", ".png": "image/png"}[path.suffix])
-        except (BotoCoreError, ClientError):
+                                       ContentType={".pdf": "application/pdf", ".jpg": "image/jpeg", ".png": "image/png", ".json": "application/json"}[path.suffix], IfNoneMatch="*")
+        except (BotoCoreError, ClientError) as exc:
+            if isinstance(exc, ClientError) and exc.response.get("Error", {}).get("Code") in ("PreconditionFailed", "412"):
+                raise OSError("R2_OBJECT_ALREADY_EXISTS") from None
             # A timeout can follow a successful write: clean up only this request's UUID.
             try:
                 self.delete(key)
@@ -75,6 +82,29 @@ class R2DocumentStorage:
             self.client.delete_object(Bucket=self.bucket, Key=key)
         except (BotoCoreError, ClientError):
             raise OSError("R2_DELETE_FAILED") from None
+
+    def put_snapshot(self, key: str, path: Path) -> None:
+        self._check_key(key, writing=True)
+        data = path.read_bytes()
+        try:
+            self.client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType="application/json", IfNoneMatch="*")
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("PreconditionFailed", "412"):
+                # A previous uncertain write may already have stored this exact snapshot.
+                try:
+                    response = self.client.get_object(Bucket=self.bucket, Key=key)
+                except (ClientError, BotoCoreError):
+                    raise OSError("R2_SNAPSHOT_FAILED") from None
+                try:
+                    if response["Body"].read(len(data) + 1) == data:
+                        return
+                except BotoCoreError:
+                    raise OSError("R2_SNAPSHOT_FAILED") from None
+                finally:
+                    response["Body"].close()
+            raise OSError("R2_SNAPSHOT_FAILED") from None
+        except BotoCoreError:
+            raise OSError("R2_SNAPSHOT_FAILED") from None
 
     @contextmanager
     def materialize(self, key: str, max_bytes: int):

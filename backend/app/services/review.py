@@ -12,6 +12,11 @@ from app.services.patients import assess_patient, link_patient
 
 def review_document(document_id, request: ReviewRequest, session, settings) -> ProcessingResult:
     document = locked_document(document_id, session)
+    from app.services.jobs import active_job
+    if active_job(session, document_id):
+        raise DocumentError(409, 'DOCUMENT_ALREADY_PROCESSING')
+    from app.services.backups import schedule_backup
+    from app.services.documentary_policy import load_policy, annotate_text_evidence, clinical_projection
     if document.status != S.EN_REVISION_HUMANA or not document.processing_result:
         raise DocumentError(409, 'DOCUMENT_NOT_AWAITING_REVIEW')
     previous = ProcessingResult.model_validate(document.processing_result)
@@ -31,6 +36,7 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
         audit = ReviewAudit(action=request.action, reviewer=request.reviewer, notes=request.notes,
                             reviewed_at=result.processed_at, previous_result=previous)
         document.review_history = [*(document.review_history or []), audit.model_dump(mode='json')]
+        schedule_backup(session, document, settings)
         session.commit()
         return result
     for key, value in corrections.items():
@@ -38,7 +44,8 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     if result.content is None or result.classification is None or result.extraction is None:
         raise DocumentError(422, 'REVIEW_REQUIRES_COMPLETE_RESULT')
     pages = result.content.pages
-    if not pages or len(pages) > settings.processing_max_pages or [p.page for p in pages] != list(range(1, len(pages) + 1)):
+    expected_pages = [None] if document.format == 'text' else list(range(1, len(pages) + 1))
+    if not pages or len(pages) > settings.processing_max_pages or [p.page for p in pages] != expected_pages:
         raise DocumentError(422, 'INVALID_REVIEW_PAGES')
     if (previous.content and len(pages) != len(previous.content.pages)) or (document.format != 'pdf' and len(pages) != 1):
         raise DocumentError(422, 'INVALID_REVIEW_PAGES')
@@ -48,14 +55,21 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
         page.uncertain = '[ILEGIBLE]' in page.text.upper()
         if request.content is not None:
             page.method, page.engine = 'human_corrected', None
-    result.validation = validate_processing(result.content, result.classification, result.extraction)
+    if document.format == 'text':
+        result.classification.evidence = annotate_text_evidence(result.content, result.classification.evidence)
+        for field in result.extraction.fields:
+            field.evidence = annotate_text_evidence(result.content, field.evidence)
+    policy = previous.quality.policy if previous.quality else None
+    if policy is None or policy.get('document_type') != result.classification.document_type:
+        policy = load_policy(session, result.classification.document_type, settings.min_document_quality)
+    result.validation = validate_processing(result.content, result.classification, result.extraction, policy)
     result.priority = detect_priority(result.content)
     if result.priority.ambiguous:
         result.validation.issues.append('PRIORITY_AMBIGUOUS')
         result.validation.valid = False
         result.validation.requires_human_review = True
     result.quality = calculate_quality(result.content, result.classification, result.extraction,
-                                       result.validation, settings.min_document_quality)
+                                       result.validation, settings.min_document_quality, policy)
     if result.quality.score < result.quality.threshold:
         result.validation.issues.append('LOW_DOCUMENT_QUALITY')
         result.validation.valid = False
@@ -65,7 +79,8 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     if not result.validation.valid:
         raise DocumentError(422, 'REVIEW_HAS_UNRESOLVED_ISSUES:' + ','.join(result.validation.issues))
     result.routing = route_classification(result.classification, result.priority, session)
-    result.pipeline_version = 'documentary-v5'
+    result.pipeline_version = 'documentary-v6'
+    result.clinical_data = clinical_projection(result.extraction)
     transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action)
     transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED')
     result.patient = link_patient(document, result.extraction, result.patient, session)
@@ -76,5 +91,6 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     audit = ReviewAudit(action=request.action, reviewer=request.reviewer, notes=request.notes,
                         reviewed_at=result.processed_at, previous_result=previous)
     document.review_history = [*(document.review_history or []), audit.model_dump(mode='json')]
+    schedule_backup(session, document, settings)
     session.commit()
     return result

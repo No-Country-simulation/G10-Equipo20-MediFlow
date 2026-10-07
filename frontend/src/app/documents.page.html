@@ -16,6 +16,11 @@
     >
   </div>
   <div class="upload-actions">
+    <div class="input-tabs"><button class="secondary" [class.active]="inputMode === 'file'" (click)="inputMode = 'file'">Archivo</button><button class="secondary" [class.active]="inputMode === 'text'" (click)="inputMode = 'text'">Texto</button></div>
+    @if (inputMode === 'text') {
+      <label>Texto clínico<textarea [(ngModel)]="clinicalText" maxlength="200000" rows="9" placeholder="Pega el contenido del documento" [disabled]="uploading()"></textarea></label>
+      <label>Canal de origen<input [(ngModel)]="originChannel" maxlength="100" /></label>
+    } @else {
     <label class="dropzone" (dragover)="$event.preventDefault()" (drop)="drop($event)"
       ><span class="upload-symbol">↑</span
       ><strong>{{ file()?.name || "Arrastra tu archivo aquí" }}</strong
@@ -26,11 +31,12 @@
         (change)="choose($event)"
         [disabled]="uploading()"
         aria-label="Seleccionar documento" /></label
-    ><button class="primary" [disabled]="!file() || uploading()" (click)="upload()">
+    >}
+    <button class="primary" [disabled]="(inputMode === 'file' ? !file() : !clinicalText.trim()) || uploading()" (click)="upload()">
       {{ uploading() ? "Guardando documento…" : "Cargar documento" }}
       <span>↗</span>
     </button>
-    <button class="secondary" [disabled]="!file() || uploading() || !api.can('DOCUMENTS_PROCESS')" (click)="upload(true)">
+    <button class="secondary" [disabled]="(inputMode === 'file' ? !file() : !clinicalText.trim()) || uploading() || !api.can('DOCUMENTS_PROCESS')" (click)="upload(true)">
       Cargar y analizar ahora
     </button>
     <small class="muted">Cargar documento: solo guarda y valida. Cargar y analizar ahora: también ejecuta el proveedor elegido y el grafo.</small>
@@ -56,7 +62,7 @@
       ><input
         name="search"
         [(ngModel)]="search"
-        placeholder="Buscar por nombre de archivo"
+        placeholder="Archivo, UUID, paciente o identificación"
         aria-label="Buscar por nombre" /></label
     ><select
       name="status"
@@ -69,6 +75,10 @@
         <option [value]="state">{{ label(state) }}</option>
       }</select
     ><select name="priority" [(ngModel)]="priority" (ngModelChange)="load(true)" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option value="ROUTINE">Rutina</option><option value="URGENT">Urgente</option><option value="CRITICAL">Crítica</option><option value="UNASSESSED">Sin evaluar</option></select><button class="secondary" type="submit">Buscar</button>
+    <select name="documentType" [(ngModel)]="documentType" (ngModelChange)="load(true)" aria-label="Tipo documental"><option value="">Todos los tipos</option>@for (type of api.catalog().types; track type.code) { <option [value]="type.code">{{ type.name }}</option> }</select>
+    <select name="specialty" [(ngModel)]="specialty" (ngModelChange)="load(true)" aria-label="Especialidad"><option value="">Todas las especialidades</option>@for (s of api.catalog().specialties; track s.code) { <option [value]="s.code">{{ s.name }}</option> }</select>
+    <label>Desde<input type="date" name="dateFrom" [(ngModel)]="dateFrom" /></label><label>Hasta<input type="date" name="dateTo" [(ngModel)]="dateTo" /></label>
+    <select name="maxQuality" [(ngModel)]="maxQuality" (ngModelChange)="load(true)" aria-label="Calidad máxima"><option value="">Todas las calidades</option><option value="0.849">Menos de 85 %</option><option value="0.649">Menos de 65 %</option></select>
   </form>
   @if (error()) {
     <p class="error" role="alert">{{ error() }}</p>

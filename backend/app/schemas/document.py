@@ -11,10 +11,12 @@ class DocumentMetadata(BaseModel):
 
     document_id: UUID
     original_filename: str
-    format: Literal["pdf", "jpeg", "png"] | None
+    format: Literal["pdf", "jpeg", "png", "text"] | None
     size_bytes: int | None = Field(ge=0)
     received_at: datetime
     country: str = "EC"
+    sha256: str | None = None
+    origin_channel: str | None = None
 
 
 class DocumentResponse(DocumentMetadata):

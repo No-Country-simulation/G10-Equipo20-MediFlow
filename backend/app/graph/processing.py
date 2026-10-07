@@ -34,9 +34,11 @@ class ProcessingState(TypedDict):
     local_alert: NotRequired[LocalAlert | None]
     country: NotRequired[str]
     patient: NotRequired[PatientMatch]
+    policy: NotRequired[dict]
 
 
-def build_processing_graph(provider: DocumentProvider, settings: Settings, session: Session | None = None):
+def build_processing_graph(provider: DocumentProvider, settings: Settings, session: Session | None = None, before_node=None):
+    from app.services.documentary_policy import load_policy, annotate_text_evidence
     reader = ContentReader(provider, settings)
 
     def ingest(state):
@@ -52,21 +54,34 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
     def classify(state):
         if state.get("classification"):
             return {}
-        return {"classification": provider.classify(state["content"])}
+        result = provider.classify(state["content"])
+        result.evidence = annotate_text_evidence(state["content"], result.evidence)
+        return {"classification": result}
 
     def extract(state):
         if state.get("extraction"):
             return {}
         extracted = provider.extract(state["content"], state["classification"])
-        return {"extraction": complete_identity(state["content"], extracted, state.get("country", "EC"))}
+        extracted = complete_identity(state["content"], extracted, state.get("country", "EC"))
+        for field in extracted.fields:
+            field.evidence = annotate_text_evidence(state["content"], field.evidence)
+        return {"extraction": extracted}
 
     def validate(state):
-        return {"validation": validate_processing(
+        policy = state.get("policy") or load_policy(session, state.get("classification").document_type if state.get("classification") else None, settings.min_document_quality)
+        return {"policy": policy, "validation": validate_processing(
             state["content"], state.get("classification"), state.get("extraction"),
+            policy,
         )}
 
     def assess_priority(state):
         priority = detect_priority(state["content"])
+        from app.services.processing_validation import evidence_supported
+        if priority.source == "DEFAULT" and state.get("extraction"):
+            signals = [f for f in state["extraction"].fields if f.name == "priority_signal"]
+            if signals:
+                priority.ambiguous = True
+                priority.reason = "NEW_SIGNAL_REQUIRES_REVIEW" if all(evidence_supported(state["content"], f.evidence) for f in signals) else "SIGNAL_WITHOUT_VERIFIED_EVIDENCE"
         validation = state["validation"].model_copy(deep=True)
         if priority.ambiguous:
             validation.issues.append("PRIORITY_AMBIGUOUS")
@@ -76,7 +91,7 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
 
     def score_quality(state):
         quality = calculate_quality(state["content"], state.get("classification"),
-                                    state.get("extraction"), state["validation"], settings.min_document_quality)
+                                    state.get("extraction"), state["validation"], settings.min_document_quality, state.get("policy"))
         validation = state["validation"].model_copy(deep=True)
         if quality.score < quality.threshold:
             validation.issues.append("LOW_DOCUMENT_QUALITY")
@@ -85,19 +100,26 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
         return {"quality": quality, "validation": validation}
 
     def assess_patient_node(state):
+        from app.services.processing_validation import describe_validation
         validation = state["validation"].model_copy(deep=True)
         patient = assess_patient(state.get("extraction"), state.get("country", "EC"), validation, session)
-        return {"patient": patient, "validation": validation}
+        return {"patient": patient, "validation": describe_validation(validation, state.get("extraction"))}
 
     builder = StateGraph(ProcessingState)
-    builder.add_node("ingest", ingest)
-    builder.add_node("read_content", read_content)
-    builder.add_node("classify", classify)
-    builder.add_node("extract", extract)
-    builder.add_node("validate", validate)
-    builder.add_node("assess_priority", assess_priority)
-    builder.add_node("score_quality", score_quality)
-    builder.add_node("assess_patient", assess_patient_node)
+    def add_node(name, function):
+        def tracked(state):
+            if before_node:
+                before_node(name)
+            return function(state)
+        builder.add_node(name, tracked)
+    add_node("ingest", ingest)
+    add_node("read_content", read_content)
+    add_node("classify", classify)
+    add_node("extract", extract)
+    add_node("validate", validate)
+    add_node("assess_priority", assess_priority)
+    add_node("score_quality", score_quality)
+    add_node("assess_patient", assess_patient_node)
     builder.add_edge(START, "ingest")
     builder.add_edge("ingest", "read_content")
     builder.add_conditional_edges("read_content", lambda state:
@@ -110,7 +132,7 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
     builder.add_edge("extract", "validate")
     builder.add_edge("validate", "assess_priority")
     builder.add_edge("assess_priority", "score_quality")
-    builder.add_node("route", lambda state: {"routing": route_classification(state["classification"], state["priority"], session)})
+    add_node("route", lambda state: {"routing": route_classification(state["classification"], state["priority"], session)})
     builder.add_edge("score_quality", "assess_patient")
     builder.add_conditional_edges("assess_patient", lambda state: "route" if state["validation"].valid else END, ["route", END])
     builder.add_edge("route", END)

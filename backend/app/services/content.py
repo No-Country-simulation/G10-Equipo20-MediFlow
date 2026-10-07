@@ -20,6 +20,11 @@ class ContentReader:
             raise DocumentError(422, "DOCUMENT_FILE_MISSING")
         if path.stat().st_size > self.settings.max_upload_bytes:
             raise DocumentError(413, "PROCESSING_FILE_TOO_LARGE")
+        if format == "text":
+            text = json.loads(path.read_text(encoding="utf-8"))["text"]
+            if len(text) > self.settings.processing_max_characters:
+                raise DocumentError(422, "PROCESSING_TEXT_LIMIT")
+            return ContentResult(pages=[ContentPage(page=None, text=text, method="submitted_text")])
         if format != "pdf":
             result = self.provider.ocr(path.read_bytes(), "image/jpeg" if format == "jpeg" else "image/png")
             pages = self._ocr_pages(result, [1])

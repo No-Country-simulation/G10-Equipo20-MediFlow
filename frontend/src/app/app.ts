@@ -17,6 +17,7 @@ import { Api } from "./api";
       @if (api.can('DESTINATIONS_MANAGE')) { <div class="workspace-label">CONFIGURACIÓN GLOBAL</div><a routerLink="/destinations" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}" class="nav-item">◇ <span>Destinos y reglas</span></a> }
       @if (api.account()?.role === 'SUPERADMIN') { <div class="workspace-label">SUPERADMIN</div>
         <a routerLink="/configuration" routerLinkActive="active" class="nav-item">⚙ <span>Variables de Configuración</span></a>
+        <a routerLink="/document-policies" routerLinkActive="active" class="nav-item">✓ <span>Reglas documentales</span></a>
         <a routerLink="/roles-permissions" routerLinkActive="active" class="nav-item">◇ <span>Roles y Permisos</span></a>
         <a routerLink="/employees" routerLinkActive="active" class="nav-item">♙ <span>Empleados</span></a>
       }</nav>

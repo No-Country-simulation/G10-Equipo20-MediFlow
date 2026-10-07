@@ -1,5 +1,6 @@
 import { registerLocaleData } from "@angular/common";
 import localeEsEc from "@angular/common/locales/es-EC";
+import { PoliciesPage } from "./app/policies.page";
 registerLocaleData(localeEsEc);
 import { bootstrapApplication } from "@angular/platform-browser";
 import { provideRouter } from "@angular/router";
@@ -48,6 +49,7 @@ bootstrapApplication(Root, {
       { path: "", component: App, canActivateChild: [roleGuard("STAFF", "/administradores")], children: [
         { path: "sin-acceso", component: NoAccessPage },
         { path: "configuration", component: SettingsPage, canActivate: [roleGuard("SUPERADMIN", "/sin-acceso")] },
+        { path: "document-policies", component: PoliciesPage, canActivate: [roleGuard("SUPERADMIN", "/sin-acceso")] },
         { path: "roles-permissions", component: AccessPage, canActivate: [roleGuard("SUPERADMIN", "/sin-acceso")] },
         { path: "employees", component: EmployeesPage, canActivate: [roleGuard("SUPERADMIN", "/sin-acceso")] },
         { path: "home", canActivate: [permissionGuard("DOCUMENTS_READ")], component: HomePage },
