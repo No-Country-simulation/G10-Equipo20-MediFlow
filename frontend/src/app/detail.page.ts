@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit, OnDestroy } from "@angular/core";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { DatePipe, JsonPipe } from "@angular/common";
 import { Api, ApiError } from "./api";
-import { DocumentRecord, Result, StateEvent, ReviewAudit, ProcessingJob, Backup, label } from "./models";
+import { DocumentRecord, Result, StateEvent, ReviewAudit, ProcessingJob, Backup, SlackNotification, SlackStatus, label } from "./models";
 import { ReviewForm } from "./review.form";
 import { Subscription } from "rxjs";
 @Component({
@@ -28,6 +28,13 @@ export class DetailPage implements OnInit, OnDestroy {
   reviews = signal<ReviewAudit[]>([]);
   job = signal<ProcessingJob | null>(null);
   backups = signal<Backup[]>([]);
+  notifications = signal<SlackNotification[]>([]);
+  slackStatus = signal<SlackStatus | null>(null);
+  async retryNotification(notification: SlackNotification) {
+    if (notification.status === 'UNKNOWN' && !confirm('Slack podría haber recibido el aviso. Reenviarlo podría duplicarlo. ¿Reenviar?')) return;
+    try { await this.api.retryNotification(this.id, notification.id); await this.load(); }
+    catch(e) { this.error.set((e as Error).message); }
+  }
   textOriginal = signal("");
   private pollTimer?: ReturnType<typeof setTimeout>;
   nodeLabels: Record<string,string> = {ingest: "Original disponible", read_content: "Lectura / OCR", classify: "Clasificación", extract: "Extracción", validate: "Validación", assess_priority: "Prioridad", score_quality: "Calidad", assess_patient: "Identificación", route: "Enrutamiento"};
@@ -39,6 +46,20 @@ export class DetailPage implements OnInit, OnDestroy {
   fileError = signal("");
   original = signal<string | null>(null);
   label = label;
+  issueAnchor(code: string) {
+    const match = /^FIELD_(\d+)_/.exec(code);
+    return match ? 'dato-' + (Number(match[1]) + 1) : null;
+  }
+  scrollToField(anchor: string) { document.getElementById(anchor)?.scrollIntoView({behavior:'smooth', block:'center'}); }
+  patientId() { return this.doc()?.patient_id ?? this.result()?.patient?.patient_id; }
+  patientMessage() {
+    const patient = this.result()?.patient;
+    const status = patient?.status || this.doc()?.patient_match_status;
+    if (status === 'VALID_CANDIDATE') return 'Paciente identificado; asociación pendiente.';
+    const reason = patient?.reason || this.doc()?.patient_match_reason;
+    if (reason) return label(reason);
+    return status === 'NOT_EVALUATED' || !status ? 'Identificación pendiente de análisis.' : 'Paciente no identificado.';
+  }
   previewImage = signal<string | null>(null);
   pageNumber = signal(1);
   pageCount = signal(1);
@@ -49,7 +70,7 @@ export class DetailPage implements OnInit, OnDestroy {
     this.routeSubscription = this.route.paramMap.subscribe(params => {
       this.id = params.get('id')!;
       this.sequence++;
-      clearTimeout(this.pollTimer); this.job.set(null); this.textOriginal.set("");
+      clearTimeout(this.pollTimer); this.job.set(null); this.textOriginal.set(""); this.notifications.set([]); this.slackStatus.set(null);
       this.doc.set(null); this.result.set(null); this.history.set([]); this.reviews.set([]); this.error.set('');
       this.fileError.set(''); this.previewError.set(''); this.pageNumber.set(1); this.pageCount.set(1);
       if (this.original()) URL.revokeObjectURL(this.original()!);
@@ -93,11 +114,13 @@ export class DetailPage implements OnInit, OnDestroy {
       this.doc.set(doc); this.result.set(result);
       this.history.set(history);
       this.reviews.set(reviews);
-      const [job, backups] = await Promise.all([this.api.latestJob(id).catch(() => null), this.api.backups(id).catch(() => [])]);
+      const [job, backups, notifications, slackStatus] = await Promise.all([this.api.latestJob(id).catch(() => null), this.api.backups(id).catch(() => []), this.api.notifications(id).catch(() => []), this.api.notificationStatus(id).catch(() => null)]);
       if (seq !== this.sequence || this.destroyed) return;
       this.job.set(job?.id ? job : null); this.backups.set(Array.isArray(backups) ? backups : []);
+      this.notifications.set(Array.isArray(notifications) ? notifications : []);
+      this.slackStatus.set(slackStatus?.reason ? slackStatus : null);
       clearTimeout(this.pollTimer);
-      if (this.activeJob() || this.backups().some(b => b.status === 'PENDING')) this.pollTimer = setTimeout(() => void this.load(), 2000);
+      if (this.activeJob() || this.backups().some(b => b.status === 'PENDING') || this.notifications().some(n => n.status === 'PENDING' || n.will_retry)) this.pollTimer = setTimeout(() => void this.load(), 2000);
     } catch (e) {
       if (seq === this.sequence) this.error.set((e as Error).message);
     } finally {

@@ -18,7 +18,7 @@ import { DocumentRecord, Result, label } from "./models";
           <tr><td><a [routerLink]="['/review', doc.document_id]" [queryParams]="{offset: offset()}"><strong>{{ doc.original_filename }}</strong></a>
             <small class="catalog-code">{{ label(results()[doc.document_id]?.classification?.document_type || 'UNKNOWN') }}</small></td>
             <td><span class="badge" [attr.data-priority]="results()[doc.document_id]?.priority?.level">{{ label(results()[doc.document_id]?.priority?.level || 'UNASSESSED') }}</span></td>
-            <td><ul class="review-reasons">@for (issue of reasons(doc.document_id); track $index) { <li>{{ label(issue) }}</li> }</ul></td>
+            <td><ul class="review-reasons">@for (issue of reasons(doc.document_id); track $index) { <li>{{ label(issue, results()[doc.document_id]?.extraction?.fields) }}</li> }</ul></td>
             <td>{{ doc.received_at | date:'dd/MM/yyyy, HH:mm':'-0500' }}</td>
             <td><a class="secondary" [routerLink]="['/review', doc.document_id]" [queryParams]="{offset: offset()}">Revisar →</a></td></tr>
         }

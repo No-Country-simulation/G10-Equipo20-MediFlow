@@ -114,6 +114,9 @@ export class Api {
   latestJob(id: string) {return this.request<import("./models").ProcessingJob>(`/documents/${id}/processing-jobs/latest`);}
   backups(id: string) {return this.request<import("./models").Backup[]>(`/documents/${id}/backups`);}
   retryBackups(id: string) {return this.write(`/documents/${id}/backups/retry`, "POST");}
+  notifications(id: string) {return this.request<import('./models').SlackNotification[]>(`/documents/${id}/notifications`);}
+  notificationStatus(id: string) {return this.request<import('./models').SlackStatus>(`/documents/${id}/notifications/status`);}
+  retryNotification(id: string, notification: number) {return this.write(`/documents/${id}/notifications/${notification}/retry`, 'POST');}
   process(id: string) {
     return this.request<Result>(`/documents/${id}/process`, { method: "POST" });
   }

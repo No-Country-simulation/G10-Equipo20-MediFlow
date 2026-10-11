@@ -11,6 +11,7 @@ from app.core.database import get_session
 from app.core.countries import COUNTRY_CODES
 from app.core.document_catalog import REQUIRED_GROUPS, document_catalog
 from app.models.execution import ProcessingJob, DocumentPolicy, ResultBackup
+from app.models.notification import SlackNotification
 from app.repositories.documents import DocumentRepository
 from app.schemas.document import DocumentResponse
 from app.services.documents import DocumentService
@@ -139,4 +140,41 @@ def retry_backups(document_id: UUID, session: Db):
     for row in session.scalars(select(ResultBackup).where(ResultBackup.document_id == document_id,
                                ResultBackup.status == "FAILED").with_for_update()):
         row.status, row.retry_at = "PENDING", datetime.now(UTC)
+    session.commit()
+
+
+@router.get('/documents/{document_id}/notifications', dependencies=[Depends(require_permission('DOCUMENTS_READ'))])
+def notifications(document_id: UUID, session: Db, settings: Config):
+    if not DocumentRepository(session).get(document_id):
+        raise HTTPException(404, 'DOCUMENT_NOT_FOUND')
+    return [{'id': row.id, 'level': row.level, 'status': row.status, 'attempts': row.attempts,
+             'sent_at': row.sent_at, 'error_code': row.error_code,
+             'will_retry': row.retryable and row.attempts < settings.slack_max_attempts}
+            for row in session.scalars(select(SlackNotification).where(SlackNotification.document_id == document_id)
+                                      .order_by(SlackNotification.id.desc()))]
+
+
+@router.get('/documents/{document_id}/notifications/status', dependencies=[Depends(require_permission('DOCUMENTS_READ'))])
+def notification_status(document_id: UUID, session: Db, settings: Config):
+    from app.schemas.processing import ProcessingResult
+    from app.services.notifications import notification_eligibility, notification_configuration
+    document = DocumentRepository(session).get(document_id)
+    if document is None:
+        raise HTTPException(404, 'DOCUMENT_NOT_FOUND')
+    result = ProcessingResult.model_validate(document.processing_result) if document.processing_result else None
+    eligible, reason = notification_eligibility(result)
+    return {'eligible': eligible, 'reason': reason, **notification_configuration(settings)}
+
+
+@router.post('/documents/{document_id}/notifications/{notification_id}/retry', status_code=204,
+             dependencies=[Depends(require_permission('DOCUMENTS_PROCESS'))])
+def retry_notification(document_id: UUID, notification_id: int, session: Db):
+    row = session.scalar(select(SlackNotification).where(SlackNotification.id == notification_id,
+        SlackNotification.document_id == document_id).with_for_update())
+    if row is None:
+        raise HTTPException(404, 'NOTIFICATION_NOT_FOUND')
+    if row.status not in ('FAILED', 'UNKNOWN'):
+        raise HTTPException(409, 'NOTIFICATION_NOT_RETRYABLE')
+    row.status, row.retryable, row.attempts, row.error_code = 'PENDING', True, 0, None
+    row.retry_at = datetime.now(UTC)
     session.commit()

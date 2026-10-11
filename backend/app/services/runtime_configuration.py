@@ -7,7 +7,7 @@ RESERVED = {"APIKEY_GEMINI", "APIKEY_OPENAI", "USAR_GEMINI", "GEMINI_MODEL", "OP
 
 
 def is_secret(name):
-    return any(part in name for part in ("APIKEY", "API_KEY", "SECRET", "PASSWORD", "TOKEN"))
+    return any(part in name for part in ("APIKEY", "API_KEY", "SECRET", "PASSWORD", "TOKEN", "WEBHOOK"))
 
 
 def seed_configuration(session, settings):
@@ -17,6 +17,11 @@ def seed_configuration(session, settings):
                 "OPENAI_MODEL": settings.openai_model}
     for name, value in defaults.items():
         session.execute(insert(ConfigurationVariable).values(name=name, value=value).on_conflict_do_nothing())
+        if name.startswith('APIKEY_') and value:
+            # A previously seeded empty key must not hide a newly supplied .env key.
+            from sqlalchemy import update
+            session.execute(update(ConfigurationVariable).where(ConfigurationVariable.name == name,
+                ConfigurationVariable.value == '').values(value=value))
     session.flush()
 
 

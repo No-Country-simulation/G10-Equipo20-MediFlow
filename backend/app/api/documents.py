@@ -297,6 +297,9 @@ def delete_document(
         from app.services.jobs import active_job
         if active_job(session, document_id):
             raise DocumentError(409, "DOCUMENT_ALREADY_PROCESSING")
+        from app.models.notification import SlackNotification
+        # Wait for a concurrent sender before removing its pending rows.
+        session.scalars(select(SlackNotification).where(SlackNotification.document_id == document_id).with_for_update()).all()
         backups = session.scalars(select(ResultBackup).where(ResultBackup.document_id == document_id).with_for_update()).all()
         storage = get_storage(settings, document.storage_backend, document.storage_bucket)
         for backup in backups:

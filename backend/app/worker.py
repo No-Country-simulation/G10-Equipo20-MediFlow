@@ -11,17 +11,36 @@ from app.models.execution import ProcessingJob
 from app.services.jobs import claim, LEASE_SECONDS
 from app.services.processing import process_document
 from app.services.backups import process_backup
+from app.services.notifications import process_notification
 from app.api.documents import get_document_provider
 
 log = logging.getLogger(__name__)
 
 
+def notification_loop(engine, settings, stop):
+    """Own sessions: a slow LLM or R2 backup must not delay urgent notices."""
+    while not stop.is_set():
+        delivered = False
+        try:
+            with Session(engine) as session:
+                delivered = process_notification(session, settings)
+        except Exception:
+            log.warning('Slack delivery unavailable; inspect notification status')
+        if not delivered:
+            stop.wait(2)
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+    # httpx INFO logs contain the full request URL, including webhook secrets.
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     engine, settings = get_engine(), get_settings()
+    notifications = threading.Thread(target=notification_loop, args=(engine, settings, stop), daemon=True)
+    notifications.start()
     while not stop.is_set():
         job = None
         try:
@@ -53,10 +72,16 @@ def main():
                     finally:
                         finished.set()
                         thread.join(timeout=5)
-                process_backup(session, settings)
+                for deliver in (process_backup,):
+                    try:
+                        deliver(session, settings)
+                    except Exception:
+                        session.rollback()
+                        log.warning('Background delivery unavailable; inspect delivery status')
         except Exception:
             log.warning("Worker database/storage unavailable; retrying")
         stop.wait(1 if job else 3)
+    notifications.join(timeout=12)
 
 
 if __name__ == "__main__":

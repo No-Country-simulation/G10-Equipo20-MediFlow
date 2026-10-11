@@ -23,7 +23,7 @@
       Análisis ejecutados: {{ d.processing_attempts }}</span
     >
     <div>
-      <a class="secondary" href="#historial">Ver historial</a>
+      <a class="secondary" [routerLink]="[]" fragment="historial" (click)="scrollToField('historial')">Ver historial</a>
       @if (api.can("DOCUMENTS_DELETE")) { <button class="danger" (click)="deleteDocument()" [disabled]="busy() || loading() || activeJob()">
         Eliminar documento
       </button> }
@@ -45,8 +45,8 @@
     </div>
   </div>
   <div class="document-context">
-    <span class="patient-notice">@if (d.patient_id) { Paciente: <a [routerLink]="['/patients', d.patient_id]">Ficha #{{ d.patient_id }}</a> }
-    @else { {{ d.patient_match_reason ? label(d.patient_match_reason) : 'Paciente no identificado.' }} }</span>
+    <span class="patient-notice">@if (patientId(); as patientId) { Paciente: <a [routerLink]="['/patients', patientId]">Ficha #{{ patientId }}</a> }
+    @else { {{ patientMessage() }} }</span>
     @if (result()?.routing; as routing) { <span>Destino: <a [routerLink]="['/destinations', routing.destination, 'documents']">{{ label(routing.destination) }}</a></span> }
   </div>
   @if (job(); as j) {
@@ -59,6 +59,17 @@
     </section>
   }
   @if (backups().length) { <div class="document-context"><span>Respaldo JSON en R2: {{ backups()[0].status === 'SYNCED' ? 'Guardado' : backups()[0].status === 'PENDING' ? 'Pendiente' : 'Reintento pendiente' }}</span>@if (backups()[0].status === 'FAILED' && api.can('DOCUMENTS_PROCESS')) { <button class="secondary" (click)="retryBackup()">Reintentar respaldo</button> }</div> }
+  @if (notifications().length || slackStatus()) { <section class="panel" aria-live="polite"><h3>Notificaciones a Slack</h3>
+    @if (slackStatus(); as slack) {
+      <p>{{ label(slack.reason) }}</p>
+      <small>Canal crítico: {{ slack.critical_configured ? 'configurado' : 'sin configurar' }} · Canal urgente: {{ slack.urgent_configured ? (slack.urgent_uses_main_webhook ? 'usa el canal principal' : 'configurado') : 'sin configurar' }}.</small>
+      <p class="muted">Slack avisa de prioridad urgente o crítica escrita y respaldada por una cita. Rutina y revisión humana por sí solas no generan avisos.</p>
+    }
+    @for (n of notifications(); track n.id) { <div class="document-context"><span>{{ label(n.level) }} · {{ n.status === 'SENT' ? 'Enviado a Slack' : n.status === 'PENDING' ? 'Pendiente de envío' : n.status === 'UNKNOWN' ? 'Entrega sin confirmar' : n.will_retry ? 'Reintento programado' : 'No enviado' }} · Envíos intentados: {{ n.attempts }}</span>
+      @if (n.error_code) { <small>{{ label(n.error_code) }}</small> }
+      @if ((n.status === 'FAILED' || n.status === 'UNKNOWN') && api.can('DOCUMENTS_PROCESS')) { <button class="secondary" (click)="retryNotification(n)">Reintentar aviso</button> }
+    </div> }
+  </section> }
   @if (d.rejection_reason) {
     <p class="error">
       {{ d.rejection_reason }}.
@@ -177,7 +188,7 @@
           @if (r.local_alert; as alert) {
             <div class="notice" role="status">
               <strong>Alerta local: {{ label(alert.level) }}</strong>
-              <p>Señal {{ label(alert.level) }}. Verifica el original. Visible aquí; no se envió una notificación externa.</p>
+              <p>Señal {{ label(alert.level) }}. Verifica el original. Consulta el estado real del aviso en «Notificaciones a Slack».</p>
             </div>
           }
           @if (r.error_code) {
@@ -188,7 +199,8 @@
               <strong>Necesita revisión</strong>
               <ul>
                 @for (issue of r.validation!.issues; track $index) {
-                  <li>{{ label(issue) }}</li>
+                  <li>@if (issueAnchor(issue); as anchor) { <a [routerLink]="[]" [fragment]="anchor" (click)="scrollToField(anchor)">{{ label(issue, r.extraction?.fields) }}</a> }
+                    @else { {{ label(issue, r.extraction?.fields) }} }</li>
                 }
               </ul>
             </div>
@@ -203,11 +215,13 @@
             <h3>Datos extraídos</h3>
             <dl class="extracted-fields">
               @for (field of r.extraction!.fields; track $index) {
-                <div>
-                  <dt>{{ label(field.name) }}</dt>
+                <div [id]="'dato-' + ($index + 1)">
+                  <dt>Dato #{{ $index + 1 }} · {{ label(field.name) }}</dt>
                   <dd>
                     {{ field.value }} {{ field.unit
                     }}<small>{{ label(r.validation?.field_checks?.[$index]?.status || '') }}</small><small>{{ field.evidence.page === null ? 'Texto · posición ' + field.evidence.start : 'Pág. ' + field.evidence.page }} · «{{ field.evidence.quote }}»</small>
+                    @if (field.evidence.match_strategy) { <small>Cita reajustada al original. La propuesta del modelo se conserva en JSON.</small> }
+                    @if (field.value_adjustment) { <small>Punto final ajustado al texto original; valor propuesto conservado en JSON.</small> }
                   </dd>
                 </div>
               }

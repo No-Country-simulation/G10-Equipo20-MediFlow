@@ -19,7 +19,22 @@ def normalize_name(value: str) -> str:
 
 
 def validate_identity(country: str, raw: str) -> tuple[str, str] | None:
-    value = re.sub(r"[.\s\-]", "", raw).upper()
+    # The extracted value may include its printed label (CC, DNI, CPF...).
+    # Remove only labels admitted by the selected country, never arbitrary letters.
+    labels = {
+        'AR': r'D\.?N\.?I\.?|CUIL', 'BO': r'C\.?I\.?|CEDULA(?: DE IDENTIDAD)?',
+        'BR': r'CPF', 'CL': r'RUN|RUT',
+        'CO': r'C\.?C\.?|NUIP|CEDULA(?: DE CIUDADANIA)?',
+        'EC': r'CEDULA(?: DE IDENTIDAD)?|C\.?I\.?',
+        'PY': r'C\.?I\.?|CEDULA(?: DE IDENTIDAD)?', 'PE': r'D\.?N\.?I\.?',
+        'UY': r'C\.?I\.?|CEDULA(?: DE IDENTIDAD)?',
+        'VE': r'C\.?I\.?|CEDULA(?: DE IDENTIDAD)?', 'MX': r'CURP',
+    }
+    printed = ''.join(c for c in unicodedata.normalize('NFKD', raw.upper()) if not unicodedata.combining(c)).strip()
+    printed = re.sub(r'^(?:DOCUMENTO(?: DE IDENTIDAD)?|NUMERO DE DOCUMENTO|NUMERO DE IDENTIFICACION|IDENTIFICACION)\s*[:#]?\s*', '', printed)
+    if country in labels:
+        printed = re.sub(r'^(?:' + labels[country] + r')(?=\s|[:#\-]|\d)\s*[:#\-]?\s*', '', printed)
+    value = re.sub(r"[.\s\-]", "", printed)
     patterns = {
         "AR": ("DNI", r"\d{7,8}"), "BO": ("CI", r"\d{5,8}(?:[A-Z0-9]{1,2})?"),
         "BR": ("CPF", r"\d{11}"), "CL": ("RUN", r"\d{7,8}[0-9K]"),
@@ -40,8 +55,12 @@ def patient_fields(extraction: ExtractionResult | None) -> tuple[list[str], list
     fields = extraction.fields if extraction else []
     identities = [field.value for field in fields if field.name == "patient_identity"]
     names = [field.value for field in fields if field.name == "patient_name"]
-    ages = [int(field.value) for field in fields if field.name == "patient_age"
-            and field.value.isdecimal() and 0 <= int(field.value) <= 130]
+    ages = []
+    for field in fields:
+        if field.name == 'patient_age':
+            age = re.fullmatch(r'(\d{1,3})(?:\s*(?:años|anos|years))?', field.value.strip(), re.I)
+            if age and int(age[1]) <= 130:
+                ages.append(int(age[1]))
     return identities, names, ages[0] if ages else None
 
 
@@ -50,6 +69,12 @@ def assess_patient(extraction: ExtractionResult | None, country: str,
     identities, names, _ = patient_fields(extraction)
     if not identities:
         return PatientMatch(status="NOT_FOUND", reason="PATIENT_IDENTITY_NOT_FOUND")
+    # Patient association is independent of clinical sufficiency, but never of
+    # evidence for identity/name/age. An unrelated field issue must not block it.
+    patient_indexes = [i for i, field in enumerate(extraction.fields)
+                       if field.name in ('patient_identity', 'patient_name', 'patient_age')]
+    if any(code.startswith(f'FIELD_{i}_') for code in validation.issues for i in patient_indexes):
+        return PatientMatch(status='REVIEW_REQUIRED', reason='PATIENT_EVIDENCE_UNVERIFIED')
     if len(identities) != 1 or len(names) > 1:
         validation.valid = False
         validation.requires_human_review = True
@@ -86,6 +111,8 @@ def link_patient(document: Document, extraction: ExtractionResult | None,
         document.patient_match_reason = match.reason
         return match
     _, names, age = patient_fields(extraction)
+    # New and existing patients must retain the same country + ID + name checks
+    # even when called for a document that requires review for another field.
     patient = session.scalar(select(Patient).where(Patient.country == document.country,
                             Patient.identity_type == match.identity_type,
                             Patient.identity_number == match.identity_number).with_for_update())

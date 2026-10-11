@@ -15,7 +15,10 @@ def read_pdf(path: str, max_pages: int, max_characters: int) -> dict:
         pages, ocr_numbers = [], []
         total_characters = 0
         for index, page in enumerate(document):
-            text = page.get_text("text", sort=True)
+            # Preserve text inside each block/cell. Row-wide sorting interleaves
+            # unrelated columns and can insert CIE codes into wrapped diagnoses.
+            text = '\n'.join(block[4].strip() for block in page.get_text('blocks', sort=True)
+                             if block[6] == 0 and block[4].strip())
             # Logos and stamps often coexist with complete selectable text.
             # Keep the digital layer when it is substantive; OCR scanned pages.
             if not text.strip() or (page.get_image_info() and len(text.strip()) < 300):

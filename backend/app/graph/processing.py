@@ -15,9 +15,10 @@ from app.services.content import ContentReader
 from app.services.errors import DocumentError
 from app.services.processing_validation import validate_processing
 from app.services.routing import route_classification
-from app.services.triage import detect_priority, calculate_quality, local_alert
+from app.services.triage import detect_priority, calculate_quality, local_alert, precautionary_signal
 from app.services.patients import assess_patient
 from app.services.identity_detection import complete_identity
+from app.services.professional_detection import complete_professional
 
 
 class ProcessingState(TypedDict):
@@ -47,9 +48,10 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
         return {}
 
     def read_content(state):
-        if state.get("content"):
-            return {}
-        return {"content": reader.read(state["path"], state["format"])}
+        content = state.get("content") or reader.read(state["path"], state["format"])
+        # Detect sourced priority before classification/extraction can fail.
+        priority = detect_priority(content)
+        return {"content": content, "priority": priority, "local_alert": local_alert(priority)}
 
     def classify(state):
         if state.get("classification"):
@@ -62,7 +64,10 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
         if state.get("extraction"):
             return {}
         extracted = provider.extract(state["content"], state["classification"])
+        from app.services.citation_alignment import align_citations
+        extracted = align_citations(state['content'], extracted)
         extracted = complete_identity(state["content"], extracted, state.get("country", "EC"))
+        extracted = complete_professional(state["content"], extracted)
         for field in extracted.fields:
             field.evidence = annotate_text_evidence(state["content"], field.evidence)
         return {"extraction": extracted}
@@ -71,14 +76,15 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
         policy = state.get("policy") or load_policy(session, state.get("classification").document_type if state.get("classification") else None, settings.min_document_quality)
         return {"policy": policy, "validation": validate_processing(
             state["content"], state.get("classification"), state.get("extraction"),
-            policy,
+            policy, state.get('country'),
         )}
 
     def assess_priority(state):
         priority = detect_priority(state["content"])
         from app.services.processing_validation import evidence_supported
         if priority.source == "DEFAULT" and state.get("extraction"):
-            signals = [f for f in state["extraction"].fields if f.name == "priority_signal"]
+            signals = [f for f in state["extraction"].fields if f.name == "priority_signal"
+                       and not precautionary_signal(state['content'], f.evidence)]
             if signals:
                 priority.ambiguous = True
                 priority.reason = "NEW_SIGNAL_REQUIRES_REVIEW" if all(evidence_supported(state["content"], f.evidence) for f in signals) else "SIGNAL_WITHOUT_VERIFIED_EVIDENCE"

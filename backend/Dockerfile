@@ -13,12 +13,12 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY app ./app
 COPY alembic.ini ./
 COPY migrations ./migrations
-COPY scripts ./scripts
 
 FROM base AS test
 COPY requirements-dev.txt pytest.ini ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY tests ./tests
+COPY scripts ./scripts
 USER appuser
 CMD ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
 

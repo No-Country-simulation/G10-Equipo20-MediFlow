@@ -16,6 +16,7 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     if active_job(session, document_id):
         raise DocumentError(409, 'DOCUMENT_ALREADY_PROCESSING')
     from app.services.backups import schedule_backup
+    from app.services.notifications import schedule_notification
     from app.services.documentary_policy import load_policy, annotate_text_evidence, clinical_projection
     if document.status != S.EN_REVISION_HUMANA or not document.processing_result:
         raise DocumentError(409, 'DOCUMENT_NOT_AWAITING_REVIEW')
@@ -62,7 +63,7 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     policy = previous.quality.policy if previous.quality else None
     if policy is None or policy.get('document_type') != result.classification.document_type:
         policy = load_policy(session, result.classification.document_type, settings.min_document_quality)
-    result.validation = validate_processing(result.content, result.classification, result.extraction, policy)
+    result.validation = validate_processing(result.content, result.classification, result.extraction, policy, document.country)
     result.priority = detect_priority(result.content)
     if result.priority.ambiguous:
         result.validation.issues.append('PRIORITY_AMBIGUOUS')
@@ -79,7 +80,7 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     if not result.validation.valid:
         raise DocumentError(422, 'REVIEW_HAS_UNRESOLVED_ISSUES:' + ','.join(result.validation.issues))
     result.routing = route_classification(result.classification, result.priority, session)
-    result.pipeline_version = 'documentary-v6'
+    result.pipeline_version = 'documentary-v10'
     result.clinical_data = clinical_projection(result.extraction)
     transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action)
     transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED')
@@ -92,5 +93,6 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
                         reviewed_at=result.processed_at, previous_result=previous)
     document.review_history = [*(document.review_history or []), audit.model_dump(mode='json')]
     schedule_backup(session, document, settings)
+    schedule_notification(session, document, result, settings)
     session.commit()
     return result

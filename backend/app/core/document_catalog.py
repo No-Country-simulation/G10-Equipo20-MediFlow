@@ -61,7 +61,7 @@ def document_catalog():
                        "required_groups": [list(group) for group in REQUIRED_GROUPS.get(code, ())]}
                       for code, name in LABELS.items()],
             "specialties": [{"code": code, "name": name} for code, name in SPECIALTY_LABELS.items()],
-            "rule_version": "documentary-v4"}
+            "rule_version": "documentary-v5"}
 
 
 def completeness(kind: str | None, fields) -> float:

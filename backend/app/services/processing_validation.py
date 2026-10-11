@@ -54,11 +54,19 @@ def describe_validation(validation, extraction):
         validation.details.append(ValidationIssue(code=code, category="MISSING" if code.startswith("MISSING_") or code == "NO_EXTRACTED_FIELDS" else "INCONSISTENCY", field=name, evidence=evidence))
     if fields and not any(f.name == "professional_license" for f in fields):
         validation.details.append(ValidationIssue(code="PROFESSIONAL_LICENSE_NOT_PRESENT", category="WARNING", field="professional_license"))
+    for field in fields:
+        if field.value_adjustment == 'TERMINAL_PUNCTUATION':
+            validation.details.append(ValidationIssue(code='TERMINAL_PUNCTUATION_ADJUSTED', category='WARNING',
+                                                       field=field.name, evidence=field.evidence))
+        if field.evidence.match_strategy == 'SOURCE_REANCHORED':
+            validation.details.append(ValidationIssue(code='EVIDENCE_REANCHORED', category='WARNING',
+                                                       field=field.name, evidence=field.evidence))
     return validation
 
 
 def validate_processing(content: ContentResult, classification: ClassificationResult | None,
-                        extraction: ExtractionResult | None, policy: dict | None = None) -> ValidationResult:
+                        extraction: ExtractionResult | None, policy: dict | None = None,
+                        country: str | None = None) -> ValidationResult:
     pages = {page.page: page.text for page in content.pages}
     issues = []
     if not pages or any(not text.strip() for text in pages.values()):
@@ -87,7 +95,20 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
             if not evidence_supported(content, field.evidence):
                 issues.append(f"FIELD_{index}_EVIDENCE_NOT_FOUND")
             elif not literal_present(field.value, field.evidence.quote):
-                issues.append(f"FIELD_{index}_VALUE_NOT_SUPPORTED")
+                supported_identity = False
+                if country and field.name == 'patient_identity':
+                    from app.services.patients import validate_identity
+                    from app.services.identity_detection import detect_labeled_identity
+                    from app.schemas.processing import ContentPage
+                    expected = validate_identity(country, field.value)
+                    quoted = validate_identity(country, field.evidence.quote)
+                    if quoted is None:
+                        detected = detect_labeled_identity(ContentResult(pages=[ContentPage(
+                            page=field.evidence.page, text=field.evidence.quote, method='human_corrected')]), country)
+                        quoted = validate_identity(country, detected.value) if detected else None
+                    supported_identity = expected is not None and expected == quoted
+                if not supported_identity:
+                    issues.append(f"FIELD_{index}_VALUE_NOT_SUPPORTED")
             if field.unit and not literal_present(field.unit, field.evidence.quote):
                 issues.append(f"FIELD_{index}_UNIT_NOT_SUPPORTED")
     if classification:
@@ -113,4 +134,4 @@ def validate_processing(content: ContentResult, classification: ClassificationRe
             if len(values) > 1:
                 issues.append("FIELD_CONFLICT:" + name)
     return describe_validation(ValidationResult(valid=not issues, requires_human_review=bool(issues), issues=issues,
-                              rule_version="documentary-v4"), extraction)
+                              rule_version="documentary-v5"), extraction)

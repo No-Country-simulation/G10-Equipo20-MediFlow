@@ -32,6 +32,7 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
                      provider: DocumentProvider, *, job_id=None, token=None) -> ProcessingResult:
     from app.services.jobs import enqueue, owned_job, CountedProvider
     from app.services.backups import schedule_backup
+    from app.services.notifications import schedule_notification
     from app.services.documentary_policy import clinical_projection
     document = locked_document(document_id, session)
     previous = ProcessingResult.model_validate(document.processing_result) if document.processing_result else None
@@ -97,7 +98,7 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
     def result_snapshot():
         return ProcessingResult(document_id=document_id, status=document.status, processed_at=datetime.now(UTC),
             model=getattr(provider, 'model', settings.gemini_model), provider=getattr(provider, 'name', 'gemini'),
-            pipeline_version='documentary-v6',
+            pipeline_version='documentary-v10',
             **{key: state.get(key) for key in ('content', 'classification', 'extraction', 'validation', 'priority',
                                              'quality', 'local_alert', 'routing', 'patient')},
             clinical_data=clinical_projection(state.get('extraction')),
@@ -124,13 +125,15 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
                         current.completed_nodes = [*current.completed_nodes, name]
                     current.policy_snapshot = state.get('policy')
                     document.processing_result = result_snapshot().model_dump(mode='json')
+                    if name in ('read_content', 'assess_priority'):
+                        schedule_notification(session, document, result_snapshot(), settings)
                     session.commit()
         owned_job(session, job_id, token)
         document = locked_document(document_id, session)
+        state['patient'] = link_patient(document, state.get('extraction'), state['patient'], session)
         if state['validation'].requires_human_review:
             transition(document, S.EN_REVISION_HUMANA, 'DOCUMENTARY_VALIDATION_ISSUES')
         elif state.get('routing'):
-            state['patient'] = link_patient(document, state.get('extraction'), state['patient'], session)
             transition(document, S.ENTREGADO, 'LOCAL_INBOX_DELIVERED')
             state['routing'].delivery_status = 'DELIVERED_LOCAL'
     except Exception as exc:
@@ -152,6 +155,7 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
     job.status, job.active_node = ('FAILED' if failure else 'SUCCEEDED'), None
     job.error_code, job.lease_until = result.error_code, None
     schedule_backup(session, document, settings)
+    schedule_notification(session, document, result, settings)
     session.commit()
     if failure:
         raise failure

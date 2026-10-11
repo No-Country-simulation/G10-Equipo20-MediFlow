@@ -38,6 +38,8 @@ class Evidence(StructuredModel):
     quote: str = Field(min_length=1)
     start: int | None = Field(default=None, ge=0)
     end: int | None = Field(default=None, ge=1)
+    original_quote: str | None = None
+    match_strategy: Literal['SOURCE_REANCHORED'] | None = None
 
 
 class ClassificationResult(StructuredModel):
@@ -54,6 +56,8 @@ class ExtractedField(StructuredModel):
     evidence: Evidence
     # Optional grouping for multiple medications/tests; old results remain readable.
     entity_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,59}$")
+    original_value: str | None = None
+    value_adjustment: Literal['TERMINAL_PUNCTUATION'] | None = None
 
 
 class ExtractionResult(StructuredModel):

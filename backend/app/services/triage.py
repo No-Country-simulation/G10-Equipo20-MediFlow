@@ -19,6 +19,28 @@ LEVELS = {
     "routine": "ROUTINE", "rotina": "ROUTINE", "urgent": "URGENT", "critical": "CRITICAL",
 }
 
+PRECAUTION = re.compile(r'\b(?:signos de alarma|en caso de|si (?:presenta|aparece|ocurre|persiste|empeora)|'
+                        r'acudir.{0,70}\bsi\b|if (?:you|symptoms)|caso (?:apresente|ocorra))\b', re.I)
+
+
+def precautionary_signal(content: ContentResult, evidence: Evidence) -> bool:
+    """A discharge safety instruction does not describe an active emergency."""
+    if PRECAUTION.search(evidence.quote):
+        return True
+    page = next((p for p in content.pages if p.page == evidence.page), None)
+    if page is None:
+        return False
+    position = normalized_text(page.text).find(normalized_text(evidence.quote))
+    if position < 0:
+        return False
+    preceding = normalized_text(page.text)[max(0, position - 600):position]
+    markers = list(re.finditer(r'signos de alarma|(?:estado|evaluaci[oó]n|prioridad) actual', preceding))
+    return bool(markers and markers[-1].group() == 'signos de alarma')
+
+
+def normalized_text(value):
+    return ' '.join(value.casefold().split())
+
 
 def detect_priority(content: ContentResult) -> PriorityResult:
     candidates: list[tuple[str, Evidence]] = []
@@ -36,7 +58,7 @@ def detect_priority(content: ContentResult) -> PriorityResult:
                 for clause in re.split(r"[;.!?]\s*", line):
                     if critical.search(clause) or urgent.search(clause):
                         signal = True
-                        if historical.search(clause):
+                        if historical.search(clause) or precautionary_signal(content, Evidence(page=page.page, quote=line.strip())):
                             continue
                         if page.uncertain:
                             invalid = True
@@ -44,7 +66,7 @@ def detect_priority(content: ContentResult) -> PriorityResult:
                             candidates.append(("CRITICAL" if critical.search(clause) else "URGENT", annotate_text_evidence(content, Evidence(page=page.page, quote=clause.strip()))))
                 if not signal and re.search(r"\b(?:urgente|cr[ií]tico|emergencia)\b", line, re.I) and not historical.search(line):
                     # A label/channel alone is not a priority declaration.
-                    if not re.match(r"\s*(?:canal|servicio|[aá]rea|ingreso|guardia)\s*:", line, re.I) and line.strip().casefold() not in ("urgencias", "emergencias"):
+                    if not re.match(r"\s*(?:canal|servicio|[aá]rea|ingreso|guardia|referencia|c[oó]digo|id)\s*:", line, re.I) and line.strip().casefold() not in ("urgencias", "emergencias"):
                         invalid = True
                 continue
             value = match.group(1).strip().rstrip(".").casefold()
@@ -54,12 +76,12 @@ def detect_priority(content: ContentResult) -> PriorityResult:
             else:
                 candidates.append((level, annotate_text_evidence(content, Evidence(page=page.page, quote=line.strip()))))
     if not candidates:
-        return PriorityResult(level="ROUTINE", source="DEFAULT", ambiguous=invalid, rule_version="evidence-priority-v2",
+        return PriorityResult(level="ROUTINE", source="DEFAULT", ambiguous=invalid, rule_version="evidence-priority-v4",
                               reason="REVIEW_CONTEXT_REQUIRED" if invalid else "NO_CONFIRMED_PRIORITY")
     level, evidence = max(candidates, key=lambda item: {"ROUTINE": 0, "URGENT": 1, "CRITICAL": 2}[item[0]])
     return PriorityResult(level=level, source="EXPLICIT", evidence=evidence,
                           ambiguous=invalid or len({item[0] for item in candidates}) > 1,
-                          rule_version="evidence-priority-v2", reason="EXPLICIT_DOCUMENT_STATEMENT")
+                          rule_version="evidence-priority-v4", reason="EXPLICIT_DOCUMENT_STATEMENT")
 
 
 def calculate_quality(content: ContentResult, classification: ClassificationResult | None,

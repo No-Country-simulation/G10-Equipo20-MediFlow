@@ -53,6 +53,8 @@ export interface Evidence {
   quote: string;
   start?: number | null;
   end?: number | null;
+  original_quote?: string | null;
+  match_strategy?: 'SOURCE_REANCHORED' | null;
 }
 export interface Classification {
   document_type: string;
@@ -66,6 +68,8 @@ export interface ExtractedField {
   unit: string | null;
   evidence: Evidence;
   entity_id?: string | null;
+  original_value?: string | null;
+  value_adjustment?: 'TERMINAL_PUNCTUATION' | null;
 }
 export interface DocumentCatalog {
   types: { code: string; name: string; fields: string[]; required_groups: string[][] }[];
@@ -155,7 +159,14 @@ export const STATUSES = [
   "RECHAZADO",
   "FALLO_TECNICO",
 ];
-export function label(value: string): string {
+export function label(value: string, fields?: ExtractedField[]): string {
+  const fieldIssue = /^FIELD_(\d+)_(VALUE_NOT_SUPPORTED|EVIDENCE_NOT_FOUND|UNIT_NOT_SUPPORTED)$/.exec(value);
+  if (fieldIssue) {
+    const index = Number(fieldIssue[1]), field = fields?.[index];
+    const location = field?.evidence.page == null ? 'texto' : `pág. ${field.evidence.page}`;
+    const title = field ? `${label(field.name)} (dato #${index + 1}, ${location})` : `Dato #${index + 1}`;
+    return title + ': ' + ({VALUE_NOT_SUPPORTED:'el valor no aparece literalmente en la cita', EVIDENCE_NOT_FOUND:'la cita no se encontró en el texto de la página', UNIT_NOT_SUPPORTED:'la unidad no aparece en la cita'} as Record<string,string>)[fieldIssue[2]];
+  }
   if (catalogLabels[value]) return catalogLabels[value];
   if (value.startsWith("MISSING_REQUIRED_FIELD:"))
     return "Falta campo obligatorio: " + label(value.split(":")[1]);
@@ -228,6 +239,8 @@ export function label(value: string): string {
         PATIENT_IDENTITY_AMBIGUOUS: "Identificación o nombre ambiguo: requiere revisión",
         PATIENT_IDENTITY_CONFLICT: "La identificación coincide con otro nombre: requiere revisión",
         PATIENT_NAME_MISSING: "Se detectó una identificación, pero falta el nombre del paciente",
+        PATIENT_EVIDENCE_UNVERIFIED: "La identidad o los datos del paciente necesitan comprobarse con el original",
+        TERMINAL_PUNCTUATION_ADJUSTED: "Punto final ajustado al fragmento literal del original",
         LOCAL_INBOX_DELIVERED: "Disponible en la bandeja local del destino",
         professional_name: "Profesional firmante",
         professional_license: "Matrícula profesional",
@@ -239,6 +252,18 @@ export function label(value: string): string {
         TEXT_VALIDATED: "Texto validado y guardado",
         DOCUMENT_ALREADY_PROCESSING: "El documento ya tiene un análisis en curso o en cola",
         POLICY_VERSION_CONFLICT: "La configuración cambió. Recarga antes de guardar.",
+        SLACK_NOT_CONFIGURED: "Webhook de Slack no configurado",
+        SLACK_PRIORITY_NOT_ASSESSED: "Aún no se ha evaluado la prioridad para Slack.",
+        SLACK_ROUTINE_NOT_NOTIFIED: "Sin aviso a Slack: el documento tiene prioridad de rutina.",
+        SLACK_PRIORITY_NOT_CONFIRMED: "Sin aviso a Slack: la prioridad no tiene evidencia comprobable.",
+        SLACK_PRIORITY_CONFIRMED: "El documento cumple los criterios para un aviso a Slack. El estado de envío se muestra abajo.",
+        SLACK_INVALID_WEBHOOK: "Comprueba la dirección del webhook de Slack",
+        SLACK_CONNECTION_FAILED: "No se pudo conectar con Slack",
+        SLACK_DELIVERY_UNCERTAIN: "No se pudo confirmar si Slack recibió el mensaje",
+        SLACK_RATE_LIMITED: "Slack limitó temporalmente los envíos",
+        SLACK_UNAVAILABLE: "Slack no está disponible",
+        SLACK_REQUEST_REJECTED: "Slack rechazó el envío; comprueba el webhook",
+        EVIDENCE_REANCHORED: "Cita reajustada a un fragmento literal único del texto original",
         document_date: "Fecha del documento",
         discharge_diagnosis: "Diagnóstico de egreso",
         discharge_treatment: "Tratamiento al alta",
@@ -300,3 +325,5 @@ export interface ClinicalEntity {entity_id: string | null; name?: ExtractedField
 export interface ProcessingJob {id: string; document_id: string; status: string; active_node: string | null; completed_nodes: string[]; provider_calls: Record<string,number>; attempt: number; error_code: string | null; updated_at: string;}
 export interface DocumentaryPolicy {document_type: string; version: number; required_groups: string[][]; weights: Record<string,number>; threshold: number;}
 export interface Backup {id: number; status: string; attempts: number; error_code: string | null;}
+export interface SlackNotification {id: number; level: string; status: 'PENDING' | 'SENT' | 'FAILED' | 'UNKNOWN'; attempts: number; sent_at: string | null; error_code: string | null; will_retry: boolean;}
+export interface SlackStatus {eligible: boolean; reason: string; critical_configured: boolean; urgent_configured: boolean; urgent_uses_main_webhook: boolean;}
