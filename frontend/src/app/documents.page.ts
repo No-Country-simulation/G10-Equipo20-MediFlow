@@ -34,6 +34,10 @@ export class DocumentsPage {
   statuses = STATUSES;
   label = label;
   private sequence = 0;
+  hasFilters() {
+    return Boolean(this.search || this.status || this.priority || this.documentType ||
+      this.specialty || this.dateFrom || this.dateTo || this.maxQuality);
+  }
   constructor() {
     effect(() => {
       this.api.country();

@@ -13,7 +13,8 @@ import { DocumentaryPolicy, label } from "./models";
       <label>Grupos requeridos<textarea name="groups" [(ngModel)]="groups" rows="7" required></textarea></label><small>Un grupo por línea; separa alternativas con coma. Usa nombres del catálogo.</small>
       <p class="muted">Campos disponibles: {{ allowedFields().join(', ') }}</p>
       <div class="policy-weights">@for (key of weightKeys; track key) { <label>{{ weightLabels[key] }}<input type="number" [name]="key" [(ngModel)]="weights[key]" min="0.001" max="1" step="0.01" required /></label> }</div>
-      <label>Umbral automático (0–1)<input type="number" name="threshold" [(ngModel)]="threshold" min="0" max="1" step="0.01" required /></label>
+      <label>Umbral mínimo para entrega automática (0–1)<input type="number" name="threshold" [(ngModel)]="threshold" min="0" max="1" step="0.01" required /></label>
+      <p class="muted">Por debajo de este valor, el documento pasa a revisión humana. Con 0.85, un puntaje menor de 85 % requiere revisión. Alcanzar el umbral también exige resolver las demás incidencias de validación.</p>
       <p class="muted">Los pesos deben sumar 1. Indicador documental; no certeza clínica. Guardar crea una nueva versión para futuros análisis.</p>
       <button class="primary" type="submit">{{ busy() ? 'Guardando…' : 'Guardar nueva versión' }}</button>
     </fieldset></form> }

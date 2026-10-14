@@ -57,6 +57,7 @@ Desktop.ini
 *.swp
 *.swo
 *.md
+!README.md
 /samples
 
 /backend/scripts/*

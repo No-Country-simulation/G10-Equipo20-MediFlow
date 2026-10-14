@@ -78,7 +78,6 @@ export class ReviewForm implements OnInit {
     try {
       const body: Record<string, unknown> = {
         action: this.action,
-        reviewer: "superadmin-local",
         notes: this.notes.trim(),
         confirmed_source_review: true,
       };

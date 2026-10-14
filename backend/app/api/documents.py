@@ -44,12 +44,13 @@ def selected_country(country: str | None, settings: Settings) -> str:
     return code
 
 
-@router.post("/{document_id}/review", response_model=ProcessingResult, dependencies=[Depends(require_permission("DOCUMENTS_REVIEW"))])
+@router.post("/{document_id}/review", response_model=ProcessingResult)
 def submit_review(document_id: UUID, request: ReviewRequest,
                   session: Annotated[Session, Depends(get_session)],
-                  settings: Annotated[Settings, Depends(get_settings)]):
+                  settings: Annotated[Settings, Depends(get_settings)],
+                  staff: Annotated[dict, Depends(require_permission("DOCUMENTS_REVIEW"))]):
     try:
-        return review_document(document_id, request, session, settings)
+        return review_document(document_id, request, session, settings, actor_id=staff["id"])
     except DocumentError as exc:
         raise HTTPException(exc.status_code, exc.detail) from None
     except SQLAlchemyError:
@@ -300,9 +301,10 @@ def delete_document(
         from app.services.jobs import active_job
         if active_job(session, document_id):
             raise DocumentError(409, "DOCUMENT_ALREADY_PROCESSING")
-        from app.models.notification import SlackNotification
+        from app.models.notification import SlackNotification, EmailNotification
         # Wait for a concurrent sender before removing its pending rows.
         session.scalars(select(SlackNotification).where(SlackNotification.document_id == document_id).with_for_update()).all()
+        session.scalars(select(EmailNotification).where(EmailNotification.document_id == document_id).with_for_update()).all()
         backups = session.scalars(select(ResultBackup).where(ResultBackup.document_id == document_id).with_for_update()).all()
         storage = get_storage(settings, document.storage_backend, document.storage_bucket)
         for backup in backups:

@@ -8,8 +8,10 @@ from app.api.patients import router as patients_router
 from app.api.auth import router as auth_router
 from app.core.countries import COUNTRIES
 from app.core.document_catalog import document_catalog
+from app.core.request_limits import RequestBodyLimitMiddleware
 
 app = FastAPI(title="MediFlow API", version="0.1.0")
+app.add_middleware(RequestBodyLimitMiddleware)
 from app.api.execution import router as execution_router
 app.include_router(execution_router)
 app.include_router(administration_router)

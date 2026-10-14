@@ -12,6 +12,7 @@ from app.services.jobs import claim, LEASE_SECONDS
 from app.services.processing import process_document
 from app.services.backups import process_backup
 from app.services.notifications import process_notification
+from app.services.email_notifications import process_email_notification
 from app.api.documents import get_document_provider
 
 log = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ def main():
                     finally:
                         finished.set()
                         thread.join(timeout=5)
-                for deliver in (process_backup,):
+                for deliver in (process_backup, process_email_notification):
                     try:
                         deliver(session, settings)
                     except Exception:

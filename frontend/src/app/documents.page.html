@@ -56,29 +56,38 @@
     </div>
     <button class="secondary" (click)="load()" [disabled]="loading()">↻ Actualizar</button>
   </div>
-  <form class="filters" (ngSubmit)="load(true)">
-    <label class="search"
-      ><span>⌕</span
-      ><input
-        name="search"
-        [(ngModel)]="search"
-        placeholder="Archivo, UUID, paciente o identificación"
-        aria-label="Buscar por nombre" /></label
-    ><select
-      name="status"
-      [(ngModel)]="status"
-      (ngModelChange)="load(true)"
-      aria-label="Filtrar por estado"
-    >
+  <form class="filters document-filters" (ngSubmit)="load(true)">
+    <div class="document-search">
+      <label class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></svg>
+        <input name="search" [(ngModel)]="search" placeholder="Archivo, paciente, identificación o ID del documento"
+          aria-label="Buscar por archivo, paciente, identificación o ID del documento" />
+      </label>
+      <button class="secondary" type="submit" [disabled]="loading()">Buscar</button>
+    </div>
+    <p class="filter-help">Escribe un dato y pulsa Buscar o Enter. Los filtros se aplican al cambiar su selección.</p>
+    <label>Estado<select name="status" [(ngModel)]="status" (ngModelChange)="load(true)">
       <option value="">Todos los estados</option>
-      @for (state of statuses; track state) {
-        <option [value]="state">{{ label(state) }}</option>
-      }</select
-    ><select name="priority" [(ngModel)]="priority" (ngModelChange)="load(true)" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option value="ROUTINE">Rutina</option><option value="URGENT">Urgente</option><option value="CRITICAL">Crítica</option><option value="UNASSESSED">Sin evaluar</option></select><button class="secondary" type="submit">Buscar</button>
-    <select name="documentType" [(ngModel)]="documentType" (ngModelChange)="load(true)" aria-label="Tipo documental"><option value="">Todos los tipos</option>@for (type of api.catalog().types; track type.code) { <option [value]="type.code">{{ type.name }}</option> }</select>
-    <select name="specialty" [(ngModel)]="specialty" (ngModelChange)="load(true)" aria-label="Especialidad"><option value="">Todas las especialidades</option>@for (s of api.catalog().specialties; track s.code) { <option [value]="s.code">{{ s.name }}</option> }</select>
-    <label>Desde<input type="date" name="dateFrom" [(ngModel)]="dateFrom" /></label><label>Hasta<input type="date" name="dateTo" [(ngModel)]="dateTo" /></label>
-    <select name="maxQuality" [(ngModel)]="maxQuality" (ngModelChange)="load(true)" aria-label="Calidad máxima"><option value="">Todas las calidades</option><option value="0.849">Menos de 85 %</option><option value="0.649">Menos de 65 %</option></select>
+      @for (state of statuses; track state) { <option [value]="state">{{ label(state) }}</option> }
+    </select></label>
+    <label>Prioridad<select name="priority" [(ngModel)]="priority" (ngModelChange)="load(true)">
+      <option value="">Todas las prioridades</option><option value="ROUTINE">Rutina</option>
+      <option value="URGENT">Urgente</option><option value="CRITICAL">Crítica</option><option value="UNASSESSED">Sin evaluar</option>
+    </select></label>
+    <label>Tipo documental<select name="documentType" [(ngModel)]="documentType" (ngModelChange)="load(true)">
+      <option value="">Todos los tipos</option>
+      @for (type of api.catalog().types; track type.code) { <option [value]="type.code">{{ type.name }}</option> }
+    </select></label>
+    <label>Especialidad<select name="specialty" [(ngModel)]="specialty" (ngModelChange)="load(true)">
+      <option value="">Todas las especialidades</option>
+      @for (s of api.catalog().specialties; track s.code) { <option [value]="s.code">{{ s.name }}</option> }
+    </select></label>
+    <label>Desde<input type="date" name="dateFrom" [(ngModel)]="dateFrom" (ngModelChange)="load(true)" /></label>
+    <label>Hasta<input type="date" name="dateTo" [(ngModel)]="dateTo" (ngModelChange)="load(true)" /></label>
+    <label>Calidad documental<select name="maxQuality" [(ngModel)]="maxQuality" (ngModelChange)="load(true)" aria-describedby="quality-help">
+      <option value="">Todos los puntajes</option><option value="0.849">Menos de 85 %</option>
+    </select></label>
+    <p id="quality-help" class="filter-help">La calidad resume legibilidad, campos completos, evidencia y consistencia. Este filtro no modifica el umbral configurado para cada tipo de documento.</p>
   </form>
   @if (error()) {
     <p class="error" role="alert">{{ error() }}</p>
@@ -88,19 +97,19 @@
     <div class="empty">
       <span class="empty-icon">▤</span>
       <h3>
-        {{ search || status || priority ? "No hay coincidencias" : "Tu bandeja está lista" }}
+        {{ hasFilters() ? "No hay coincidencias" : "Tu bandeja está lista" }}
       </h3>
       <p>
         {{
-          search || status || priority
-            ? "Prueba otro nombre, estado o prioridad."
+          hasFilters()
+            ? "Prueba otros datos de búsqueda o filtros."
             : "Carga tu primer
       documento para comenzar."
         }}
       </p>
     </div>
   } @else {
-    <div class="table-scroll">
+    <div class="table-scroll documents-table" tabindex="0" role="region" aria-label="Listado de documentos, desplazable horizontalmente">
       <table>
         <thead>
           <tr>

@@ -1,0 +1,43 @@
+# Verificación de las observaciones de MediFlow
+
+Revisión del código disponible el 14 de octubre de 2026. Se contrastaron las
+20 observaciones del listado del 12 de octubre con los flujos existentes.
+Los cambios se aplican al código; los servicios en ejecución no se han reiniciado.
+
+| N.º | Resultado | Evidencia y decisión |
+| --- | --- | --- |
+| 1 | Aplica parcialmente; ajustado | `LocalDocumentStorage.save` ya interrumpía la copia por bloques y eliminaba el temporal al exceder el máximo, antes de almacenar el original. Faltaba proteger la recepción multipart previa de FastAPI. Se añadió `RequestBodyLimitMiddleware`: comprueba Content-Length y cuenta los bytes recibidos aunque falte ese encabezado o declare menos bytes. Corta con 413 y limpia el temporal antes de invocar el parser o los servicios. |
+| 2 | Ya cubierto en la configuración actual | Ambos Nginx del repositorio tienen `client_max_body_size 12m`; el Nginx del contenedor en ejecución también informa 12m. La aplicación limita cada archivo a 10 MiB por defecto. Se comprobó que multipart de 2 y 10 MiB atraviesa la nueva protección. No se cambió Nginx. No se verificó la configuración efectiva de un proxy externo adicional. |
+| 3 | Ya cubierto | `TextInput` tiene máximo de 200.000 caracteres y `/documents/text` impone además `processing_max_characters`, 50.000 por defecto, antes de guardar. `ContentReader` vuelve a comprobar ese límite antes de clasificación/extracción. |
+| 4 | No existe el flujo descrito | Se ingiere un documento por petición. El procesamiento OCR de páginas de un PDF no crea ni rechaza documentos hijos. No se añadió división de documentos. |
+| 5 | No existe el paso vulnerable descrito | No hay endpoint de confirmación manual de entrega. La entrega local es una transición interna después de validar y enrutar. Procesar exige `DOCUMENTS_PROCESS`; revisar exige `DOCUMENTS_REVIEW`. Una cuenta con solo `DOCUMENTS_READ` no puede revisar. Tampoco existe en este código un permiso limitado exclusivamente a recetas. |
+| 6 | Ya existe historial; atribución reforzada | `transition` registra la entrega local con fecha, motivo e intento. La entrega realizada dentro de una revisión ahora registra también la cuenta autenticada. Las entregas automáticas siguen siendo eventos del proceso, sin atribución humana inventada. |
+| 7 | Aplica parcialmente; ajustado | Las aprobaciones, correcciones y rechazos ya guardaban acción, fecha, notas y resultado previo en `review_history`. El nombre del revisor provenía del cliente, que incluso enviaba un valor fijo. Ahora el API suministra la cuenta autenticada y el servicio guarda su ID en `reviewer` y `actor_id`. Las transiciones derivadas de la revisión también llevan ese ID y la interfaz lo muestra. No existe un paso separado de “verificar” o “turnar”. |
+| 8 | No se reproduce | Los puntos de entrada comprueban `COUNTRY_CODES`; `validate_identity` aplica formatos específicos por país. La identidad se busca por país, tipo y número. Números iguales emitidos por países distintos pueden corresponder a personas diferentes; no se fusionaron. |
+| 9 | Aplica parcialmente; ajustado | No existe el respaldo clínico descrito ni se infieren diagnósticos para elevar prioridad. Sin embargo, tras fallar clasificación/extracción podía persistir `ROUTINE` de origen `DEFAULT`. Ahora se elimina esa prioridad no confirmada: la interfaz y las consultas existentes muestran `UNASSESSED` / «Sin evaluar». Se conservan las prioridades explícitas detectadas antes del fallo, incluida rutina explícita. También se cubre el agotamiento de reintentos con resultados anteriores. |
+| 10 | No se reproduce | El manejo de errores guarda resultados parciales, `error_code` y el estado técnico; no genera campos clínicos sintéticos para completar una respuesta fallida. Las correcciones deterministas de identidad/profesional conservan evidencia literal. |
+| 11 | Ya cubierto | Un original que supera el máximo no se almacena definitivamente: se interrumpe la copia y se elimina el temporal. Solo puede persistir una referencia de rechazo sin `storage_key`. La protección añadida en el punto 1 limita además la recepción previa. |
+| 12 | No existe la configuración descrita; la ilegibilidad sí se valida | OCR expone `uncertain`; `ContentReader` reconoce también `[ILEGIBLE]`. `validate_processing` añade `OCR_UNCERTAIN` o `EMPTY_OR_UNREADABLE_PAGE` y requiere revisión. No hay porcentaje de ilegibilidad con umbral nulo. |
+| 13 | No existen esos parámetros | El panel modifica proveedor y políticas documentales de campos, pesos y calidad. No hay tiempos configurables de alerta crítica/atención urgente ni mensaje de plazo clínico fijo de 24 horas. No se añadieron reglas de SLA. |
+| 14 | Ya implementado y utilizado | `validate_identity` se llama en asociación de pacientes, detección de identidad, validación de evidencia y edición de identificación del paciente. Valida formato por país; no acredita por sí solo la identidad de una persona. |
+| 15 | No existe el indicador descrito | El resumen actual agrupa cantidades por estado/prioridad en SQL. No calcula una tasa de errores críticos detectados. |
+| 16 | No existe el indicador descrito | No hay una tasa de errores críticos cuyo valor por falta de datos deba cambiarse. |
+| 17 | No existe NEWS ni ese puntaje clínico | La prioridad actual usa declaraciones explícitas y evidencia documental. No hay escala fisiológica de presión arterial que corregir. No se introdujo una escala clínica nueva. |
+| 18 | No existen porcentajes de confianza del modelo | Los contratos de clasificación/extracción no contienen confianza porcentual. Los valores de calidad y sus componentes sí están restringidos a [0, 1] mediante Pydantic. |
+| 19 | No se reproduce el doble análisis de IA | El grafo ejecuta clasificación y extracción como operaciones distintas, y reutiliza resultados previos en reintentos. Hay dos evaluaciones deterministas de prioridad: una temprana para conservar alertas si falla el proveedor y otra posterior para contrastar señales extraídas. No se descarta una primera llamada equivalente al modelo. |
+| 20 | No existe el cálculo descrito | El listado aplica fechas en SQL antes de paginar. El resumen usa `COUNT` y `GROUP BY` en la base de datos; no carga todos los documentos para filtrarlos en memoria. |
+
+La protección del cuerpo permite el máximo de archivo configurado más 1 MiB
+para encabezados multipart y campos de formulario. Usa un temporal acotado
+(hasta 1 MiB en memoria) y lo elimina también ante desconexión. El límite exacto
+por archivo sigue aplicándose en el servicio de almacenamiento.
+
+Los registros históricos siguen siendo legibles. No se atribuyeron cuentas a
+revisiones antiguas porque el nombre enviado anteriormente no demuestra quién
+las realizó. No se modificaron datos productivos ni se enviaron avisos reales.
+
+Verificación: 53 pruebas aprobadas sobre `db-test`, con almacenamiento local y
+proveedor simulado; compilación Angular mediante `docker compose build frontend`.
+Las pruebas incluyen límites de recepción, multipart de 2/10 MiB, limpieza de
+rechazos, permisos de revisión, suplantación de nombre de revisor, auditoría de
+aprobar/corregir/rechazar y prioridades tras errores del proveedor.

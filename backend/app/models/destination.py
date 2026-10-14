@@ -1,4 +1,5 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.document import Base
@@ -12,7 +13,7 @@ class Destination(Base):
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     slack_webhook_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
-
+    emails: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
 
     @property
     def slack_configured(self) -> bool:

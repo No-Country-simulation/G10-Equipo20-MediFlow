@@ -35,12 +35,14 @@ export interface Destination extends DestinationInput {
 }
 export interface DestinationDetail extends Destination {
   slack_webhook_url: string;
+  emails: string[];
 }
 export interface DestinationUpdate {
   name?: string;
   kind?: DestinationInput["kind"];
   active?: boolean;
   slack_webhook_url?: string;
+  emails?: string[];
 }
 export interface RoutingRuleInput {
   document_type: string;
@@ -148,10 +150,12 @@ export interface StateEvent {
   occurred_at: string;
   reason: string;
   attempt: number;
+  actor_id?: string | null;
 }
 export interface ReviewAudit {
   action: string;
   reviewer: string;
+  actor_id?: string | null;
   notes: string;
   reviewed_at: string;
   previous_result: Result;

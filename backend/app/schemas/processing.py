@@ -201,7 +201,8 @@ class ProcedureData(StructuredModel):
 
 class ReviewRequest(StructuredModel):
     action: Literal["APPROVE", "CORRECT", "REJECT"]
-    reviewer: str = Field(min_length=1, max_length=100)
+    # Accepted for older clients; authenticated actor is supplied by the API.
+    reviewer: str = Field(default="authenticated-account", min_length=1, max_length=100)
     notes: str = Field(min_length=1, max_length=2000)
     confirmed_source_review: Literal[True]
     content: ContentResult | None = None
@@ -212,6 +213,7 @@ class ReviewRequest(StructuredModel):
 class ReviewAudit(StructuredModel):
     action: Literal["APPROVE", "CORRECT", "REJECT"]
     reviewer: str
+    actor_id: str | None = None
     notes: str
     reviewed_at: datetime
     previous_result: ProcessingResult

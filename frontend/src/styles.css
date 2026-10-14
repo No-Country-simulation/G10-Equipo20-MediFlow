@@ -308,7 +308,7 @@ p {
   word-break: break-word;
 }
 .dropzone:focus-within {
-  outline: 2px solid var(--primary);
+  border-color: #5289ad;
 }
 .dropzone input {
   position: absolute;
@@ -362,6 +362,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 5px;
   overflow: hidden;
+  min-width: 0;
 }
 .panel-heading {
   padding: 22px 24px;
@@ -429,6 +430,10 @@ select {
 }
 .table-scroll {
   overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 table {
   border-collapse: collapse;
@@ -1032,12 +1037,19 @@ th {
 button.primary:hover:not(:disabled) {
   background: #36586d;
 }
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid #5289ad;
+}
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: #5289ad;
 }
 
 .triage-summary {
@@ -1062,7 +1074,8 @@ a:focus-visible {
 /* Operational layout adapted from the Aldo branch, with MediFlow's blue palette. */
 :root { background: #f3f7f9; --surface: #fff; --accent: #5289ad; }
 body { background: #f3f7f9; }
-.sidebar { width: 248px; padding: 28px 18px; overflow-y: auto; }
+.sidebar { width: 248px; padding: 28px 18px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.sidebar::-webkit-scrollbar { display: none; }
 .brand { letter-spacing: -.8px; font-size: 27px; }
 .brand-caption { margin: 8px 10px 0 0; color: #acbcbf; font-size: 11px; }
 .workspace-label { margin: 30px 12px 12px; font-size: 10px; }
@@ -1148,8 +1161,9 @@ a.metric-card:hover { border-color: #5289ad; box-shadow: 0 4px 16px #243c4c09; }
 .detail-heading .detail-status { font-size: 1rem; padding: .75rem 1.2rem; border-radius: .7rem; font-weight: 750; flex-shrink: 0; }
 .document-context { display: flex; justify-content: space-between; gap: .7rem 1.5rem; flex-wrap: wrap; padding: .85rem 1rem; margin: 0 0 1rem; background: #e9f1f5; border-left: 3px solid #5289ad; border-radius: .5rem; font-size: .9rem; }
 .history-help { padding: 0 1.4rem; margin: 0 0 1rem; color: #526b7a; font-size: .85rem; line-height: 1.6; }
-.directory-search { display: flex; gap: .65rem; align-items: center; flex-wrap: wrap; }
-.directory-search input { width: min(340px, 100%); }
+.directory-search { display: flex; gap: .65rem; align-items: center; flex-wrap: nowrap; min-width: 0; width: min(440px, 100%); }
+.directory-search input { flex: 1; min-width: 0; width: 0; }
+.directory-search button { flex-shrink: 0; white-space: nowrap; }
 .patients-panel .panel-heading { gap: 1rem; flex-wrap: wrap; }
 .patients-panel .pagination { padding: 1rem 1.5rem; }
 .admin-panel { padding: 1.5rem; }
@@ -1180,3 +1194,18 @@ a.metric-card:hover { border-color: #5289ad; box-shadow: 0 4px 16px #243c4c09; }
 .processing-steps span {padding:.4rem .65rem;background:#eaf3f6;color:#243C4C;border-radius:.5rem;}
 .processing-progress small {display:block;margin-top:.8rem;}
 .policy-weights label {flex:1;min-width:140px;}
+
+/* Keep document filters inside the panel and allow the table to scroll independently. */
+.document-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.document-filters > label { display: grid; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); }
+.document-filters input, .document-filters select { min-width: 0; width: 100%; }
+.document-search { grid-column: 1 / -1; display: flex; gap: 12px; min-width: 0; }
+.document-search .search { min-width: 0; flex-basis: 0; gap: 10px; }
+.document-search .search:focus-within { background: #f4fcfb; border-color: #5289ad; }
+.document-search input { min-width: 0; }
+.document-search button { flex-shrink: 0; }
+.search-icon { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: #526c7c; stroke-width: 1.8; stroke-linecap: round; }
+.filter-help { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.documents-table table { min-width: 820px; }
+@media (max-width: 1100px) { .document-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .document-filters { grid-template-columns: minmax(0, 1fr); } .document-search { gap: 8px; } }

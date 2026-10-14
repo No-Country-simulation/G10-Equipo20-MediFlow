@@ -28,6 +28,15 @@ def locked_document(document_id: UUID, session: Session) -> Document:
     return document
 
 
+def clear_unconfirmed_failure_priority(result: ProcessingResult) -> ProcessingResult:
+    # A technical failure cannot establish routine priority. Preserve explicit
+    # sourced urgency detected before the provider failed.
+    if result.priority and result.priority.source == 'DEFAULT':
+        result.priority = None
+        result.local_alert = None
+    return result
+
+
 def process_document(document_id: UUID, session: Session, settings: Settings,
                      provider: DocumentProvider, *, job_id=None, token=None) -> ProcessingResult:
     from app.services.jobs import enqueue, owned_job, CountedProvider
@@ -65,7 +74,9 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
             transition(document, S.FALLO_TECNICO, 'INTERRUPTED_EXECUTION')
             transition(document, S.EN_REVISION_HUMANA, 'RETRIES_EXHAUSTED')
         if document.processing_result:
-            document.processing_result = {**document.processing_result, 'status': document.status}
+            previous.status = S(document.status)
+            previous = clear_unconfirmed_failure_priority(previous)
+            document.processing_result = previous.model_dump(mode='json')
             schedule_backup(session, document, settings)
         schedule_notification(session, document, previous, settings)
         job.status, job.error_code = 'FAILED', 'RETRIES_EXHAUSTED'
@@ -151,6 +162,8 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
             transition(document, S.EN_REVISION_HUMANA, 'RETRIES_EXHAUSTED')
     job = owned_job(session, job_id, token)
     result = result_snapshot()
+    if failure:
+        result = clear_unconfirmed_failure_priority(result)
     document.processing_result = result.model_dump(mode='json')
     if result.patient and document.patient_id is None:
         document.patient_match_status, document.patient_match_reason = result.patient.status, result.patient.reason

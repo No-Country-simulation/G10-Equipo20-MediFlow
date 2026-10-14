@@ -273,6 +273,7 @@
                 ><small
                   >{{ event.occurred_at | date: "dd/MM/yyyy, HH:mm:ss" : "-0500" }} · {{ event.attempt === 0 ? "Carga inicial · sin análisis" : "Análisis #" + event.attempt }}</small
                 ><span class="muted">{{ label(event.reason) }}</span>
+                @if (event.actor_id) { <small>Cuenta: {{ event.actor_id }}</small> }
               </div>
             </li>
           }
@@ -282,7 +283,7 @@
           @for (review of reviews(); track $index) {
             <details>
               <summary>
-                {{ review.reviewer }} ·
+                {{ review.actor_id || review.reviewer }} ·
                 {{
                   review.reviewed_at
                     | date

@@ -4,15 +4,10 @@ from uuid import uuid4
 from unittest.mock import Mock, patch
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from fastapi.testclient import TestClient
 from sqlalchemy import select, func
-from sqlalchemy.orm import Session
 
 from app.core.auth import require_staff
 from app.core.config import get_settings
-from app.core.database import get_engine, get_session
 from app.main import app
 from app.models.destination import Destination
 from app.models.document import Document
@@ -21,29 +16,6 @@ from app.services.notifications import schedule_notification, process_notificati
 from app.schemas.processing import PriorityResult, RoutingResult
 
 WEBHOOK = 'https://hooks.slack.com/services/TEST/CHANNEL/FAKE'
-
-
-@pytest.fixture(scope='module', autouse=True)
-def schema():
-    command.upgrade(Config('alembic.ini'), 'head')
-
-
-@pytest.fixture
-def session():
-    with get_engine().connect() as connection:
-        transaction = connection.begin()
-        with Session(connection, join_transaction_mode='create_savepoint') as session:
-            yield session
-        transaction.rollback()
-
-
-@pytest.fixture
-def client(session):
-    app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[require_staff] = lambda: {'id': 'test', 'role': 'SUPERADMIN'}
-    with TestClient(app) as client:
-        yield client
-    app.dependency_overrides.clear()
 
 
 def test_contact_api_persistence_validation_and_secret_permissions(client):
@@ -60,7 +32,7 @@ def test_contact_api_persistence_validation_and_secret_permissions(client):
     assert detail.headers['cache-control'] == 'no-store'
     assert WEBHOOK not in client.get('/destinations').text
     assert client.get('/routing-rules').status_code == 200
-    assert client.patch('/destinations/TEST_CONTACTS', json={'emails': ['test@example.com']}).status_code == 422
+    assert client.patch('/destinations/TEST_CONTACTS', json={'emails': ['invalid-email']}).status_code == 422
     assert client.patch('/destinations/TEST_CONTACTS', json={'slack_webhook_url': 'https://example.com/services/A/B/C'}).status_code == 422
     assert client.patch('/destinations/TEST_CONTACTS', json={'name': 'Renamed'}).status_code == 200
     assert client.get('/destinations/TEST_CONTACTS').json()['slack_webhook_url'] == WEBHOOK

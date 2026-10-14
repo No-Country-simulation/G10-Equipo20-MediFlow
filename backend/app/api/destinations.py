@@ -3,7 +3,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -22,6 +22,18 @@ Specialty = Literal["ANY"] | ClassifiedSpecialty
 
 class DestinationContacts(BaseModel):
     slack_webhook_url: str = Field(default="", max_length=512)
+    emails: list[EmailStr] = Field(default_factory=list, max_length=50)
+
+    @field_validator('emails', mode='before')
+    @classmethod
+    def normalize_emails(cls, value):
+        if isinstance(value, str):
+            value = [item.strip() for item in value.split(',') if item.strip()]
+        if isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError('Los destinatarios deben ser direcciones de email')
+            return list(dict.fromkeys(item.strip().lower() for item in value))
+        return value
 
     @field_validator('slack_webhook_url')
     @classmethod
@@ -60,6 +72,7 @@ class DestinationOutput(BaseModel):
 
 class DestinationDetail(DestinationOutput):
     slack_webhook_url: str
+    emails: list[str]
 
     model_config = ConfigDict(from_attributes=True)
 

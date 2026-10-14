@@ -23,3 +23,4 @@ class StateEvent(BaseModel):
     occurred_at: datetime
     reason: str
     attempt: int = 0
+    actor_id: str | None = None

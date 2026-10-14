@@ -28,7 +28,7 @@ def initialize_history(document: Document) -> None:
     ).model_dump(mode="json")]
 
 
-def transition(document: Document, target: S, reason: str) -> None:
+def transition(document: Document, target: S, reason: str, *, actor_id: str | None = None) -> None:
     current = S(document.status)
     if current == target:
         return
@@ -38,4 +38,5 @@ def transition(document: Document, target: S, reason: str) -> None:
     document.state_history = [*(document.state_history or []), StateEvent(
         status=target, occurred_at=datetime.now(UTC), reason=reason,
         attempt=document.processing_attempts or 0,
+        actor_id=actor_id,
     ).model_dump(mode="json")]

@@ -21,3 +21,19 @@ class SlackNotification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(80))
+
+
+class EmailNotification(Base):
+    __tablename__ = 'email_notifications'
+    __table_args__ = (UniqueConstraint('document_id', 'event', name='uq_email_document_event'),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey('documents.document_id', ondelete='CASCADE'), index=True)
+    destination_code: Mapped[str] = mapped_column(String(60), ForeignKey('destinations.code', ondelete='RESTRICT'))
+    event: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    retry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))

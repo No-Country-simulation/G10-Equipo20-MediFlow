@@ -10,7 +10,7 @@ from app.services.errors import DocumentError
 from app.services.patients import assess_patient, link_patient
 
 
-def review_document(document_id, request: ReviewRequest, session, settings) -> ProcessingResult:
+def review_document(document_id, request: ReviewRequest, session, settings, *, actor_id: str) -> ProcessingResult:
     document = locked_document(document_id, session)
     from app.services.jobs import active_job
     if active_job(session, document_id):
@@ -25,16 +25,16 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     corrections = {key: getattr(request, key) for key in ('content', 'classification', 'extraction') if getattr(request, key) is not None}
     if (request.action == 'APPROVE' and corrections) or (request.action == 'CORRECT' and not corrections):
         raise DocumentError(422, 'INVALID_REVIEW_ACTION')
-    if not request.notes.strip() or not request.reviewer.strip():
+    if not request.notes.strip():
         raise DocumentError(422, 'REVIEW_REASON_REQUIRED')
     if request.action == 'REJECT':
         if corrections:
             raise DocumentError(422, 'INVALID_REVIEW_ACTION')
-        transition(document, S.RECHAZADO, 'HUMAN_REVIEW_REJECT')
+        transition(document, S.RECHAZADO, 'HUMAN_REVIEW_REJECT', actor_id=actor_id)
         result.status, result.routing, result.processed_at = S.RECHAZADO, None, datetime.now(UTC)
         document.rejection_reason = request.notes.strip()[:255]
         document.processing_result = result.model_dump(mode='json')
-        audit = ReviewAudit(action=request.action, reviewer=request.reviewer, notes=request.notes,
+        audit = ReviewAudit(action=request.action, reviewer=actor_id, actor_id=actor_id, notes=request.notes,
                             reviewed_at=result.processed_at, previous_result=previous)
         document.review_history = [*(document.review_history or []), audit.model_dump(mode='json')]
         schedule_backup(session, document, settings)
@@ -84,14 +84,14 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     result.routing = route_classification(result.classification, result.priority, session)
     result.pipeline_version = 'documentary-v11'
     result.clinical_data = clinical_projection(result.extraction)
-    transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action)
-    transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED')
+    transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action, actor_id=actor_id)
+    transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED', actor_id=actor_id)
     result.patient = link_patient(document, result.extraction, result.patient, session)
-    transition(document, S.ENTREGADO, 'LOCAL_INBOX_DELIVERED')
+    transition(document, S.ENTREGADO, 'LOCAL_INBOX_DELIVERED', actor_id=actor_id)
     result.routing.delivery_status = 'DELIVERED_LOCAL'
     result.status, result.error_code, result.processed_at = S.ENTREGADO, None, datetime.now(UTC)
     document.processing_result = result.model_dump(mode='json')
-    audit = ReviewAudit(action=request.action, reviewer=request.reviewer, notes=request.notes,
+    audit = ReviewAudit(action=request.action, reviewer=actor_id, actor_id=actor_id, notes=request.notes,
                         reviewed_at=result.processed_at, previous_result=previous)
     document.review_history = [*(document.review_history or []), audit.model_dump(mode='json')]
     schedule_backup(session, document, settings)

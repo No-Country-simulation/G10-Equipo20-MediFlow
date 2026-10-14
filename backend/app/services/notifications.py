@@ -1,7 +1,8 @@
 """Adapted from Cesar-Barrera's webhook transport, with a PostgreSQL outbox.
 
 Priority alerts use the urgent webhook; general inboxes use their configured webhook.
-No SMTP. Webhooks cannot guarantee exactly-once delivery after a lost response.
+Optional SMTP delivery lives in email_notifications and is disabled by default.
+Webhooks cannot guarantee exactly-once delivery after a lost response.
 """
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
@@ -97,6 +98,9 @@ def schedule_destination_notification(session, document, result, settings):
         return
     from app.models.destination import Destination
     destination = session.get(Destination, destination_code)
+    if destination is not None:
+        from app.services.email_notifications import schedule_email_notification
+        schedule_email_notification(session, document, destination, event, settings)
     if destination is None or not destination.slack_webhook_url:
         return
     payload = notification_payload(document, result, settings, event=event, destination_name=destination.name)

@@ -34,7 +34,13 @@ Destinos y notificaciones:
 - Las alertas urgentes y críticas usan el webhook urgente. Los avisos de
   entrega y revisión usan el webhook específico guardado en cada destino.
   El webhook principal completa únicamente las bandejas sin uno específico.
-- No existe campo ni servicio de emails por destino.
+- La migración 0015 restablece emails por destino y añade una cola SMTP opcional.
+  Configuración SMTP, dentro de Variables de Configuración, guarda servidor,
+  puerto, seguridad STARTTLS/SSL, usuario, contraseña y remitente. El envío
+  permanece desactivado por defecto y requiere activación explícita.
+  La contraseña nunca se devuelve en las respuestas de configuración.
+  test_email_notifications.py cubre destinatarios, permisos, configuración,
+  activación, deduplicación, transporte simulado, errores y reintentos.
 
 Pruebas reales para Colombia (tres archivos):
 - fixtures/01_imagenes_escaneado.pdf: PDF sin capa de texto; requiere OCR.

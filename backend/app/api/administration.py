@@ -16,6 +16,7 @@ from app.models.account import Account
 from app.models.administration import ConfigurationVariable, EmployeeDenial, Permission, Role, RolePermission
 from app.services.patients import validate_identity
 from app.services.runtime_configuration import RESERVED, is_secret, seed_configuration
+from app.services.email_notifications import SMTPInput, SMTP_KEYS, public_smtp, smtp_configuration, save_smtp
 
 router = APIRouter(prefix="/admin", tags=["administration"],
                    dependencies=[Depends(require_superadmin), Depends(same_origin)])
@@ -39,6 +40,24 @@ class VariableInput(BaseModel):
     value: str = Field(max_length=16384)
 
 
+@router.get('/smtp')
+def smtp_settings(session: Db, response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    return public_smtp(smtp_configuration(session))
+
+
+@router.put('/smtp')
+def update_smtp(payload: SMTPInput, session: Db, response: Response):
+    try:
+        result = save_smtp(session, payload)
+    except ValueError:
+        session.rollback()
+        raise HTTPException(422, 'SMTP_CONFIGURATION_INCOMPLETE') from None
+    commit(session)
+    response.headers['Cache-Control'] = 'no-store'
+    return result
+
+
 @router.get("/configuration")
 def configuration(session: Db, settings: Annotated[Settings, Depends(get_settings)], response: Response):
     seed_configuration(session, settings)
@@ -51,6 +70,8 @@ def configuration(session: Db, settings: Annotated[Settings, Depends(get_setting
 
 @router.put("/configuration/{name}", status_code=204)
 def save_variable(name: str, payload: VariableInput, session: Db):
+    if name in SMTP_KEYS:
+        raise HTTPException(409, 'USE_SMTP_CONFIGURATION')
     import re
     if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", name):
         raise HTTPException(422, "UPPERCASE_NAME_REQUIRED")
@@ -70,6 +91,8 @@ def save_variable(name: str, payload: VariableInput, session: Db):
 
 @router.delete("/configuration/{name}", status_code=204)
 def remove_variable(name: str, session: Db):
+    if name in SMTP_KEYS:
+        raise HTTPException(409, 'USE_SMTP_CONFIGURATION')
     if name in RESERVED:
         raise HTTPException(409, "RESERVED_VARIABLE")
     variable = session.get(ConfigurationVariable, name)

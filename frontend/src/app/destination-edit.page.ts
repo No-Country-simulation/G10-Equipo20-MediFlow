@@ -26,6 +26,9 @@ import { DestinationDetail } from "./models";
         <label>Slack<input type="password" name="slack" [(ngModel)]="item.slack_webhook_url" maxlength="512"
           autocomplete="new-password" placeholder="https://hooks.slack.com/services/…" aria-describedby="slack-help" /></label>
         <p id="slack-help" class="muted">Webhook del canal que recibirá una notificación cuando un documento llegue a esta bandeja, por entrega o para revisión humana. Deja el campo vacío para desactivar las notificaciones.</p>
+        <label>Email<input name="emails" [(ngModel)]="emailRecipients" maxlength="16000"
+          placeholder="area@hospital.com, responsable@hospital.com" aria-describedby="email-help" /></label>
+        <p id="email-help" class="muted">Puedes agregar hasta 50 destinatarios separados por comas. Los correos solo se enviarán si el superadministrador configura y activa SMTP.</p>
         <div class="actions"><button class="primary" [disabled]="busy() || form.invalid">{{ busy() ? 'Guardando…' : 'Guardar cambios' }}</button>
           <a class="secondary" routerLink="/destinations">Volver</a></div>
       </form>
@@ -42,10 +45,12 @@ export class DestinationEditPage implements OnInit {
   error = signal("");
   message = signal("");
   busy = signal(false);
+  emailRecipients = '';
   async ngOnInit() {
     try {
       const item = await this.api.destination(this.route.snapshot.paramMap.get("code") || "");
       this.destination.set(item);
+      this.emailRecipients = item.emails.join(', ');
     } catch (error) { this.error.set((error as Error).message); }
   }
   async save() {
@@ -58,7 +63,8 @@ export class DestinationEditPage implements OnInit {
     this.busy.set(true); this.error.set(""); this.message.set("");
     try {
       await this.api.updateDestination(item.code, {name: item.name.trim(), kind: item.kind,
-        active: item.active, slack_webhook_url: slack});
+        active: item.active, slack_webhook_url: slack,
+        emails: this.emailRecipients.split(',').map(email => email.trim()).filter(Boolean)});
       this.message.set("Destino y contactos guardados.");
     } catch (error) { this.error.set((error as Error).message); }
     finally { this.busy.set(false); }
