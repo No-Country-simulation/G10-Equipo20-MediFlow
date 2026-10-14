@@ -188,6 +188,7 @@ export function label(value: string, fields?: ExtractedField[]): string {
     (
       {
         UNASSESSED: "Sin evaluar",
+        LOGIN_RATE_LIMITED: "Demasiados intentos fallidos. Espera unos minutos antes de volver a iniciar sesión.",
         GENERAL_MEDICINE: "Medicina general",
         RADIOLOGY: "Radiología",
         PRESCRIPTION: "Receta médica",

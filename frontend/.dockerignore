@@ -4,3 +4,14 @@ dist
 .env*
 test-results
 playwright-report
+**/.aws
+**/.ssh
+**/.secrets
+**/.git-credentials
+**/.netrc
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.sql
+**/*.dump

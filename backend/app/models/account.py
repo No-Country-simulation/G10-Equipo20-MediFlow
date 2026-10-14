@@ -31,3 +31,10 @@ class LoginSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class LoginAttempt(Base):
+    __tablename__ = 'login_attempts'
+    identity_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, nullable=False)
+    window_started: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

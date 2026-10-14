@@ -21,7 +21,7 @@ class R2DocumentStorage:
         self.bucket = bucket or settings.r2_bucket_name
         self.prefix = settings.r2_object_prefix
         endpoint = urlsplit(settings.r2_endpoint_url)
-        if (endpoint.scheme != "https" or not endpoint.hostname
+        if (not self.bucket or endpoint.scheme != "https" or not endpoint.hostname
                 or not endpoint.hostname.endswith(".r2.cloudflarestorage.com")
                 or endpoint.username or endpoint.password or endpoint.query
                 or endpoint.path not in ("", "/")

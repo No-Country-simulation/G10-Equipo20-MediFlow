@@ -19,7 +19,9 @@ solo si la repetición del flujo y la evidencia del paciente son válidas.
 Conserva el original, el destino, la entrega y todos los resultados previos;
 añade una corrección al historial y un nuevo respaldo en R2.
 
-Los diagnósticos operativos se conservan en reportes privados.
+Los diagnósticos operativos se conservan en reportes privados fuera del
+repositorio. No publicar identificaciones, IDs de documentos, claves de
+almacenamiento, nombres de pacientes ni resultados obtenidos del entorno real.
 
 Destinos y notificaciones:
 - Migraciones 0013 y 0014: webhook por destino y destino de cada aviso en
@@ -78,7 +80,6 @@ Diseño de los avisos Slack:
 - <!channel> es la mención explícita de Slack para todos los miembros del
   canal. Los nombres de archivo se muestran como texto literal para evitar
   menciones o formato involuntarios procedentes del documento.
-- results/colombia-slack-blocks.json registra una nueva ejecución de las tres
-  cargas con este diseño, sus avisos reales y las verificaciones de R2.
-  Se descargan y comparan tanto los originales (SHA-256) como los respaldos
-  JSON; no se comprueba únicamente el estado SYNCED en la base de datos.
+- Los reportes generados en results/ son privados y están excluidos de Git
+  y del contexto de construcción de Docker. Se descargan y comparan originales
+  y respaldos JSON sin publicar las rutas internas ni los resultados reales.

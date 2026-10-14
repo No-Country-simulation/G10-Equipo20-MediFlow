@@ -21,3 +21,9 @@
 **/.env.*
 **/*.pem
 **/*.key
+verification/results/
+verification/results/**
+**/*.sql
+**/*.dump
+**/*.sqlite*
+**/*.db

@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import (COOKIE_NAME, create_session, current_account, password_hash,
-                           password_matches, require_patient, same_origin, token_hash)
+                           require_patient, same_origin, token_hash)
 from app.core.countries import COUNTRY_CODES
 from app.core.database import get_session
 from app.core.config import Settings, get_settings
@@ -19,6 +19,7 @@ from app.schemas.document import DocumentResponse
 from app.services.patients import validate_identity
 from app.services.storage import get_storage
 from app.services.errors import DocumentError
+from app.core.login_security import begin_login, verify_login
 from uuid import UUID
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -33,10 +34,10 @@ class RegisterInput(BaseModel):
 
 
 class LoginInput(BaseModel):
-    country: str | None = None
-    identity_number: str | None = None
+    country: str | None = Field(default=None, max_length=2)
+    identity_number: str | None = Field(default=None, max_length=40)
     email: EmailStr | None = None
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 
 def public_account(account: Account, session: Session) -> dict:
@@ -71,21 +72,21 @@ def patient_login(payload: LoginInput, request: Request, response: Response, ses
     identity = validate_identity(payload.country or "", payload.identity_number or "")
     if identity is None:
         raise HTTPException(401, "INVALID_CREDENTIALS")
+    attempt = begin_login(session, f'patient:{payload.country}:{identity[0]}:{identity[1]}')
     account = session.scalar(select(Account).where(Account.role == "PATIENT",
         Account.country == payload.country, Account.identity_type == identity[0],
         Account.identity_number == identity[1]))
-    if account is None or not account.active or not password_matches(payload.password, account.password_hash):
-        raise HTTPException(401, "INVALID_CREDENTIALS")
+    verify_login(session, attempt, account, payload.password)
     create_session(account, session, response, request)
     return public_account(account, session)
 
 
 @router.post("/admin-login", dependencies=[Depends(same_origin)])
 def admin_login(payload: LoginInput, request: Request, response: Response, session: Db):
+    attempt = begin_login(session, 'staff:' + str(payload.email or '').lower())
     account = session.scalar(select(Account).where(Account.email == str(payload.email or "").lower(),
                                                    Account.role.in_(("SUPERADMIN", "EMPLOYEE"))))
-    if account is None or not account.active or not password_matches(payload.password, account.password_hash):
-        raise HTTPException(401, "INVALID_CREDENTIALS")
+    verify_login(session, attempt, account, payload.password)
     create_session(account, session, response, request)
     return public_account(account, session)
 

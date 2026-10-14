@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, EmailStr, Field, SecretStr
 from sqlalchemy import URL
 
 
@@ -18,7 +18,7 @@ class Settings(BaseModel):
     r2_endpoint_url: str = ""
     r2_access_key_id: SecretStr = SecretStr("")
     r2_secret_access_key: SecretStr = SecretStr("")
-    r2_bucket_name: str = "mediflow-g10"
+    r2_bucket_name: str = ""
     r2_region: str = "auto"
     r2_object_prefix: str = Field(default="mediflow", pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
     default_country: str = "EC"
@@ -39,6 +39,7 @@ class Settings(BaseModel):
     max_processing_attempts: int = Field(default=3, ge=1, le=10)
     min_document_quality: float = Field(default=0.85, ge=0, le=1)
     admin_bootstrap_password: SecretStr = SecretStr("")
+    admin_bootstrap_email: EmailStr | Literal[""] = ""
 
     @property
     def database_url(self) -> URL:

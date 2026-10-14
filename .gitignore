@@ -28,6 +28,21 @@ dist/
 id_rsa*
 id_ed25519*
 secrets/
+.secrets/
+.ssh/
+.aws/
+.git-credentials
+.netrc
+*.tfstate
+*.tfstate.*
+*.sql
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+/backend/verification/results/
+/private-reports/
+.env.local.backup*
 .oci/
 /backend/tests/*
 

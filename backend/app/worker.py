@@ -14,6 +14,7 @@ from app.services.backups import process_backup
 from app.services.notifications import process_notification
 from app.services.email_notifications import process_email_notification
 from app.api.documents import get_document_provider
+from app.core.login_security import clean_login_attempts
 
 log = logging.getLogger(__name__)
 
@@ -42,10 +43,15 @@ def main():
     engine, settings = get_engine(), get_settings()
     notifications = threading.Thread(target=notification_loop, args=(engine, settings, stop), daemon=True)
     notifications.start()
+    next_login_cleanup = datetime.now(UTC)
     while not stop.is_set():
         job = None
         try:
             with Session(engine, expire_on_commit=False) as session:
+                if datetime.now(UTC) >= next_login_cleanup:
+                    clean_login_attempts(session)
+                    session.commit()
+                    next_login_cleanup = datetime.now(UTC) + timedelta(minutes=15)
                 job = claim(session)
                 if job:
                     finished = threading.Event()

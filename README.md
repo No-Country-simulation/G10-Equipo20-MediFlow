@@ -177,7 +177,6 @@ G10-Equipo20-MediFlow/
 │   ├── src/styles.css        # Identidad visual y diseño adaptable
 │   ├── nginx.conf            # Web y conexión con la API
 │   └── Dockerfile
-├── deploy/                   # Configuración HTTPS y renovación de certificados
 ├── docs/assets/              # Recursos visuales de la documentación
 ├── docker-compose.yml        # API, worker, web, PostgreSQL y entorno de pruebas
 ├── LICENSE
