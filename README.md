@@ -57,6 +57,9 @@ Así, una receta y un resultado de laboratorio pueden formar parte del mismo exp
 
 La plataforma incluye registro e inicio de sesión para pacientes. Desde su portal, cada persona puede consultar de forma centralizada los documentos que el sistema haya asociado a su identidad y abrir sus originales.
 
+<img width="1777" height="872" alt="image" src="https://github.com/user-attachments/assets/863bf62a-29c2-4479-93f0-6c9b6ac9ad6a" />
+
+
 El personal cuenta con un espacio separado, con roles y permisos para definir quién puede cargar, consultar, procesar, corregir o administrar información.
 
 ### Avisos oportunos con Slack y una base preparada para email
