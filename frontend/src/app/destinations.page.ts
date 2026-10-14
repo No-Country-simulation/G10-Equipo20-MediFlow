@@ -26,24 +26,15 @@ import { Destination, DestinationInput, RoutingRule, RoutingRuleInput, label } f
       <div class="table-scroll"><table><thead><tr><th>Destino</th><th>Tipo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
         @for (item of destinations(); track item.code) {
           <tr><td>
-            @if (editing() === item.code) {
-              <input [name]="'name-' + item.code" [(ngModel)]="editName" aria-label="Nuevo nombre del destino" />
-            } @else { <strong>{{ item.name }}</strong> }
+            <strong>{{ item.name }}</strong>
             <small class="catalog-code">{{ item.code }}</small></td>
-            <td>@if (editing() === item.code) {
-              <select [name]="'kind-' + item.code" [(ngModel)]="editKind" aria-label="Nuevo tipo de destino">
-                <option value="DEPARTMENT">Departamento</option><option value="QUEUE">Cola</option><option value="SYSTEM">Sistema</option>
-              </select>
-            } @else { {{ kindLabel(item.kind) }} }</td><td>{{ item.active ? "Activo" : "Inactivo" }}</td>
-            <td>@if (editing() === item.code) {
-                <button class="primary" [disabled]="busy() || !editName.trim()" (click)="saveEdit(item)">Guardar</button>
-                <button class="secondary" (click)="editing.set(null)">Cancelar</button>
-              } @else {
+            <td>{{ kindLabel(item.kind) }}</td><td>{{ item.active ? "Activo" : "Inactivo" }}</td>
+            <td>
                 <a class="secondary" [routerLink]="['/destinations', item.code, 'documents']">Abrir bandeja</a>
-                <button class="secondary" [disabled]="busy()" (click)="startEdit(item)">Editar</button>
+                <a class="secondary" [routerLink]="['/destinations', item.code, 'edit']">Editar</a>
                 <button class="secondary" [disabled]="busy() || item.code === 'COLA_URGENCIAS_MEDICAS'" (click)="toggle(item)">{{ item.active ? "Desactivar" : "Activar" }}</button>
                 <button class="danger" [disabled]="busy() || item.code === 'COLA_URGENCIAS_MEDICAS'" (click)="deleteDestination(item)">Eliminar</button>
-              }</td></tr>
+              </td></tr>
         }
       </tbody></table></div>
     </section>
@@ -84,9 +75,6 @@ export class DestinationsPage implements OnInit {
   busy = signal(false);
   error = signal("");
   message = signal("");
-  editing = signal<string | null>(null);
-  editName = "";
-  editKind: DestinationInput["kind"] = "DEPARTMENT";
   get types() { return this.api.catalog().types.map(item => item.code).filter(code => !["OTHER", "UNKNOWN"].includes(code)); }
   get specialties() { return this.api.catalog().specialties.map(item => item.code).filter(code => !["OTHER", "UNKNOWN"].includes(code)); }
   label = label;
@@ -109,12 +97,6 @@ export class DestinationsPage implements OnInit {
   createDestination() {
     const payload = { ...this.draft, code: this.draft.code.trim().toUpperCase(), name: this.draft.name.trim() };
     void this.run(async () => { await this.api.createDestination(payload); this.draft = { code: "", name: "", kind: "DEPARTMENT" }; });
-  }
-  startEdit(item: Destination) { this.editing.set(item.code); this.editName = item.name; this.editKind = item.kind; }
-  saveEdit(item: Destination) {
-    const name = this.editName.trim();
-    const kind = this.editKind;
-    void this.run(async () => { await this.api.updateDestination(item.code, { name, kind }); this.editing.set(null); });
   }
   toggle(item: Destination) { void this.run(() => this.api.updateDestination(item.code, { active: !item.active })); }
   deleteDestination(item: Destination) {

@@ -24,6 +24,8 @@ services:
       SLACK_WEBHOOK_URL_URGENTE: ${SLACK_WEBHOOK_URL_URGENTE:-}
       SLACK_MAX_ATTEMPTS: ${SLACK_MAX_ATTEMPTS:-3}
       PUBLIC_FRONTEND_URL: ${PUBLIC_FRONTEND_URL:-http://localhost:4200}
+      # Only host loopback and the private Docker bridge may supply proxy headers.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
       GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-90}

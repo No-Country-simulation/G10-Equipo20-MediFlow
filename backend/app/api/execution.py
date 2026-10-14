@@ -147,7 +147,7 @@ def retry_backups(document_id: UUID, session: Db):
 def notifications(document_id: UUID, session: Db, settings: Config):
     if not DocumentRepository(session).get(document_id):
         raise HTTPException(404, 'DOCUMENT_NOT_FOUND')
-    return [{'id': row.id, 'level': row.level, 'status': row.status, 'attempts': row.attempts,
+    return [{'id': row.id, 'level': row.level, 'destination_code': row.destination_code, 'status': row.status, 'attempts': row.attempts,
              'sent_at': row.sent_at, 'error_code': row.error_code,
              'will_retry': row.retryable and row.attempts < settings.slack_max_attempts}
             for row in session.scalars(select(SlackNotification).where(SlackNotification.document_id == document_id)

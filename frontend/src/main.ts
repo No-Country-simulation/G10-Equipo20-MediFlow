@@ -13,6 +13,7 @@ import { Router } from "@angular/router";
 import { Api } from "./app/api";
 import { DocumentsPage } from "./app/documents.page";
 import { DetailPage } from "./app/detail.page";
+import { DestinationEditPage } from "./app/destination-edit.page";
 import { DestinationsPage } from "./app/destinations.page";
 import { InboxesPage } from "./app/inboxes.page";
 import { PatientsPage } from "./app/patients.page";
@@ -61,6 +62,7 @@ bootstrapApplication(Root, {
         { path: "destinations/:code/documents", canActivate: [permissionGuard("DOCUMENTS_READ")], component: InboxesPage },
         { path: "patients", canActivate: [permissionGuard("PATIENTS_READ")], component: PatientsPage },
         { path: "patients/:id", canActivate: [permissionGuard("PATIENTS_READ")], component: PatientDetailPage },
+        { path: "destinations/:code/edit", canActivate: [permissionGuard("DESTINATIONS_MANAGE")], component: DestinationEditPage },
         { path: "destinations", canActivate: [permissionGuard("DESTINATIONS_MANAGE")], component: DestinationsPage },
       ] },
       { path: "**", redirectTo: "login" },

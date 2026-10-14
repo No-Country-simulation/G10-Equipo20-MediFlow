@@ -20,6 +20,8 @@ LEVELS = {
 }
 
 PRECAUTION = re.compile(r'\b(?:signos de alarma|en caso de|si (?:presenta|aparece|ocurre|persiste|empeora)|'
+                        r'(?:consultar|acudir|buscar|solicitar|llamar|contactar|regresar|volver|seek|call|return|procurar)'
+                        r'.{0,100}\b(?:ante|en caso de|si|if|caso)\b|'
                         r'acudir.{0,70}\bsi\b|if (?:you|symptoms)|caso (?:apresente|ocorra))\b', re.I)
 
 
@@ -64,7 +66,7 @@ def detect_priority(content: ContentResult) -> PriorityResult:
                             invalid = True
                         else:
                             candidates.append(("CRITICAL" if critical.search(clause) else "URGENT", annotate_text_evidence(content, Evidence(page=page.page, quote=clause.strip()))))
-                if not signal and re.search(r"\b(?:urgente|cr[ií]tico|emergencia)\b", line, re.I) and not historical.search(line):
+                if not signal and re.search(r"\b(?:urgente|cr[ií]tico|emergencia)\b", line, re.I) and not historical.search(line) and not precautionary_signal(content, Evidence(page=page.page, quote=line.strip())):
                     # A label/channel alone is not a priority declaration.
                     if not re.match(r"\s*(?:canal|servicio|[aá]rea|ingreso|guardia|referencia|c[oó]digo|id)\s*:", line, re.I) and line.strip().casefold() not in ("urgencias", "emergencias"):
                         invalid = True

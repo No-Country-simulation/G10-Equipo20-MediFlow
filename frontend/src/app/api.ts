@@ -22,7 +22,7 @@ export class Api {
   write<T = unknown>(path: string, method: string, body?: unknown) { return this.request<T>(path, {method, headers: {"Content-Type": "application/json"}, ...(body === undefined ? {} : {body: JSON.stringify(body)})}); }
   catalog = signal<DocumentCatalog>({types: [], specialties: [], rule_version: ""});
   countries = signal<{ code: string; name: string }[]>([]);
-  country = signal(localStorage.getItem("mediflow-country") || "EC");
+  country = signal(localStorage.getItem("mediflow-country") || "");
   private configuration?: Promise<void>;
   selectCountry(code: string) {
     this.country.set(code);
@@ -129,6 +129,9 @@ export class Api {
   deleteDocument(id: string) {
     return this.request<void>(`/documents/${id}`, { method: "DELETE" });
   }
+  destination(code: string) {
+    return this.request<import("./models").DestinationDetail>(`/destinations/${encodeURIComponent(code)}`);
+  }
   destinations() {
     return this.request<import("./models").Destination[]>("/destinations");
   }
@@ -149,7 +152,7 @@ export class Api {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     });
   }
-  updateDestination(code: string, data: Partial<import("./models").Destination>) {
+  updateDestination(code: string, data: import("./models").DestinationUpdate) {
     return this.request<import("./models").Destination>(`/destinations/${code}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     });

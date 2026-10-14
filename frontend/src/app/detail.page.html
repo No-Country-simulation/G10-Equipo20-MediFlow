@@ -63,9 +63,9 @@
     @if (slackStatus(); as slack) {
       <p>{{ label(slack.reason) }}</p>
       <small>Canal crítico: {{ slack.critical_configured ? 'configurado' : 'sin configurar' }} · Canal urgente: {{ slack.urgent_configured ? (slack.urgent_uses_main_webhook ? 'usa el canal principal' : 'configurado') : 'sin configurar' }}.</small>
-      <p class="muted">Slack avisa de prioridad urgente o crítica escrita y respaldada por una cita. Rutina y revisión humana por sí solas no generan avisos.</p>
+      <p class="muted">Las alertas de prioridad usan los canales globales. Cada bandeja con Slack configurado recibe un aviso al entregarse un documento o ingresar a revisión humana.</p>
     }
-    @for (n of notifications(); track n.id) { <div class="document-context"><span>{{ label(n.level) }} · {{ n.status === 'SENT' ? 'Enviado a Slack' : n.status === 'PENDING' ? 'Pendiente de envío' : n.status === 'UNKNOWN' ? 'Entrega sin confirmar' : n.will_retry ? 'Reintento programado' : 'No enviado' }} · Envíos intentados: {{ n.attempts }}</span>
+    @for (n of notifications(); track n.id) { <div class="document-context"><span>{{ n.destination_code ? (n.level === 'REVIEW' ? 'Revisión en ' : 'Entrega a ') + n.destination_code : label(n.level) }} · {{ n.status === 'SENT' ? 'Enviado a Slack' : n.status === 'PENDING' ? 'Pendiente de envío' : n.status === 'UNKNOWN' ? 'Entrega sin confirmar' : n.will_retry ? 'Reintento programado' : 'No enviado' }} · Envíos intentados: {{ n.attempts }}</span>
       @if (n.error_code) { <small>{{ label(n.error_code) }}</small> }
       @if ((n.status === 'FAILED' || n.status === 'UNKNOWN') && api.can('DOCUMENTS_PROCESS')) { <button class="secondary" (click)="retryNotification(n)">Reintentar aviso</button> }
     </div> }

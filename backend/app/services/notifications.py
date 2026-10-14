@@ -1,6 +1,6 @@
 """Adapted from Cesar-Barrera's webhook transport, with a PostgreSQL outbox.
 
-CRITICAL uses the main webhook; URGENT its own webhook, falling back to main.
+Priority alerts use the urgent webhook; general inboxes use their configured webhook.
 No SMTP. Webhooks cannot guarantee exactly-once delivery after a lost response.
 """
 from datetime import UTC, datetime, timedelta
@@ -10,6 +10,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from app.models.notification import SlackNotification
+from app.services.slack_message import notification_payload
 
 
 class SlackError(Exception):
@@ -17,20 +18,28 @@ class SlackError(Exception):
         self.code, self.retryable, self.uncertain, self.retry_after = code, retryable, uncertain, retry_after
 
 
+def valid_slack_webhook(webhook: str) -> bool:
+    try:
+        parsed = urlsplit(webhook)
+    except ValueError:
+        return False
+    return (parsed.scheme == 'https' and parsed.netloc in ('hooks.slack.com', 'hooks.slack.com:443')
+            and not parsed.query and not parsed.fragment and not parsed.username
+            and bool(re.fullmatch(r'/services/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+', parsed.path)))
+
+
 class SlackNotifier:
     def __init__(self, settings):
         self.settings = settings
 
-    def send(self, level, payload):
+    def send(self, level, payload, *, webhook=None):
         primary = self.settings.slack_webhook_url.get_secret_value().strip()
         urgent = self.settings.slack_webhook_url_urgente.get_secret_value().strip()
-        webhook = (urgent or primary) if level == 'URGENT' else primary
+        if webhook is None:
+            webhook = (urgent or primary) if level in ('URGENT', 'CRITICAL') else primary
         if not webhook:
             raise SlackError('SLACK_NOT_CONFIGURED')
-        parsed = urlsplit(webhook)
-        if (parsed.scheme != 'https' or parsed.netloc not in ('hooks.slack.com', 'hooks.slack.com:443')
-                or parsed.query or parsed.fragment or parsed.username
-                or not re.fullmatch(r'/services/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+', parsed.path)):
+        if not valid_slack_webhook(webhook):
             raise SlackError('SLACK_INVALID_WEBHOOK')
         try:
             # No implicit retries and no URL/response body in errors or logs.
@@ -71,26 +80,42 @@ def notification_eligibility(result):
 def notification_configuration(settings):
     primary = bool(settings.slack_webhook_url.get_secret_value().strip())
     urgent = bool(settings.slack_webhook_url_urgente.get_secret_value().strip())
-    return {'critical_configured': primary, 'urgent_configured': urgent or primary,
+    return {'critical_configured': urgent or primary, 'urgent_configured': urgent or primary,
             'urgent_uses_main_webhook': not urgent and primary}
 
 
+def schedule_destination_notification(session, document, result, settings):
+    # Human review is an operational inbox, not a clinical routing decision.
+    # Queue its notice only once the final review state has been persisted.
+    review = document.status == 'EN_REVISION_HUMANA'
+    if review:
+        destination_code, event = 'REVISION_HUMANA', 'REVIEW'
+    elif (document.status == 'ENTREGADO' and result is not None and result.routing is not None
+            and result.routing.delivery_status == 'DELIVERED_LOCAL'):
+        destination_code, event = result.routing.destination, 'DELIVERED'
+    else:
+        return
+    from app.models.destination import Destination
+    destination = session.get(Destination, destination_code)
+    if destination is None or not destination.slack_webhook_url:
+        return
+    payload = notification_payload(document, result, settings, event=event, destination_name=destination.name)
+    now = datetime.now(UTC)
+    session.execute(insert(SlackNotification).values(document_id=document.document_id,
+        level=event, destination_code=destination.code, status='PENDING',
+        payload=payload,
+        attempts=0, retryable=True, created_at=now, retry_at=now)
+        .on_conflict_do_nothing(constraint='uq_slack_document_level'))
+
+
 def schedule_notification(session, document, result, settings):
+    schedule_destination_notification(session, document, result, settings)
     if not notification_eligibility(result)[0]:
         return
     priority = result.priority
-    level = 'Crítica' if priority.level == 'CRITICAL' else 'Urgente'
-    kind = result.classification.document_type if result.classification else 'UNKNOWN'
-    text = (f'MediFlow · Prioridad {level} documentada.\nDocumento: {document.document_id}\n'
-            f'País: {document.country} · Tipo: {kind}\nVerifica el original y el resultado del triaje.')
-    base = settings.public_frontend_url.rstrip('/')
-    if base:
-        text += f'\n<{base}/documents/{document.document_id}|Abrir en MediFlow>'
+    payload = notification_payload(document, result, settings, event=priority.level,
+                                   destination_name='Urgencias Médicas')
     now = datetime.now(UTC)
-    # Visual distinction borrowed from Aldo's alert presentation, without patient data.
-    payload = {'text': text, 'unfurl_links': False, 'unfurl_media': False,
-               'attachments': [{'color': '#C81E1E' if priority.level == 'CRITICAL' else '#5289AD',
-                                'text': 'Alerta crítica' if priority.level == 'CRITICAL' else 'Aviso urgente'}]}
     session.execute(insert(SlackNotification).values(document_id=document.document_id, level=priority.level,
         status='PENDING', payload=payload,
         attempts=0, retryable=True, created_at=now, retry_at=now)
@@ -107,7 +132,13 @@ def process_notification(session, settings, notifier=None):
         return False
     row.attempts += 1
     try:
-        (notifier or SlackNotifier(settings)).send(row.level, row.payload)
+        transport = notifier or SlackNotifier(settings)
+        if row.destination_code:
+            from app.models.destination import Destination
+            destination = session.get(Destination, row.destination_code)
+            transport.send(row.level, row.payload, webhook=destination.slack_webhook_url if destination else '')
+        else:
+            transport.send(row.level, row.payload)
         row.status, row.error_code, row.sent_at, row.retryable = 'SENT', None, datetime.now(UTC), False
     except SlackError as exc:
         row.status = 'UNKNOWN' if exc.uncertain else 'FAILED'

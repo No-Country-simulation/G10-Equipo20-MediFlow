@@ -17,7 +17,7 @@ import { Destination, DocumentRecord, label } from "./models";
       <div class="inbox-links">
         @for (item of destinations(); track item.code) {
           <a [routerLink]="['/destinations', item.code, 'documents']" [class.active]="item.code === code()">
-            {{ item.name }}
+            {{ item.name }} · {{ item.slack_configured ? "Slack configurado" : "Slack sin configurar" }}
           </a>
         }
       </div>
@@ -25,7 +25,9 @@ import { Destination, DocumentRecord, label } from "./models";
     @if (code()) {
       <section class="panel catalog-panel">
         <div class="panel-heading"><div><h2>{{ destinationName() }}</h2>
-          <p class="muted">Entregado a bandeja local no significa recibido por una HCE ni otro sistema externo.</p></div>
+          <p class="muted">{{ code() === "REVISION_HUMANA" ? "Documentos pendientes de validación humana, sin asignación clínica definitiva." : "Documentos entregados a esta bandeja local." }}</p></div>
+          <p class="muted">Slack: {{ slackConfigured() ? "configurado" : "sin configurar" }}.</p>
+          @if (api.can('DESTINATIONS_MANAGE')) { <a class="secondary" [routerLink]="['/destinations', code(), 'edit']">Configurar destino</a> }
         </div>
         @if (loading()) { <p class="muted">Cargando documentos…</p> }
         @else if (!documents().length) { <p class="muted">No hay documentos para este destino y país.</p> }
@@ -59,6 +61,7 @@ export class InboxesPage {
     effect(() => { this.api.country(); this.code(); untracked(() => void this.load()); });
     void this.api.destinations().then(items => this.destinations.set(items)).catch(e => this.error.set(e.message));
   }
+  slackConfigured() { return !!this.destinations().find(item => item.code === this.code())?.slack_configured; }
   destinationName() { return this.destinations().find(item => item.code === this.code())?.name || this.code(); }
   async load() {
     if (!this.code()) { this.documents.set([]); return; }

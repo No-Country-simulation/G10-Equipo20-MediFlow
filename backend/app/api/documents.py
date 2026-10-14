@@ -172,7 +172,10 @@ def list_documents(
     if priority is not None:
         query = query.where(func.coalesce(Document.processing_result["priority"]["level"].astext, "UNASSESSED") == priority)
     if destination is not None:
-        query = query.where(Document.processing_result["routing"]["destination"].astext == destination)
+        if destination == "REVISION_HUMANA":
+            query = query.where(Document.status == DocumentStatus.EN_REVISION_HUMANA.value)
+        else:
+            query = query.where(Document.processing_result["routing"]["destination"].astext == destination)
     if q.strip():
         query = query.outerjoin(Patient, Document.patient_id == Patient.id).where(or_(
             Document.original_filename.icontains(q.strip(), autoescape=True),

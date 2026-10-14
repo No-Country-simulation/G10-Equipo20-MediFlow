@@ -61,9 +61,7 @@ def build_processing_graph(provider: DocumentProvider, settings: Settings, sessi
         return {"classification": result}
 
     def extract(state):
-        if state.get("extraction"):
-            return {}
-        extracted = provider.extract(state["content"], state["classification"])
+        extracted = state.get("extraction") or provider.extract(state["content"], state["classification"])
         from app.services.citation_alignment import align_citations
         extracted = align_citations(state['content'], extracted)
         extracted = complete_identity(state["content"], extracted, state.get("country", "EC"))

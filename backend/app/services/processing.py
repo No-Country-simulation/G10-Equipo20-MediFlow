@@ -46,6 +46,7 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
         previous.status = S.ENTREGADO
         document.processing_result = previous.model_dump(mode='json')
         schedule_backup(session, document, settings)
+        schedule_notification(session, document, previous, settings)
     if previous and document.status in (S.ENRUTADO, S.ENTREGADO, S.EN_REVISION_HUMANA, S.RESUELTO):
         if job_id:
             job = owned_job(session, job_id, token)
@@ -66,6 +67,7 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
         if document.processing_result:
             document.processing_result = {**document.processing_result, 'status': document.status}
             schedule_backup(session, document, settings)
+        schedule_notification(session, document, previous, settings)
         job.status, job.error_code = 'FAILED', 'RETRIES_EXHAUSTED'
         session.commit()
         raise DocumentError(409, 'RETRIES_EXHAUSTED')
@@ -98,7 +100,7 @@ def process_document(document_id: UUID, session: Session, settings: Settings,
     def result_snapshot():
         return ProcessingResult(document_id=document_id, status=document.status, processed_at=datetime.now(UTC),
             model=getattr(provider, 'model', settings.gemini_model), provider=getattr(provider, 'name', 'gemini'),
-            pipeline_version='documentary-v10',
+            pipeline_version='documentary-v11',
             **{key: state.get(key) for key in ('content', 'classification', 'extraction', 'validation', 'priority',
                                              'quality', 'local_alert', 'routing', 'patient')},
             clinical_data=clinical_projection(state.get('extraction')),

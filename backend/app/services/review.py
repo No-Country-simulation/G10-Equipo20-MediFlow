@@ -44,6 +44,8 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
         setattr(result, key, value.model_copy(deep=True))
     if result.content is None or result.classification is None or result.extraction is None:
         raise DocumentError(422, 'REVIEW_REQUIRES_COMPLETE_RESULT')
+    from app.services.identity_detection import complete_identity
+    result.extraction = complete_identity(result.content, result.extraction, document.country)
     pages = result.content.pages
     expected_pages = [None] if document.format == 'text' else list(range(1, len(pages) + 1))
     if not pages or len(pages) > settings.processing_max_pages or [p.page for p in pages] != expected_pages:
@@ -80,7 +82,7 @@ def review_document(document_id, request: ReviewRequest, session, settings) -> P
     if not result.validation.valid:
         raise DocumentError(422, 'REVIEW_HAS_UNRESOLVED_ISSUES:' + ','.join(result.validation.issues))
     result.routing = route_classification(result.classification, result.priority, session)
-    result.pipeline_version = 'documentary-v10'
+    result.pipeline_version = 'documentary-v11'
     result.clinical_data = clinical_projection(result.extraction)
     transition(document, S.RESUELTO, 'HUMAN_REVIEW_' + request.action)
     transition(document, S.ENRUTADO, 'LOCAL_DESTINATION_REGISTERED')

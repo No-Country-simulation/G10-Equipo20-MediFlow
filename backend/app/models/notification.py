@@ -12,6 +12,7 @@ class SlackNotification(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     document_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey('documents.document_id', ondelete='CASCADE'), index=True)
     level: Mapped[str] = mapped_column(String(10))
+    destination_code: Mapped[str | None] = mapped_column(String(60), ForeignKey('destinations.code', ondelete='RESTRICT'))
     status: Mapped[str] = mapped_column(String(20))
     payload: Mapped[dict] = mapped_column(JSONB)
     attempts: Mapped[int] = mapped_column(Integer, default=0)

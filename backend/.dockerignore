@@ -8,6 +8,8 @@
 !app/**
 !tests/
 !tests/**
+!verification/
+!verification/**
 !alembic.ini
 !migrations/
 !migrations/**

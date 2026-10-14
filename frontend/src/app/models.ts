@@ -31,6 +31,16 @@ export interface DestinationInput {
 }
 export interface Destination extends DestinationInput {
   active: boolean;
+  slack_configured: boolean;
+}
+export interface DestinationDetail extends Destination {
+  slack_webhook_url: string;
+}
+export interface DestinationUpdate {
+  name?: string;
+  kind?: DestinationInput["kind"];
+  active?: boolean;
+  slack_webhook_url?: string;
 }
 export interface RoutingRuleInput {
   document_type: string;
@@ -325,5 +335,5 @@ export interface ClinicalEntity {entity_id: string | null; name?: ExtractedField
 export interface ProcessingJob {id: string; document_id: string; status: string; active_node: string | null; completed_nodes: string[]; provider_calls: Record<string,number>; attempt: number; error_code: string | null; updated_at: string;}
 export interface DocumentaryPolicy {document_type: string; version: number; required_groups: string[][]; weights: Record<string,number>; threshold: number;}
 export interface Backup {id: number; status: string; attempts: number; error_code: string | null;}
-export interface SlackNotification {id: number; level: string; status: 'PENDING' | 'SENT' | 'FAILED' | 'UNKNOWN'; attempts: number; sent_at: string | null; error_code: string | null; will_retry: boolean;}
+export interface SlackNotification {destination_code?: string | null; id: number; level: string; status: 'PENDING' | 'SENT' | 'FAILED' | 'UNKNOWN'; attempts: number; sent_at: string | null; error_code: string | null; will_retry: boolean;}
 export interface SlackStatus {eligible: boolean; reason: string; critical_configured: boolean; urgent_configured: boolean; urgent_uses_main_webhook: boolean;}

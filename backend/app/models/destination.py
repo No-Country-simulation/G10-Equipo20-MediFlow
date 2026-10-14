@@ -11,6 +11,12 @@ class Destination(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    slack_webhook_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+
+
+    @property
+    def slack_configured(self) -> bool:
+        return bool(self.slack_webhook_url)
 
 
 class RoutingRule(Base):

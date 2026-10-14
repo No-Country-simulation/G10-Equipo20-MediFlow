@@ -1,4 +1,4 @@
-"""Local administrative catalog; delivery to external systems is out of scope."""
+"""Administrative routing catalog and destination notification contacts."""
 
 from typing import Annotated, Literal
 
@@ -20,22 +20,46 @@ Admin = Annotated[dict[str, str], Depends(require_staff)]
 Specialty = Literal["ANY"] | ClassifiedSpecialty
 
 
-class DestinationInput(BaseModel):
+class DestinationContacts(BaseModel):
+    slack_webhook_url: str = Field(default="", max_length=512)
+
+    @field_validator('slack_webhook_url')
+    @classmethod
+    def validate_webhook(cls, value):
+        from app.services.notifications import valid_slack_webhook
+        value = value.strip()
+        if value and not valid_slack_webhook(value):
+            raise ValueError('Usa un webhook HTTPS válido de hooks.slack.com/services/...')
+        return value
+
+
+
+class DestinationInput(DestinationContacts):
     model_config = ConfigDict(extra="forbid")
     code: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,59}$")
     name: str = Field(min_length=2, max_length=120)
     kind: Literal["DEPARTMENT", "QUEUE", "SYSTEM"]
 
 
-class DestinationUpdate(BaseModel):
+class DestinationUpdate(DestinationContacts):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=2, max_length=120)
     kind: Literal["DEPARTMENT", "QUEUE", "SYSTEM"] | None = None
     active: bool | None = None
 
 
-class DestinationOutput(DestinationInput):
+class DestinationOutput(BaseModel):
+    code: str
+    name: str
+    kind: Literal["DEPARTMENT", "QUEUE", "SYSTEM"]
     active: bool
+    slack_configured: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DestinationDetail(DestinationOutput):
+    slack_webhook_url: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,6 +101,15 @@ def active_destination(session: Session, code: str) -> Destination:
 @router.get("/destinations", response_model=list[DestinationOutput], dependencies=[Depends(require_permission("DESTINATIONS_READ"))])
 def list_destinations(session: Db):
     return session.scalars(select(Destination).order_by(Destination.name)).all()
+
+
+@router.get("/destinations/{code}", response_model=DestinationDetail, dependencies=[Depends(require_permission("DESTINATIONS_MANAGE"))])
+def get_destination(code: str, session: Db, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    destination = session.get(Destination, code)
+    if destination is None:
+        raise HTTPException(404, "DESTINATION_NOT_FOUND")
+    return destination
 
 
 @router.post("/destinations", response_model=DestinationOutput, status_code=201, dependencies=[Depends(require_permission("DESTINATIONS_MANAGE"))])
