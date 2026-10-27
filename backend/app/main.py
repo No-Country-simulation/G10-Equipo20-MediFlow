@@ -21,12 +21,45 @@ from app.core.request_limits import RequestBodyLimitMiddleware
 
 logger = logging.getLogger("mediflow")
 
+db_creation_status = {"status": "pending"}
 migration_status = {"status": "pending", "error": None}
 bootstrap_status = {"status": "pending", "error": None}
 
 
+def ensure_database_exists():
+    """Ensure target database exists in postgres cluster; create it if missing."""
+    global db_creation_status
+    from app.core.config import get_settings
+    from sqlalchemy import create_engine, text
+    import traceback
+
+    try:
+        settings = get_settings()
+        target_db = settings.postgres_db
+        # Connect to 'postgres' maintenance database with autocommit
+        m_url = settings.database_url.set(database="postgres")
+        m_engine = create_engine(m_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+        with m_engine.connect() as conn:
+            rows = conn.execute(text("SELECT datname FROM pg_database WHERE datistemplate = false;")).fetchall()
+            cluster_dbs = [r[0] for r in rows]
+            logger.info(f"Bases de datos encontradas en cluster: {cluster_dbs}")
+
+            if target_db not in cluster_dbs:
+                logger.info(f"Creando base de datos '{target_db}'...")
+                conn.execute(text(f'CREATE DATABASE "{target_db}"'))
+                logger.info(f"Base de datos '{target_db}' creada exitosamente.")
+                cluster_dbs.append(target_db)
+
+        m_engine.dispose()
+        db_creation_status = {"status": "ok", "cluster_dbs": cluster_dbs, "target": target_db}
+    except Exception as e:
+        logger.error(f"Error en ensure_database_exists: {e}\n{traceback.format_exc()}")
+        db_creation_status = {"status": "error", "error": str(e), "traceback": traceback.format_exc()}
+
+
 def run_db_migrations():
     global migration_status
+    ensure_database_exists()
     try:
         from alembic import command
         from alembic.config import Config
@@ -51,15 +84,20 @@ def run_bootstrap_admin():
     try:
         from app.core.config import get_settings
         settings = get_settings()
-        pwd = settings.admin_bootstrap_password.get_secret_value() if settings.admin_bootstrap_password else ""
-        if settings.admin_bootstrap_email and pwd:
-            logger.info("Ejecutando bootstrap de cuenta administradora...")
-            from app.core.bootstrap_admin import main as bootstrap_main
-            bootstrap_main()
-            bootstrap_status = {"status": "ok", "error": None}
-            logger.info("Bootstrap de administrador finalizado exitosamente.")
-        else:
-            bootstrap_status = {"status": "skipped", "reason": "missing credentials"}
+        email = str(settings.admin_bootstrap_email or '').strip()
+        pwd = settings.admin_bootstrap_password.get_secret_value() if settings.admin_bootstrap_password else ''
+
+        # Set default bootstrap credentials if not supplied via Render dashboard
+        if not email or not pwd:
+            os.environ.setdefault("ADMIN_BOOTSTRAP_EMAIL", "admin@mediflow.com")
+            os.environ.setdefault("ADMIN_BOOTSTRAP_PASSWORD", "AdminMediflow2026!")
+            get_settings.cache_clear()
+
+        logger.info("Ejecutando bootstrap de cuenta administradora...")
+        from app.core.bootstrap_admin import main as bootstrap_main
+        bootstrap_main()
+        bootstrap_status = {"status": "ok", "error": None}
+        logger.info("Bootstrap de administrador finalizado exitosamente.")
     except Exception as e:
         import traceback
         bootstrap_status = {"status": "error", "error": str(e), "traceback": traceback.format_exc()}
@@ -112,6 +150,7 @@ def diagnostic():
     from app.core.config import get_settings
 
     res = {
+        "db_creation": db_creation_status,
         "migrations": migration_status,
         "bootstrap": bootstrap_status,
     }
