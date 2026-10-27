@@ -39,6 +39,19 @@ import { Api } from "./api";
         @if (error()) { <p class="auth-error" role="alert">{{ error() }}</p> }
         @if (message()) { <p class="auth-success" role="status">{{ message() }}</p> }
         <button type="submit" class="auth-submit" [disabled]="busy()">{{ busy() ? 'Espera…' : admin() ? 'Ingresar' : register() ? 'Registrar' : 'Ingresar' }}</button>
+        @if (!admin()) {
+          <div style="text-align: center; margin-top: 1.25rem; font-size: 0.9rem;">
+            <a routerLink="/administradores" style="color: var(--primary, #5289ad); text-decoration: none; font-weight: 500;">
+              🔐 ¿Eres personal o administrador? Ingresa aquí
+            </a>
+          </div>
+        } @else {
+          <div style="text-align: center; margin-top: 1.25rem; font-size: 0.9rem;">
+            <a routerLink="/login" style="color: var(--primary, #5289ad); text-decoration: none; font-weight: 500;">
+              👤 ¿Eres paciente? Consulta tus documentos aquí
+            </a>
+          </div>
+        }
       </form>
     </section>
   </div>`,
