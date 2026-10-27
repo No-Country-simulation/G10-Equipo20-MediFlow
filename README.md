@@ -15,13 +15,31 @@ La inteligencia artificial apoya la lectura y extracción de información. El si
 
 ## Acceso a la plataforma
 
-**[Abrir MediFlow](https://3.17.63.167)**
+**[Abrir MediFlow Cloud](https://mediflow-app-zhyw.onrender.com)**
 
-| Espacio | Acceso | ¿Qué permite? |
+| Espacio | Acceso Directo | ¿Qué permite? |
 | --- | --- | --- |
-| Pacientes | [Iniciar sesión](https://3.17.63.167/login) | Consultar los documentos asociados a su identidad. |
-| Nuevos pacientes | [Crear una cuenta](https://3.17.63.167/registro) | Registrarse con país, identificación, email y contraseña. |
-| Personal autorizado | [Acceso administrativo](https://3.17.63.167/administradores) | Gestionar documentos, pacientes, bandejas y revisión según sus permisos. |
+| **Personal Autorizado & Médico** | [Acceso Administrativo](https://mediflow-app-zhyw.onrender.com/administradores) | Gestionar documentos, pacientes, bandejas clínicas, triage de IA y revisión según permisos. |
+| **Pacientes Registrados** | [Iniciar Sesión Paciente](https://mediflow-app-zhyw.onrender.com/login) | Consultar los documentos asociados a su identidad y descargar originales. |
+| **Nuevos Pacientes** | [Registro de Paciente](https://mediflow-app-zhyw.onrender.com/registro) | Registrarse con país, número de identificación, email y contraseña. |
+| **Documentación de API** | [Swagger UI](https://mediflow-backend-1ulf.onrender.com/docs) | Explorar y probar interactivamente los endpoints del backend FastAPI. |
+
+### Credenciales de Prueba para Evaluadores y Jurado
+
+Para facilitar la evaluación de la plataforma sin necesidad de registrar nuevas cuentas, se han habilitado los siguientes accesos verificados:
+
+#### 1. Personal Clínico y Administrativo (Ingresar en /administradores)
+| Rol | Correo Electrónico | Contraseña | Capacidades |
+| :--- | :--- | :--- | :--- |
+| **Superadministrador** | dmin@mediflow.com | AdminMediflow2026! | Control total, configuración de canales Slack y gestión de destinos. |
+| **Médico / Operador** | doctor@mediflow.com | DoctorMediflow2026! | Carga de documentos clínicos, consulta de pacientes y bandejas. |
+| **Revisor Humano** | 
+evisor@mediflow.com | RevisorMediflow2026! | Cola de revisión HITL para validar o reclasificar documentos observados. |
+
+#### 2. Portal de Pacientes (Ingresar en /login)
+| Rol | País | Cédula / Identificación | Contraseña | Nombre |
+| :---: | :---: | :--- | :--- | :--- |
+| **Paciente** | **Colombia (CO)** | 1099900101 | Paciente2026! | Carlos Mendoza |
 
 ## Qué hace diferente a MediFlow
 
