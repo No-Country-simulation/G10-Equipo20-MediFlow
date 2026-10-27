@@ -28,18 +28,17 @@ La inteligencia artificial apoya la lectura y extracción de información. El si
 
 Para facilitar la evaluación de la plataforma sin necesidad de registrar nuevas cuentas, se han habilitado los siguientes accesos verificados:
 
-#### 1. Personal Clínico y Administrativo (Ingresar en /administradores)
+#### 1. Personal Clínico y Administrativo (Ingresar en `/administradores`)
 | Rol | Correo Electrónico | Contraseña | Capacidades |
 | :--- | :--- | :--- | :--- |
-| **Superadministrador** | dmin@mediflow.com | AdminMediflow2026! | Control total, configuración de canales Slack y gestión de destinos. |
-| **Médico / Operador** | doctor@mediflow.com | DoctorMediflow2026! | Carga de documentos clínicos, consulta de pacientes y bandejas. |
-| **Revisor Humano** | 
-evisor@mediflow.com | RevisorMediflow2026! | Cola de revisión HITL para validar o reclasificar documentos observados. |
+| **Superadministrador** | `admin@mediflow.com` | `AdminMediflow2026!` | Control total, configuración de canales Slack y gestión de destinos. |
+| **Médico / Operador** | `doctor@mediflow.com` | `DoctorMediflow2026!` | Carga de documentos clínicos, consulta de pacientes y bandejas. |
+| **Revisor Humano** | `revisor@mediflow.com` | `RevisorMediflow2026!` | Cola de revisión HITL para validar o reclasificar documentos observados. |
 
-#### 2. Portal de Pacientes (Ingresar en /login)
+#### 2. Portal de Pacientes (Ingresar en `/login`)
 | Rol | País | Cédula / Identificación | Contraseña | Nombre |
 | :---: | :---: | :--- | :--- | :--- |
-| **Paciente** | **Colombia (CO)** | 1099900101 | Paciente2026! | Carlos Mendoza |
+| **Paciente** | **Colombia (CO)** | `1099900101` | `Paciente2026!` | Carlos Mendoza |
 
 ## Qué hace diferente a MediFlow
 
