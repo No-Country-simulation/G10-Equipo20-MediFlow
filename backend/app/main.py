@@ -143,44 +143,6 @@ app.include_router(patients_router)
 app.include_router(auth_router)
 
 
-@app.get("/diagnostic", tags=["debug"])
-def diagnostic():
-    import traceback
-    from app.core.database import get_engine
-    from app.core.config import get_settings
-
-    res = {
-        "db_creation": db_creation_status,
-        "migrations": migration_status,
-        "bootstrap": bootstrap_status,
-    }
-    try:
-        s = get_settings()
-        res["settings"] = {
-            "postgres_host": s.postgres_host,
-            "postgres_port": s.postgres_port,
-            "postgres_db": s.postgres_db,
-            "postgres_user": s.postgres_user,
-            "admin_email": s.admin_bootstrap_email,
-            "has_admin_pwd": bool(s.admin_bootstrap_password.get_secret_value() if s.admin_bootstrap_password else False),
-        }
-    except Exception as e:
-        res["settings_error"] = str(e)
-
-    try:
-        engine = get_engine()
-        with engine.connect() as conn:
-            tables = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname='public';")).fetchall()
-            res["tables"] = [t[0] for t in tables]
-            if "accounts" in res["tables"]:
-                accounts = conn.execute(text("SELECT email, role, active FROM accounts;")).fetchall()
-                res["accounts"] = [{"email": a[0], "role": a[1], "active": a[2]} for a in accounts]
-    except Exception as e:
-        res["db_query_error"] = str(e)
-        res["db_query_traceback"] = traceback.format_exc()
-
-    return res
-
 
 @app.get("/document-types", tags=["configuration"])
 def types_catalog():
