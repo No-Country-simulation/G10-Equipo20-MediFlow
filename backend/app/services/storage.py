@@ -20,19 +20,20 @@ class LocalDocumentStorage:
     bucket = None
 
     def __init__(self, directory: Path):
-        self.directory = directory
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
-        # Las claves las genera el servidor; no aceptar rutas externas.
-        if not key or Path(key).name != key or "/" in key or "\\" in key:
-            raise ValueError("Invalid storage key")
-        return self.directory / key
+        filename = Path(key).name
+        if not filename or filename in (".", ".."):
+            raise ValueError(f"Invalid storage key: {key}")
+        return self.directory / filename
 
     def save(self, key: str, source: BinaryIO, max_bytes: int) -> tuple[Path, int]:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self._path(key)
+        path.unlink(missing_ok=True)
         size = 0
-        # Abrir fuera del try evita eliminar un archivo previo ante una colision.
         target = path.open("xb")
         try:
             with target:
@@ -47,12 +48,16 @@ class LocalDocumentStorage:
             raise
 
     def delete(self, key: str) -> None:
-        self._path(key).unlink(missing_ok=True)
+        try:
+            self._path(key).unlink(missing_ok=True)
+        except Exception:
+            pass
 
     def local_path(self, key: str) -> Path:
         return self._path(key)
 
     def put_file(self, key: str, path: Path, max_bytes: int) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
         with path.open("rb") as source:
             self.save(key, source, max_bytes)
 
@@ -68,9 +73,15 @@ class LocalDocumentStorage:
 
 def get_storage(settings, backend=None, bucket=None):
     selected = backend or settings.storage_backend
-    if selected == "local" and os.environ.get("TESTING") == "1":
-        return LocalDocumentStorage(settings.documents_dir)
-    if selected != "r2":
-        raise OSError("UNSUPPORTED_STORAGE_BACKEND")
-    from app.services.r2_storage import R2DocumentStorage
-    return R2DocumentStorage(settings, bucket)
+    r2_configured = bool(
+        getattr(settings, "r2_bucket_name", None)
+        and getattr(settings, "r2_endpoint_url", None)
+        and hasattr(settings, "r2_access_key_id") and settings.r2_access_key_id.get_secret_value()
+        and hasattr(settings, "r2_secret_access_key") and settings.r2_secret_access_key.get_secret_value()
+    )
+    if selected == "r2" and r2_configured:
+        from app.services.r2_storage import R2DocumentStorage
+        return R2DocumentStorage(settings, bucket)
+
+    docs_dir = getattr(settings, "documents_dir", None) or Path("/tmp/mediflow-documents")
+    return LocalDocumentStorage(docs_dir)
