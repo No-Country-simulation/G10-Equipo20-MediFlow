@@ -4,6 +4,7 @@ import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from urllib.parse import urlparse
 
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -41,8 +42,9 @@ def create_session(account: Account, session: Session, response: Response, reque
     session.add(LoginSession(token_hash=token_hash(token), account_id=account.id,
                              expires_at=datetime.now(UTC) + timedelta(seconds=SESSION_SECONDS)))
     session.commit()
+    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(COOKIE_NAME, token, max_age=SESSION_SECONDS, httponly=True,
-                        samesite="lax", secure=request.url.scheme == "https", path="/")
+                        samesite="lax", secure=is_secure, path="/")
     response.headers["Cache-Control"] = "no-store"
 
 
@@ -91,5 +93,35 @@ def require_patient(account: Annotated[Account, Depends(current_account)]) -> Ac
 
 def same_origin(request: Request) -> None:
     origin = request.headers.get("origin")
-    if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
-        raise HTTPException(403, "ORIGIN_NOT_ALLOWED")
+    if not origin:
+        return
+
+    # Direct match with current Host
+    host = request.headers.get("host")
+    if host and origin == f"{request.url.scheme}://{host}":
+        return
+
+    # Match with X-Forwarded-Host if behind a proxy
+    forwarded_host = request.headers.get("x-forwarded-host")
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if forwarded_host and (origin == f"{proto}://{forwarded_host}" or origin.endswith(f"://{forwarded_host}")):
+        return
+
+    # Match configured public_frontend_url
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        if settings.public_frontend_url and origin == settings.public_frontend_url.rstrip("/"):
+            return
+    except Exception:
+        pass
+
+    # Match any Render app or localhost origin
+    parsed = urlparse(origin)
+    netloc = parsed.netloc.lower()
+    if (parsed.scheme == "https" and netloc.endswith(".onrender.com")) or (
+        netloc in ("localhost", "127.0.0.1") or netloc.startswith("localhost:") or netloc.startswith("127.0.0.1:")
+    ):
+        return
+
+    raise HTTPException(403, "ORIGIN_NOT_ALLOWED")

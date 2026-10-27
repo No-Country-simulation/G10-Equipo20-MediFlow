@@ -38,8 +38,12 @@ def main():
     logging.getLogger('httpx').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
     stop = threading.Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: stop.set())
+    if threading.current_thread() is threading.main_thread():
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                signal.signal(sig, lambda *_: stop.set())
+            except (ValueError, AttributeError):
+                pass
     engine, settings = get_engine(), get_settings()
     notifications = threading.Thread(target=notification_loop, args=(engine, settings, stop), daemon=True)
     notifications.start()
