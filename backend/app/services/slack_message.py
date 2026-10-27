@@ -1,4 +1,5 @@
 """Shared Slack Block Kit presentation for priority and inbox notifications."""
+import os
 from datetime import UTC, datetime
 
 from app.core.document_catalog import LABELS
@@ -73,7 +74,12 @@ def notification_payload(document, result, settings, *, event, destination_name)
             summary += '\n' + escape_slack(detail[:2900])
     blocks.append({'type': 'context', 'elements': [{'type': 'plain_text',
         'text': f'ID: {document.document_id} · {datetime.now(UTC):%d/%m/%Y %H:%M UTC}'}]})
-    base = settings.public_frontend_url.rstrip('/')
+    base = (settings.public_frontend_url or '').rstrip('/')
+    if not base or 'localhost' in base:
+        if os.environ.get('PUBLIC_FRONTEND_URL'):
+            base = os.environ['PUBLIC_FRONTEND_URL'].rstrip('/')
+        elif os.environ.get('RENDER') == 'true' or os.environ.get('RENDER_EXTERNAL_HOSTNAME'):
+            base = 'https://mediflow-app-zhyw.onrender.com'
     if base:
         url = f'{base}/documents/{document.document_id}'
         blocks.append({'type': 'actions', 'elements': [{'type': 'button',

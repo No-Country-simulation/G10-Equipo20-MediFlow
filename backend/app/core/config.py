@@ -31,7 +31,10 @@ class Settings(BaseModel):
     slack_webhook_url: SecretStr = SecretStr('')
     slack_webhook_url_urgente: SecretStr = SecretStr('')
     slack_max_attempts: int = Field(default=3, ge=1, le=10)
-    public_frontend_url: str = Field(default='http://localhost:4200', pattern=r'^https?://[A-Za-z0-9.:-]+$')
+    public_frontend_url: str = Field(
+        default="https://mediflow-app-zhyw.onrender.com" if (os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL")) else "http://localhost:4200",
+        pattern=r"^https?://[A-Za-z0-9.:-]+$"
+    )
     gemini_timeout_seconds: int = Field(default=90, ge=1, le=180)
     processing_max_pages: int = Field(default=20, ge=1, le=100)
     processing_max_characters: int = Field(default=50000, ge=100, le=200000)
